@@ -112,35 +112,33 @@ export const extractEntitiesFromDrive = inngest.createFunction(
 
     console.log(`${LOG_PREFIX} Extracting entities from Drive file ${fileId} (${fileName})`);
 
-    // Step 1: Extract entities using AI
+    // Step 1: Extract entities using Drive-specific extractor
     const extractionResult = await step.run('extract-entities', async () => {
       try {
-        const extractor = getEntityExtractor();
+        // Use Drive-specific extractor with enhanced capabilities
+        const { getDriveEntityExtractor } = await import('@/lib/drive');
 
-        // Convert Drive content to Email format for extraction
-        // (the extractor works with email-like objects)
-        const modifiedDate = new Date(modifiedTime);
-        const pseudoEmail: Email = {
+        const extractor = getDriveEntityExtractor();
+
+        // Build DriveFile object for extraction
+        const driveFile = {
           id: fileId,
-          subject: fileName,
-          body: content,
-          from: {
-            name: owners[0]?.displayName || 'Unknown',
-            email: owners[0]?.emailAddress || 'unknown@example.com',
-          },
-          to: [],
-          date: modifiedDate,
-          threadId: fileId,
-          labels: ['drive', mimeType],
-          snippet: content.substring(0, 200),
-          isSent: false,
-          hasAttachments: false,
-          internalDate: modifiedDate.getTime(),
+          name: fileName,
+          mimeType,
+          createdTime: new Date(modifiedTime),
+          modifiedTime: new Date(modifiedTime),
+          owners: owners.map((owner: { displayName: string; emailAddress: string }) => ({
+            displayName: owner.displayName,
+            emailAddress: owner.emailAddress,
+          })),
+          // Add empty arrays for optional fields
+          permissions: [],
         };
 
-        const result = await extractor.extractFromEmail(pseudoEmail);
+        const result = await extractor.extractFromDocument(driveFile, content);
 
         console.log(`${LOG_PREFIX} Extracted ${result.entities.length} entities from file ${fileName}`);
+        console.log(`${LOG_PREFIX} Document type: ${result.classification.type} (confidence: ${result.classification.confidence})`);
         console.log(`${LOG_PREFIX} Extraction cost: $${result.cost.toFixed(6)}`);
 
         return result;
@@ -176,6 +174,9 @@ export const extractEntitiesFromDrive = inngest.createFunction(
     return {
       fileId,
       fileName,
+      documentType: extractionResult.classification.type,
+      documentConfidence: extractionResult.classification.confidence,
+      headingsCount: extractionResult.structure.headings.length,
       entitiesCount: extractionResult.entities.length,
       cost: extractionResult.cost,
       model: extractionResult.model,
