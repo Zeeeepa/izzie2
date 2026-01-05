@@ -245,103 +245,91 @@ export class MemoryService {
 
   /**
    * Hybrid search: Combine semantic search with graph traversal
-   * Provides comprehensive results from both vector and graph stores
+   * Uses optimized retrieval service with smart query parsing and weighted ranking
    */
   async hybridSearch(
     userId: string,
     query: string,
     options: SearchOptions = {}
   ): Promise<HybridSearchResult> {
-    // 1. Semantic search via pgvector
-    const semanticResults = await this.retrieve(userId, query, options);
+    try {
+      // Use optimized retrieval service
+      const { retrievalService } = await import('@/lib/retrieval');
 
-    // 2. Graph traversal (if enabled and configured)
-    let graphResults: any[] = [];
-    if (options.includeGraph && this.isGraphConfigured()) {
-      try {
-        // Extract key terms from query for graph search
-        const searchTerm = this.extractKeyTerm(query);
+      const result = await retrievalService.search(userId, query, {
+        conversationId: options.conversationId,
+        limit: options.limit || 10,
+        includeGraph: options.includeGraph ?? true,
+      });
 
-        // Search graph for related entities
-        const { searchEntities } = await import('@/lib/graph');
-        const entities = await searchEntities(searchTerm, undefined, options.limit || 10);
+      // Convert ranked results back to MemoryEntry format
+      const memories = result.results
+        .filter((r) => r.source === 'vector')
+        .map((r) => r.content as TypeMemoryEntry);
 
-        graphResults = entities;
+      const graphResults = result.results
+        .filter((r) => r.source === 'graph')
+        .map((r) => r.content);
 
-        console.log(`[Memory] Found ${graphResults.length} graph entities for: ${searchTerm}`);
-      } catch (error) {
-        console.error('[Memory] Error in graph search:', error);
-      }
+      const combined = result.results.map((r) =>
+        r.source === 'vector'
+          ? (r.content as TypeMemoryEntry)
+          : this.convertGraphToMemory(r.content)
+      );
+
+      console.log(
+        `[Memory] Hybrid search completed in ${result.metadata.executionTime}ms (${result.results.length} results)`
+      );
+
+      return {
+        memories,
+        graphResults: options.includeGraph ? graphResults : undefined,
+        combined,
+        metadata: {
+          vectorResults: result.metadata.vectorResults,
+          graphResults: result.metadata.graphResults,
+          combinedResults: result.metadata.finalResults,
+        },
+      };
+    } catch (error) {
+      console.error('[Memory] Error in optimized hybrid search:', error);
+
+      // Fallback to simple semantic search
+      const semanticResults = await this.retrieve(userId, query, options);
+
+      return {
+        memories: semanticResults,
+        graphResults: [],
+        combined: semanticResults,
+        metadata: {
+          vectorResults: semanticResults.length,
+          graphResults: 0,
+          combinedResults: semanticResults.length,
+        },
+      };
     }
+  }
 
-    // 3. Merge and rank results
-    const combined = this.mergeResults(semanticResults, graphResults);
+  /**
+   * Convert graph entity to MemoryEntry format
+   */
+  private convertGraphToMemory(graphEntity: any): TypeMemoryEntry {
+    const node = graphEntity.node || graphEntity;
+    const label = graphEntity.label || 'Entity';
 
     return {
-      memories: semanticResults,
-      graphResults: options.includeGraph ? graphResults : undefined,
-      combined,
+      id: `graph-${node.normalized}`,
+      userId: 'system',
+      content: `${label}: ${node.name}`,
       metadata: {
-        vectorResults: semanticResults.length,
-        graphResults: graphResults.length,
-        combinedResults: combined.length,
+        source: 'graph',
+        entity: node,
+        label,
       },
+      createdAt: node.firstSeen || new Date(),
     };
   }
 
-  /**
-   * Extract key term from query for graph search
-   */
-  private extractKeyTerm(query: string): string {
-    // Simple extraction - take first meaningful word
-    // In production, could use NLP or the LLM to extract entities
-    const words = query.toLowerCase().split(/\s+/);
-    const stopWords = new Set(['who', 'what', 'when', 'where', 'how', 'the', 'a', 'an', 'is', 'are']);
-
-    for (const word of words) {
-      if (word.length > 3 && !stopWords.has(word)) {
-        return word;
-      }
-    }
-
-    return words[0] || query;
-  }
-
-  /**
-   * Merge semantic and graph results
-   * Prioritizes vector search results, adds non-overlapping graph entities
-   */
-  private mergeResults(
-    semanticResults: TypeMemoryEntry[],
-    graphResults: any[]
-  ): TypeMemoryEntry[] {
-    // Prioritize semantic results (higher quality, user-specific)
-    const combined = [...semanticResults];
-
-    // Add graph results as synthetic memories if they don't overlap
-    for (const graphEntity of graphResults) {
-      const entityContent = `Entity: ${graphEntity.node.name} (${graphEntity.label})`;
-
-      // Check if already in semantic results
-      const exists = semanticResults.some((mem) => mem.content.includes(graphEntity.node.name));
-
-      if (!exists) {
-        combined.push({
-          id: `graph-${graphEntity.node.normalized}`,
-          userId: 'system',
-          content: entityContent,
-          metadata: {
-            source: 'graph',
-            entity: graphEntity.node,
-            label: graphEntity.label,
-          },
-          createdAt: graphEntity.node.firstSeen || new Date(),
-        });
-      }
-    }
-
-    return combined;
-  }
 
   /**
    * Get all memories for a user
