@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { listEvents, createEvent } from '@/lib/calendar';
+import { checkConflicts } from '@/lib/calendar/conflicts';
 import type { CreateEventParams } from '@/lib/calendar';
 
 /**
@@ -145,7 +146,51 @@ export async function POST(request: NextRequest) {
 
     console.log('[Calendar Events] Creating event for user:', userId, 'calendar:', params.calendarId);
 
-    // Create event
+    // Check for conflicts if requested (opt-in via query parameter)
+    const checkConflictsFlag = request.nextUrl.searchParams.get('checkConflicts') === 'true';
+    const bufferMinutes = parseInt(
+      request.nextUrl.searchParams.get('bufferMinutes') || '0',
+      10
+    );
+
+    if (checkConflictsFlag) {
+      console.log('[Calendar Events] Checking for conflicts before creating event');
+
+      const conflictCheck = await checkConflicts(userId, {
+        start: params.start,
+        end: params.end,
+        calendarIds: params.calendarId ? [params.calendarId] : undefined,
+        bufferMinutes,
+        checkAllDayEvents: true,
+      });
+
+      // If conflicts with severity 'error', warn in response but still allow creation
+      if (conflictCheck.hasConflicts && conflictCheck.severity === 'error') {
+        console.log(
+          '[Calendar Events] Warning: Creating event despite conflicts:',
+          conflictCheck.conflicts.length
+        );
+      }
+
+      // Create event
+      const event = await createEvent(userId, params);
+
+      return NextResponse.json({
+        success: true,
+        data: event,
+        message: 'Event created successfully',
+        conflicts: conflictCheck.hasConflicts
+          ? {
+              hasConflicts: true,
+              severity: conflictCheck.severity,
+              conflicts: conflictCheck.conflicts,
+              suggestedTimes: conflictCheck.suggestedTimes,
+            }
+          : undefined,
+      });
+    }
+
+    // Create event without conflict checking
     const event = await createEvent(userId, params);
 
     return NextResponse.json({

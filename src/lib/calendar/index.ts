@@ -417,4 +417,11 @@ export {
   type FreeBusyRequest,
   type FreeBusyResponse,
   type EventTime,
+  type ConflictCheckRequest,
+  type ConflictCheckResponse,
+  type EventConflict,
+  type ConflictType,
+  type ConflictSeverity,
 } from './types';
+
+export { checkConflicts } from './conflicts';

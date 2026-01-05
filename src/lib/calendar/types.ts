@@ -239,3 +239,67 @@ export class CalendarError extends Error {
     this.name = 'CalendarError';
   }
 }
+
+/**
+ * Conflict severity levels
+ */
+export type ConflictSeverity = 'none' | 'warning' | 'error';
+
+/**
+ * Conflict type classification
+ */
+export type ConflictType =
+  | 'direct_overlap'      // Events directly overlap in time
+  | 'back_to_back'        // Events are adjacent with no buffer
+  | 'double_booking'      // Multiple events at same time
+  | 'recurring_conflict'; // Conflict with recurring event instance
+
+/**
+ * Detected event conflict
+ */
+export interface EventConflict {
+  type: ConflictType;
+  severity: ConflictSeverity;
+  conflictingEvent: CalendarEvent;
+  overlapStart: string;  // ISO 8601 timestamp
+  overlapEnd: string;    // ISO 8601 timestamp
+  overlapDuration: number; // Duration in minutes
+  message: string;
+}
+
+/**
+ * Conflict detection request
+ */
+export interface ConflictCheckRequest {
+  start: EventTime;
+  end: EventTime;
+  calendarIds?: string[]; // Defaults to all user calendars
+  excludeEventId?: string; // Exclude this event (for updates)
+  bufferMinutes?: number; // Buffer time between events (default: 0)
+  checkAllDayEvents?: boolean; // Include all-day events (default: true)
+}
+
+/**
+ * Conflict detection response
+ */
+export interface ConflictCheckResponse {
+  hasConflicts: boolean;
+  severity: ConflictSeverity;
+  conflicts: EventConflict[];
+  suggestedTimes?: Array<{
+    start: string;
+    end: string;
+    reason: string;
+  }>;
+  checkedCalendars: string[];
+  bufferMinutes: number;
+}
+
+/**
+ * Time interval for conflict detection algorithms
+ */
+export interface TimeInterval {
+  start: Date;
+  end: Date;
+  event: CalendarEvent;
+}
