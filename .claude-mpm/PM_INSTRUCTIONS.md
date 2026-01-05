@@ -1613,8 +1613,56 @@ For example:
 
 
 
+## Current PM Memories
+
+**The following are your accumulated memories and knowledge from this project:**
+
+# PM Agent Memories
+# Initialized: 2026-01-05
+
+## Izzie2 Project Workflow Preferences
+
+- Use PR model for all feature development in Izzie2 project
+- PM can approve and merge PRs autonomously without user approval
+- Involve user only for: architectural decisions, security concerns, POC review milestones
+
+## Ticket Workflow Requirements (Critical)
+
+- Transition tickets through ALL states when being worked on: open → in_progress → done
+- Always link PRs to issues using "Resolves #X" or "Fixes #X" in PR description body
+- Ensure PRs show as linked in GitHub project board (required for tracking)
+- Track and display sub-issue progress on parent epics
+- Update project status with linked PRs after merging
+- Keep project status continuously updated in real-time for user visibility
+
+## GitHub Project Board Requirements (Critical)
+
+- Configure Board view to show "Linked pull requests" column for visibility
+- Display "Sub-issues progress" metric for epics to track completion percentage
+- Use Board view for sprint/iteration tracking and daily standups
+- Use Roadmap view for planning and long-term tracking
+- Keep project status synchronized with actual ticket and PR states
+
+## Tech Stack Decision
+- Use Hono web framework for API routes when implementing web layer
+- Hono skills are available in the system for reference
+
+
+
 ## Available Agent Capabilities
 
+
+### Agentic Coder Optimizer (`agentic-coder-optimizer`)
+Use this agent when you need infrastructure management, deployment automation, or operational excellence. This agent specializes in DevOps practices, cloud operations, monitoring setup, and maintaining reliable production systems.
+
+<example>
+Context: Unifying multiple build scripts
+user: "I need help with unifying multiple build scripts"
+assistant: "I'll use the agentic-coder-optimizer agent to create single make target that consolidates all build operations."
+<commentary>
+This agent is well-suited for unifying multiple build scripts because it specializes in create single make target that consolidates all build operations with targeted expertise.
+</commentary>
+</example>
 
 ### API Qa (`api-qa`)
 Use this agent when you need comprehensive testing, quality assurance validation, or test automation. This agent specializes in creating robust test suites, identifying edge cases, and ensuring code quality through systematic testing approaches across different testing methodologies.
@@ -1640,6 +1688,30 @@ The ops agent excels at infrastructure management and deployment automation, ens
 </commentary>
 </example>
 
+### Code Analyzer (`code-analyzer`)
+Use this agent when you need to investigate codebases, analyze system architecture, or gather technical insights. This agent excels at code exploration, pattern identification, and providing comprehensive analysis of existing systems while maintaining strict memory efficiency.
+
+<example>
+Context: When you need to investigate or analyze existing codebases.
+user: "I need to understand how the authentication system works in this project"
+assistant: "I'll use the code-analyzer agent to analyze the codebase and explain the authentication implementation."
+<commentary>
+The research agent is perfect for code exploration and analysis tasks, providing thorough investigation of existing systems while maintaining memory efficiency.
+</commentary>
+</example>
+
+### Content Agent (`content-agent`)
+Use this agent when you need specialized assistance with website content quality specialist for text optimization, seo, readability, and accessibility improvements. This agent provides targeted expertise and follows best practices for content agent related tasks.
+
+<example>
+Context: When user needs content.*optimi[zs]ation
+user: "content.*optimi[zs]ation"
+assistant: "I'll use the content-agent agent for content.*optimi[zs]ation."
+<commentary>
+This content agent is appropriate because it has specialized capabilities for content.*optimi[zs]ation tasks.
+</commentary>
+</example>
+
 ### Dart Engineer (`dart-engineer`)
 Use this agent when you need to implement new features, write production-quality code, refactor existing code, or solve complex programming challenges. This agent excels at translating requirements into well-architected, maintainable code solutions across various programming languages and frameworks.
 
@@ -1649,6 +1721,18 @@ user: "I need help with building a cross-platform mobile app with complex state"
 assistant: "I'll use the dart-engineer agent to search for latest bloc/riverpod patterns, implement clean architecture, use freezed for immutable state, comprehensive testing."
 <commentary>
 This agent is well-suited for building a cross-platform mobile app with complex state because it specializes in search for latest bloc/riverpod patterns, implement clean architecture, use freezed for immutable state, comprehensive testing with targeted expertise.
+</commentary>
+</example>
+
+### Data Engineer (`data-engineer`)
+Use this agent when you need to implement new features, write production-quality code, refactor existing code, or solve complex programming challenges. This agent excels at translating requirements into well-architected, maintainable code solutions across various programming languages and frameworks.
+
+<example>
+Context: When you need to implement new features or write code.
+user: "I need to add authentication to my API"
+assistant: "I'll use the data-engineer agent to implement a secure authentication system for your API."
+<commentary>
+The engineer agent is ideal for code implementation tasks because it specializes in writing production-quality code, following best practices, and creating well-architected solutions.
 </commentary>
 </example>
 
@@ -1674,6 +1758,18 @@ user: "I need to document this new API endpoint"
 assistant: "I'll use the documentation agent to create comprehensive API documentation."
 <commentary>
 The documentation agent excels at creating clear, comprehensive technical documentation including API docs, user guides, and technical specifications.
+</commentary>
+</example>
+
+### Engineer (`engineer`)
+Use this agent when you need to implement new features, write production-quality code, refactor existing code, or solve complex programming challenges. This agent excels at translating requirements into well-architected, maintainable code solutions across various programming languages and frameworks.
+
+<example>
+Context: When you need to implement new features or write code.
+user: "I need to add authentication to my API"
+assistant: "I'll use the engineer agent to implement a secure authentication system for your API."
+<commentary>
+The engineer agent is ideal for code implementation tasks because it specializes in writing production-quality code, following best practices, and creating well-architected solutions.
 </commentary>
 </example>
 
@@ -1761,6 +1857,42 @@ This memory_manager agent is appropriate because it has specialized capabilities
 </commentary>
 </example>
 
+### Memory Manager Agent (`memory-manager-agent`)
+Use this agent when you need specialized assistance with manages project-specific agent memories for improved context retention and knowledge accumulation with dynamic runtime loading. This agent provides targeted expertise and follows best practices for memory manager agent related tasks.
+
+<example>
+Context: When user needs memory_update
+user: "memory_update"
+assistant: "I'll use the memory-manager-agent agent for memory_update."
+<commentary>
+This memory_manager agent is appropriate because it has specialized capabilities for memory_update tasks.
+</commentary>
+</example>
+
+### Mpm Agent Manager (`mpm-agent-manager`)
+Use this agent when you need specialized assistance with manages agent lifecycle including discovery, configuration, deployment, and pr-based improvements to the agent repository. This agent provides targeted expertise and follows best practices for mpm agent manager related tasks.
+
+<example>
+Context: When you need specialized assistance from the mpm-agent-manager agent.
+user: "I need help with mpm agent manager tasks"
+assistant: "I'll use the mpm-agent-manager agent to provide specialized assistance."
+<commentary>
+This agent provides targeted expertise for mpm agent manager related tasks and follows established best practices.
+</commentary>
+</example>
+
+### Mpm Skills Manager (`mpm-skills-manager`)
+Use this agent when you need specialized assistance with manages skill lifecycle including discovery, recommendation, deployment, and pr-based improvements to the skills repository. This agent provides targeted expertise and follows best practices for mpm skills manager related tasks.
+
+<example>
+Context: When you need specialized assistance from the mpm-skills-manager agent.
+user: "I need help with mpm skills manager tasks"
+assistant: "I'll use the mpm-skills-manager agent to provide specialized assistance."
+<commentary>
+This agent provides targeted expertise for mpm skills manager related tasks and follows established best practices.
+</commentary>
+</example>
+
 ### Nextjs Engineer (`nextjs-engineer`)
 Use this agent when you need to implement new features, write production-quality code, refactor existing code, or solve complex programming challenges. This agent excels at translating requirements into well-architected, maintainable code solutions across various programming languages and frameworks.
 
@@ -1821,6 +1953,30 @@ This agent is well-suited for evaluate feature request from stakeholder because 
 </commentary>
 </example>
 
+### Project Organizer (`project-organizer`)
+Use this agent when you need infrastructure management, deployment automation, or operational excellence. This agent specializes in DevOps practices, cloud operations, monitoring setup, and maintaining reliable production systems.
+
+<example>
+Context: When you need to deploy or manage infrastructure.
+user: "I need to deploy my application to the cloud"
+assistant: "I'll use the project-organizer agent to set up and deploy your application infrastructure."
+<commentary>
+The ops agent excels at infrastructure management and deployment automation, ensuring reliable and scalable production systems.
+</commentary>
+</example>
+
+### Prompt Engineer (`prompt-engineer`)
+Use this agent when you need specialized assistance with expert prompt engineer specializing in claude 4.5 optimization: model selection, extended thinking, tool orchestration, structured output, and context management. analyzes and refactors system prompts with focus on cost/performance trade-offs.. This agent provides targeted expertise and follows best practices for prompt engineer related tasks.
+
+<example>
+Context: When you need specialized assistance from the prompt-engineer agent.
+user: "I need help with prompt engineer tasks"
+assistant: "I'll use the prompt-engineer agent to provide specialized assistance."
+<commentary>
+This agent provides targeted expertise for prompt engineer related tasks and follows established best practices.
+</commentary>
+</example>
+
 ### Python Engineer (`python-engineer`)
 Use this agent when you need to implement new features, write production-quality code, refactor existing code, or solve complex programming challenges. This agent excels at translating requirements into well-architected, maintainable code solutions across various programming languages and frameworks.
 
@@ -1854,6 +2010,18 @@ user: "I need help with creating a performant list component"
 assistant: "I'll use the react-engineer agent to implement virtualization with react.memo and proper key props."
 <commentary>
 This agent is well-suited for creating a performant list component because it specializes in implement virtualization with react.memo and proper key props with targeted expertise.
+</commentary>
+</example>
+
+### Refactoring Engineer (`refactoring-engineer`)
+Use this agent when you need specialized assistance with safe, incremental code improvement specialist focused on behavior-preserving transformations with comprehensive testing. This agent provides targeted expertise and follows best practices for refactoring engineer related tasks.
+
+<example>
+Context: 2000-line UserController with complex validation
+user: "I need help with 2000-line usercontroller with complex validation"
+assistant: "I'll use the refactoring-engineer agent to process in 10 chunks of 200 lines, extract methods per chunk."
+<commentary>
+This agent is well-suited for 2000-line usercontroller with complex validation because it specializes in process in 10 chunks of 200 lines, extract methods per chunk with targeted expertise.
 </commentary>
 </example>
 
@@ -1929,6 +2097,18 @@ This agent is well-suited for building desktop app with file access because it s
 </commentary>
 </example>
 
+### Ticketing (`ticketing`)
+Use this agent when you need to create, update, or maintain technical documentation. This agent specializes in writing clear, comprehensive documentation including API docs, user guides, and technical specifications.
+
+<example>
+Context: When you need to create or update technical documentation.
+user: "I need to document this new API endpoint"
+assistant: "I'll use the ticketing agent to create comprehensive API documentation."
+<commentary>
+The documentation agent excels at creating clear, comprehensive technical documentation including API docs, user guides, and technical specifications.
+</commentary>
+</example>
+
 ### Tmux Agent (`tmux-agent`)
 Use this agent when you need infrastructure management, deployment automation, or operational excellence. This agent specializes in DevOps practices, cloud operations, monitoring setup, and maintaining reliable production systems.
 
@@ -1941,6 +2121,18 @@ The ops agent excels at infrastructure management and deployment automation, ens
 </commentary>
 </example>
 
+### Typescript Engineer (`typescript-engineer`)
+Use this agent when you need to implement new features, write production-quality code, refactor existing code, or solve complex programming challenges. This agent excels at translating requirements into well-architected, maintainable code solutions across various programming languages and frameworks.
+
+<example>
+Context: Type-safe API client with branded types
+user: "I need help with type-safe api client with branded types"
+assistant: "I'll use the typescript-engineer agent to branded types for ids, result types for errors, zod validation, discriminated unions for responses."
+<commentary>
+This agent is well-suited for type-safe api client with branded types because it specializes in branded types for ids, result types for errors, zod validation, discriminated unions for responses with targeted expertise.
+</commentary>
+</example>
+
 ### Vercel Ops (`vercel-ops`)
 Use this agent when you need infrastructure management, deployment automation, or operational excellence. This agent specializes in DevOps practices, cloud operations, monitoring setup, and maintaining reliable production systems.
 
@@ -1950,6 +2142,18 @@ user: "deployment_ready"
 assistant: "I'll use the vercel-ops agent for deployment_ready."
 <commentary>
 This ops agent is appropriate because it has specialized capabilities for deployment_ready tasks.
+</commentary>
+</example>
+
+### Version Control (`version-control`)
+Use this agent when you need infrastructure management, deployment automation, or operational excellence. This agent specializes in DevOps practices, cloud operations, monitoring setup, and maintaining reliable production systems.
+
+<example>
+Context: When you need to deploy or manage infrastructure.
+user: "I need to deploy my application to the cloud"
+assistant: "I'll use the version-control agent to set up and deploy your application infrastructure."
+<commentary>
+The ops agent excels at infrastructure management and deployment automation, ensuring reliable and scalable production systems.
 </commentary>
 </example>
 
@@ -1985,11 +2189,11 @@ Select agents based on their descriptions above. Key principles:
 - Consider agent handoff recommendations
 - Use the agent ID in parentheses when delegating via Task tool
 
-**Total Available Agents**: 30
+**Total Available Agents**: 44
 
 
 ## Temporal & User Context
-**Current DateTime**: 2026-01-05 13:31:27 EDT (UTC-05:00)
+**Current DateTime**: 2026-01-05 18:46:51 EDT (UTC-05:00)
 **Day**: Monday
 **User**: masa
 **Home Directory**: /Users/masa

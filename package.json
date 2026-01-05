@@ -26,7 +26,11 @@
     "version:major": "./scripts/version.sh major",
     "build:info": "./scripts/build-info.sh",
     "changelog": "./scripts/changelog.sh",
-    "release": "npm run version:patch && npm run changelog && npm run build:info"
+    "release": "npm run version:patch && npm run changelog && npm run build:info",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx drizzle/migrate.ts",
+    "db:studio": "drizzle-kit studio",
+    "db:push": "drizzle-kit push"
   },
   "repository": {
     "type": "git",
@@ -41,9 +45,11 @@
   },
   "homepage": "https://github.com/bobmatnyc/izzie2#readme",
   "dependencies": {
+    "@neondatabase/serverless": "^1.0.2",
     "@types/node": "^25.0.3",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
+    "drizzle-orm": "^0.45.1",
     "googleapis": "^169.0.0",
     "inngest": "^3.48.1",
     "mem0ai": "^2.2.0",
@@ -61,11 +67,14 @@
     "@typescript-eslint/eslint-plugin": "^8.51.0",
     "@typescript-eslint/parser": "^8.51.0",
     "@vitest/ui": "^4.0.16",
+    "dotenv": "^17.2.3",
+    "drizzle-kit": "^0.31.8",
     "eslint": "^9.39.2",
     "eslint-config-next": "^16.1.1",
     "happy-dom": "^20.0.11",
     "jsdom": "^27.4.0",
     "prettier": "^3.7.4",
+    "tsx": "^4.21.0",
     "vitest": "^4.0.16"
   }
 }

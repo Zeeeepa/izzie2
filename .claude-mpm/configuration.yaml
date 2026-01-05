@@ -197,68 +197,122 @@ use_ai_trackdown_tools: false
 verbose: false
 skills:
   agent_referenced:
-  # Core AI/Development
   - anthropic-sdk
-  - openrouter
-  - mcp
-  - mcp-builder
-
-  # Next.js & React (primary framework)
-  - nextjs
-  - nextjs-core
-  - nextjs-v16
-  - react
-  - react-state-machines
-
-  # TypeScript
-  - typescript-core
-  - nodejs-backend
-
-  # Testing (Vitest stack)
-  - vitest
-  - test-driven-development
-  - testing-anti-patterns
-  - test-quality-inspector
-  - webapp-testing
-
-  # API & Integration
   - api-design-patterns
   - api-documentation
   - api-security-review
-  - json-data-handling
-  - graphql
-
-  # Data & Validation
-  - zod
-
-  # AI/ML Libraries (project uses OpenAI, Mem0)
-  - langchain
-  - langgraph
-
-  # Git & Development Workflow
+  - artifacts-builder
+  - asyncio
+  - biome
+  - brainstorming
+  - bug-fix-verification
+  - celery
+  - condition-based-waiting
+  - daisyui
+  - database-migration
+  - dependency-audit
+  - desktop-applications
+  - digitalocean-agentic-cloud
+  - digitalocean-compute
+  - digitalocean-containers-images
+  - digitalocean-managed-databases
+  - digitalocean-management
+  - digitalocean-networking
+  - digitalocean-overview
+  - digitalocean-storage
+  - digitalocean-teams
+  - dispatching-parallel-agents
+  - django
+  - docker
+  - drizzle-migrations
+  - drizzle-orm
+  - dspy
+  - ecto-patterns
+  - emergency-release-workflow
+  - env-manager
+  - espocrm
+  - express-production
+  - fastapi-local-dev
+  - flask
   - git-workflow
   - git-worktrees
   - github-actions
-  - stacked-prs
+  - golang-cli-cobra-viper
+  - golang-database-patterns
+  - golang-http-frameworks
+  - golang-observability-opentelemetry
+  - golang-testing-strategies
+  - graphql
+  - headlessui
+  - internal-comms
+  - jest-typescript
+  - json-data-handling
+  - kysely
+  - langchain
+  - langgraph
+  - mcp
+  - mcp-builder
+  - mypy
+  - neon
+  - netlify
+  - nextjs
+  - nextjs-core
+  - nextjs-v16
+  - nodejs-backend
+  - openrouter
+  - phoenix-api-channels
+  - phoenix-liveview
+  - phoenix-ops
+  - playwright
   - pr-quality-checklist
   - pre-merge-verification
+  - prisma-orm
+  - pydantic
+  - pyright
+  - pytest
+  - react
+  - react-state-machines
   - requesting-code-review
-  - verification-before-completion
-
-  # Code Quality
-  - bug-fix-verification
-  - systematic-debugging
   - root-cause-tracing
-  - dependency-audit
+  - screenshot-verification
   - security-scanning
-  - software-patterns
-
-  # Documentation & Planning
-  - writing-plans
+  - session-compression
+  - shadcn-ui
   - skill-creator
-
-  # Neo4j would go here but not in current skills list
-
+  - software-patterns
+  - sqlalchemy
+  - stacked-prs
+  - supabase
+  - svelte
+  - svelte5-runes-static
+  - sveltekit
+  - systematic-debugging
+  - tailwind
+  - tanstack-query
+  - tauri
+  - test-driven-development
+  - test-quality-inspector
+  - testing-anti-patterns
+  - trpc
+  - turborepo
+  - typescript-core
+  - validated-handler
+  - vercel-overview
+  - verification-before-completion
+  - vite
+  - vitest
+  - vue
+  - web-performance-optimization
+  - webapp-testing
+  - wordpress-advanced-architecture
+  - wordpress-block-editor-fse
+  - wordpress-plugin-fundamentals
+  - wordpress-security-validation
+  - wordpress-testing-qa
+  - writing-plans
+  - xlsx
+  - zod
+  - zustand
   user_defined: []
 agent_preferences:
   primary_engineer: typescript-engineer
@@ -267,26 +321,17 @@ agent_preferences:
   frontend_engineer: react-engineer
   framework_engineer: nextjs-engineer
 deployed_agents:
-  # Core orchestration (always needed)
-  - universal/research
-  - security/security
-  - documentation/documentation
-
-  # Engineering (TypeScript/React/Next.js stack)
-  - engineer/core/engineer
-  - engineer/data/typescript-engineer
-  - engineer/frontend/react-engineer
-  - engineer/frontend/nextjs-engineer
-  - engineer/backend/javascript-engineer
-
-  # QA
-  - qa/qa
-  - qa/api-qa
-
-  # Ops
-  - ops/platform/local-ops
-  - ops/tooling/version-control
-
-  # MPM Framework
-  - claude-mpm/mpm-agent-manager
-  - claude-mpm/mpm-skills-manager
+- universal/research
+- security/security
+- documentation/documentation
+- engineer/core/engineer
+- engineer/data/typescript-engineer
+- engineer/frontend/react-engineer
+- engineer/frontend/nextjs-engineer
+- engineer/backend/javascript-engineer
+- qa/qa
+- qa/api-qa
+- ops/platform/local-ops
+- ops/tooling/version-control
+- claude-mpm/mpm-agent-manager
+- claude-mpm/mpm-skills-manager
