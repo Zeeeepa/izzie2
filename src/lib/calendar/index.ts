@@ -425,3 +425,13 @@ export {
 } from './types';
 
 export { checkConflicts } from './conflicts';
+
+export {
+  findAvailability,
+  type WorkingHours,
+  type Participant,
+  type TimePreferences,
+  type AvailabilityRequest,
+  type AvailableSlot,
+  type AvailabilityResponse,
+} from './availability';
