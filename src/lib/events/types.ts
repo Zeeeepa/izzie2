@@ -135,13 +135,70 @@ export const DriveContentExtractedSchema = z.object({
 export type DriveContentExtractedPayload = z.infer<typeof DriveContentExtractedSchema>;
 
 /**
+ * Task content extracted event schema
+ * Emitted when tasks are fetched from Google Tasks and need entity extraction
+ */
+export const TaskContentExtractedSchema = z.object({
+  userId: z.string(),
+  taskId: z.string(),
+  title: z.string(),
+  notes: z.string().optional(),
+  due: z.string().optional(),
+  status: z.string(),
+  listId: z.string(),
+  listTitle: z.string(),
+  updated: z.string().optional(),
+  completed: z.string().optional(),
+  parent: z.string().optional(),
+});
+
+export type TaskContentExtractedPayload = z.infer<typeof TaskContentExtractedSchema>;
+
+/**
+ * Calendar event content extracted event schema
+ * Emitted when calendar events are fetched and need entity extraction
+ */
+export const CalendarEventExtractedSchema = z.object({
+  userId: z.string(),
+  eventId: z.string(),
+  summary: z.string(),
+  description: z.string(),
+  location: z.string().optional(),
+  start: z.object({
+    dateTime: z.string(),
+    timeZone: z.string().optional(),
+  }),
+  end: z.object({
+    dateTime: z.string(),
+    timeZone: z.string().optional(),
+  }),
+  attendees: z.array(z.object({
+    email: z.string(),
+    displayName: z.string(),
+    responseStatus: z.enum(['accepted', 'declined', 'tentative', 'needsAction']).optional(),
+    organizer: z.boolean().optional(),
+    self: z.boolean().optional(),
+  })),
+  organizer: z.object({
+    email: z.string(),
+    displayName: z.string(),
+    self: z.boolean().optional(),
+  }).optional(),
+  recurringEventId: z.string().optional(),
+  status: z.enum(['confirmed', 'tentative', 'cancelled']).optional(),
+  htmlLink: z.string().optional(),
+});
+
+export type CalendarEventExtractedPayload = z.infer<typeof CalendarEventExtractedSchema>;
+
+/**
  * Entities extracted event schema
  * Emitted after entity extraction is complete
  */
 export const EntitiesExtractedSchema = z.object({
   userId: z.string(),
-  sourceId: z.string(), // emailId or fileId
-  sourceType: z.enum(['email', 'drive']),
+  sourceId: z.string(), // emailId, fileId, taskId, or eventId
+  sourceType: z.enum(['email', 'drive', 'task', 'calendar']),
   entities: z.array(
     z.object({
       type: z.enum(['person', 'company', 'project', 'location', 'date', 'topic', 'action_item']),
@@ -194,6 +251,12 @@ export type Events = {
   'izzie/ingestion.drive.extracted': {
     data: DriveContentExtractedPayload;
   };
+  'izzie/ingestion.task.extracted': {
+    data: TaskContentExtractedPayload;
+  };
+  'izzie/ingestion.calendar.extracted': {
+    data: CalendarEventExtractedPayload;
+  };
   'izzie/ingestion.entities.extracted': {
     data: EntitiesExtractedPayload;
   };
@@ -214,6 +277,8 @@ export function validateEventData<T extends keyof Events>(
     'izzie/scheduling.request': SchedulingRequestSchema,
     'izzie/ingestion.email.extracted': EmailContentExtractedSchema,
     'izzie/ingestion.drive.extracted': DriveContentExtractedSchema,
+    'izzie/ingestion.task.extracted': TaskContentExtractedSchema,
+    'izzie/ingestion.calendar.extracted': CalendarEventExtractedSchema,
     'izzie/ingestion.entities.extracted': EntitiesExtractedSchema,
   };
 

@@ -5,7 +5,7 @@
 
 import { inngest } from '../index';
 import { getEntityExtractor } from '@/lib/extraction/entity-extractor';
-import type { Email } from '@/lib/google/types';
+import type { Email, CalendarEvent } from '@/lib/google/types';
 import type { EntitiesExtractedPayload } from '../types';
 
 const LOG_PREFIX = '[ExtractEntities]';
@@ -180,6 +180,103 @@ export const extractEntitiesFromDrive = inngest.createFunction(
       documentType: extractionResult.classification.type,
       documentConfidence: extractionResult.classification.confidence,
       headingsCount: extractionResult.structure.headings.length,
+      entitiesCount: extractionResult.entities.length,
+      cost: extractionResult.cost,
+      model: extractionResult.model,
+      completedAt: new Date().toISOString(),
+    };
+  }
+);
+
+/**
+ * Extract entities from calendar events
+ */
+export const extractEntitiesFromCalendar = inngest.createFunction(
+  {
+    id: 'extract-entities-from-calendar',
+    name: 'Extract Entities from Calendar Event',
+    retries: 3,
+  },
+  { event: 'izzie/ingestion.calendar.extracted' },
+  async ({ event, step }) => {
+    const {
+      userId,
+      eventId,
+      summary,
+      description,
+      location,
+      start,
+      end,
+      attendees,
+      organizer,
+      recurringEventId,
+      status,
+      htmlLink,
+    } = event.data;
+
+    console.log(`${LOG_PREFIX} Extracting entities from calendar event ${eventId}`);
+
+    // Step 1: Extract entities using AI
+    const extractionResult = await step.run('extract-entities', async () => {
+      try {
+        const extractor = getEntityExtractor();
+
+        // Convert event data to CalendarEvent format
+        const calendarEvent: CalendarEvent = {
+          id: eventId,
+          summary,
+          description,
+          location,
+          start,
+          end,
+          attendees: attendees || [],
+          organizer,
+          recurringEventId,
+          status,
+          htmlLink,
+        };
+
+        const result = await extractor.extractFromCalendarEvent(calendarEvent);
+
+        console.log(
+          `${LOG_PREFIX} Extracted ${result.entities.length} entities from calendar event ${eventId}`
+        );
+        console.log(`${LOG_PREFIX} Extraction cost: $${result.cost.toFixed(6)}`);
+
+        return result;
+      } catch (error) {
+        console.error(`${LOG_PREFIX} Error extracting entities from calendar event ${eventId}:`, error);
+        throw error;
+      }
+    });
+
+    // Step 2: Emit entities extracted event
+    await step.run('emit-entities-event', async () => {
+      if (extractionResult.entities.length === 0) {
+        console.log(`${LOG_PREFIX} No entities found, skipping graph update`);
+        return;
+      }
+
+      await inngest.send({
+        name: 'izzie/ingestion.entities.extracted',
+        data: {
+          userId,
+          sourceId: eventId,
+          sourceType: 'calendar',
+          entities: extractionResult.entities,
+          spam: { isSpam: false, spamScore: 0 }, // Calendar events are never spam
+          extractedAt: extractionResult.extractedAt.toISOString(),
+          cost: extractionResult.cost,
+          model: extractionResult.model,
+        } satisfies EntitiesExtractedPayload,
+      });
+
+      console.log(`${LOG_PREFIX} Emitted entities extracted event for calendar event ${eventId}`);
+    });
+
+    return {
+      eventId,
+      summary,
       entitiesCount: extractionResult.entities.length,
       cost: extractionResult.cost,
       model: extractionResult.model,

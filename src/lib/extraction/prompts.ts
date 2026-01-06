@@ -1,11 +1,11 @@
 /**
  * Entity Extraction Prompts
  *
- * Prompts for Mistral to extract structured entities from emails.
+ * Prompts for Mistral to extract structured entities from emails and calendar events.
  * Uses JSON output format for reliable parsing.
  */
 
-import type { Email } from '../google/types';
+import type { Email, CalendarEvent } from '../google/types';
 import type { ExtractionConfig } from './types';
 
 /**
@@ -166,4 +166,107 @@ ${emailSummaries}
 }
 
 Respond with JSON only.`;
+}
+
+/**
+ * Build extraction prompt for calendar events
+ */
+export function buildCalendarExtractionPrompt(
+  event: CalendarEvent,
+  config: ExtractionConfig
+): string {
+  const sources: string[] = [];
+
+  sources.push(`**Summary:** ${event.summary}`);
+
+  if (event.description) {
+    sources.push(`**Description:**\n${event.description}`);
+  }
+
+  if (event.location) {
+    sources.push(`**Location:** ${event.location}`);
+  }
+
+  sources.push(`**Start:** ${event.start.dateTime}`);
+  sources.push(`**End:** ${event.end.dateTime}`);
+
+  if (event.attendees && event.attendees.length > 0) {
+    sources.push(
+      `**Attendees:** ${event.attendees.map((a) => `${a.displayName} (${a.email})`).join(', ')}`
+    );
+  }
+
+  if (event.organizer) {
+    sources.push(`**Organizer:** ${event.organizer.displayName} (${event.organizer.email})`);
+  }
+
+  return `Extract structured entities from this calendar event.
+
+${sources.join('\n')}
+
+**Entity Types to Extract:**
+1. **person** - People's names (from attendees, organizer, and description)
+2. **company** - Organizations and companies mentioned
+3. **project** - Project names and references
+4. **date** - Important dates and deadlines mentioned in description
+5. **topic** - Subject areas and themes (meeting topics, discussion areas)
+6. **location** - Geographic locations (cities, countries, addresses, meeting rooms)
+7. **action_item** - Tasks, todos, and action items mentioned in description
+
+**Instructions:**
+- Extract all entities with confidence scores (0.0 to 1.0)
+- Normalize names (e.g., "Bob" might be "Robert")
+- Include source (metadata, description)
+- Link email addresses to person entities when possible
+- Minimum confidence threshold: ${config.minConfidence}
+- For dates, include the actual date value if parseable
+- For action_item: extract assignee, deadline, and priority if mentioned
+- The event itself is NOT spam, so always set isSpam: false
+
+**Response Format (JSON only):**
+{
+  "spam": {
+    "isSpam": false,
+    "spamScore": 0,
+    "spamReason": "Calendar event"
+  },
+  "entities": [
+    {
+      "type": "person",
+      "value": "John Doe",
+      "normalized": "john_doe",
+      "confidence": 0.95,
+      "source": "metadata",
+      "context": "Attendee: John Doe <john@example.com>"
+    },
+    {
+      "type": "location",
+      "value": "Conference Room A",
+      "normalized": "conference_room_a",
+      "confidence": 0.9,
+      "source": "metadata",
+      "context": "Location: Conference Room A"
+    },
+    {
+      "type": "topic",
+      "value": "Q1 Planning",
+      "normalized": "q1_planning",
+      "confidence": 0.9,
+      "source": "metadata",
+      "context": "Summary: Q1 Planning Meeting"
+    },
+    {
+      "type": "action_item",
+      "value": "Prepare budget forecast",
+      "normalized": "prepare_budget_forecast",
+      "confidence": 0.85,
+      "source": "description",
+      "context": "Please prepare budget forecast before the meeting",
+      "assignee": "team",
+      "priority": "medium"
+    }
+  ]
+}
+
+Respond with JSON only. No additional text or explanation.`;
 }

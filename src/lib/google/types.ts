@@ -161,3 +161,46 @@ export interface DriveChange {
   fileId: string;
   changeId?: string;
 }
+
+/**
+ * Google Calendar API Type Definitions
+ */
+
+export interface CalendarAttendee {
+  email: string;
+  displayName: string;
+  responseStatus?: 'accepted' | 'declined' | 'tentative' | 'needsAction';
+  organizer?: boolean;
+  self?: boolean;
+}
+
+export interface CalendarOrganizer {
+  email: string;
+  displayName: string;
+  self?: boolean;
+}
+
+export interface CalendarEvent {
+  id: string;
+  summary: string;
+  description?: string;
+  location?: string;
+  start: {
+    dateTime: string;
+    timeZone?: string;
+  };
+  end: {
+    dateTime: string;
+    timeZone?: string;
+  };
+  attendees: CalendarAttendee[];
+  organizer?: CalendarOrganizer;
+  recurringEventId?: string;
+  status?: 'confirmed' | 'tentative' | 'cancelled';
+  htmlLink?: string;
+}
+
+export interface CalendarEventBatch {
+  events: CalendarEvent[];
+  nextPageToken?: string;
+}

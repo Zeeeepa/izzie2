@@ -55,6 +55,18 @@ export interface ExtractionResult {
 }
 
 /**
+ * Result of entity extraction from a calendar event
+ */
+export interface CalendarExtractionResult {
+  eventId: string;
+  entities: Entity[];
+  spam: SpamClassification; // Always false for calendar events
+  extractedAt: Date;
+  cost: number; // API cost for tracking
+  model: string; // Model used
+}
+
+/**
  * Entity frequency map across multiple emails
  * Key format: "type:normalized" (e.g., "person:john_doe")
  */

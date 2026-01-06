@@ -7,17 +7,18 @@
 
 import { getAIClient } from '@/lib/ai/client';
 import { MODELS } from '@/lib/ai/models';
-import type { Email } from '../google/types';
+import type { Email, CalendarEvent } from '../google/types';
 import type {
   Entity,
   ExtractionResult,
+  CalendarExtractionResult,
   ExtractionConfig,
   EntityFrequency,
   EntityCoOccurrence,
   ExtractionStats,
 } from './types';
 import { DEFAULT_EXTRACTION_CONFIG } from './types';
-import { buildExtractionPrompt } from './prompts';
+import { buildExtractionPrompt, buildCalendarExtractionPrompt } from './prompts';
 
 const LOG_PREFIX = '[Extraction]';
 
@@ -85,6 +86,109 @@ export class EntityExtractor {
         model: MODELS.CLASSIFIER,
       };
     }
+  }
+
+  /**
+   * Extract entities from a single calendar event
+   */
+  async extractFromCalendarEvent(event: CalendarEvent): Promise<CalendarExtractionResult> {
+    const prompt = buildCalendarExtractionPrompt(event, this.config);
+
+    try {
+      // Use Mistral Small (cheap tier) for extraction
+      const response = await this.client.chat(
+        [
+          {
+            role: 'system',
+            content:
+              'You are an expert entity extraction system. Extract structured information from calendar events and respond with valid JSON only.',
+          },
+          { role: 'user', content: prompt },
+        ],
+        {
+          model: MODELS.CLASSIFIER, // Mistral Small
+          maxTokens: 1000,
+          temperature: 0.1, // Low temperature for consistent extraction
+          logCost: false, // Avoid cluttering logs
+        }
+      );
+
+      // Parse JSON response
+      const parsed = this.parseExtractionResponse(response.content);
+
+      // Filter entities by confidence threshold
+      const filteredEntities = parsed.entities.filter(
+        (entity) => entity.confidence >= this.config.minConfidence
+      );
+
+      return {
+        eventId: event.id,
+        entities: filteredEntities,
+        spam: { isSpam: false, spamScore: 0 }, // Calendar events are never spam
+        extractedAt: new Date(),
+        cost: response.usage.cost,
+        model: response.model,
+      };
+    } catch (error) {
+      console.error(`${LOG_PREFIX} Failed to extract from calendar event ${event.id}:`, error);
+      // Return empty result on error
+      return {
+        eventId: event.id,
+        entities: [],
+        spam: { isSpam: false, spamScore: 0 },
+        extractedAt: new Date(),
+        cost: 0,
+        model: MODELS.CLASSIFIER,
+      };
+    }
+  }
+
+  /**
+   * Batch extraction for calendar events with progress tracking
+   */
+  async extractBatchCalendar(events: CalendarEvent[]): Promise<CalendarExtractionResult[]> {
+    const startTime = Date.now();
+    const results: CalendarExtractionResult[] = [];
+    let totalCost = 0;
+    let successCount = 0;
+    let failureCount = 0;
+    let totalEntities = 0;
+
+    console.log(`${LOG_PREFIX} Processing ${events.length} calendar events...`);
+
+    for (const event of events) {
+      try {
+        const result = await this.extractFromCalendarEvent(event);
+        results.push(result);
+        totalCost += result.cost;
+        totalEntities += result.entities.length;
+
+        if (result.entities.length > 0) {
+          successCount++;
+        } else {
+          failureCount++;
+        }
+
+        // Log progress every 10 events
+        if (results.length % 10 === 0) {
+          console.log(
+            `${LOG_PREFIX} Progress: ${results.length}/${events.length} (${successCount} successful)`
+          );
+        }
+      } catch (error) {
+        console.error(`${LOG_PREFIX} Failed to extract from ${event.id}:`, error);
+        failureCount++;
+      }
+    }
+
+    const processingTimeMs = Date.now() - startTime;
+
+    console.log(`${LOG_PREFIX} Completed ${results.length}/${events.length} extractions`);
+    console.log(`${LOG_PREFIX} Total entities: ${totalEntities}`);
+    console.log(`${LOG_PREFIX} Total cost: $${totalCost.toFixed(6)}`);
+    console.log(`${LOG_PREFIX} Processing time: ${(processingTimeMs / 1000).toFixed(2)}s`);
+
+    return results;
   }
 
   /**
