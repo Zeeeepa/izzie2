@@ -32,6 +32,8 @@ const TYPE_COLORS: Record<string, { bg: string; text: string; border: string }> 
   topic: { bg: '#f3e8ff', text: '#6b21a8', border: '#a855f7' },
   location: { bg: '#fce7f3', text: '#9f1239', border: '#ec4899' },
   date: { bg: '#f1f5f9', text: '#334155', border: '#64748b' },
+  url: { bg: '#ecfdf5', text: '#065f46', border: '#10b981' },
+  time: { bg: '#fef2f2', text: '#7f1d1d', border: '#f87171' },
 };
 
 const PRIORITY_COLORS: Record<string, string> = {

@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     // Parse request body
     const body = await request.json().catch(() => ({}));
     const {
-      folder = 'all',
+      folder = 'sent', // Default to SENT emails (user's own communications)
       maxResults = 100,
       since,
       userEmail,

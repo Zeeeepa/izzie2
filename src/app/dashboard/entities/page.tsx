@@ -43,7 +43,22 @@ const ENTITY_TYPES = [
   { value: 'topic', label: 'Topics' },
   { value: 'location', label: 'Locations' },
   { value: 'date', label: 'Dates' },
+  { value: 'url', label: 'URLs' },
+  { value: 'time', label: 'Times' },
 ];
+
+// Color scheme matching EntityCard
+const TYPE_COLORS: Record<string, { bg: string; text: string; border: string }> = {
+  person: { bg: '#eff6ff', text: '#1e40af', border: '#3b82f6' },
+  company: { bg: '#f0fdf4', text: '#15803d', border: '#22c55e' },
+  project: { bg: '#fef3c7', text: '#92400e', border: '#fbbf24' },
+  action_item: { bg: '#fee2e2', text: '#991b1b', border: '#ef4444' },
+  topic: { bg: '#f3e8ff', text: '#6b21a8', border: '#a855f7' },
+  location: { bg: '#fce7f3', text: '#9f1239', border: '#ec4899' },
+  date: { bg: '#f1f5f9', text: '#334155', border: '#64748b' },
+  url: { bg: '#ecfdf5', text: '#065f46', border: '#10b981' },
+  time: { bg: '#fef2f2', text: '#7f1d1d', border: '#f87171' },
+};
 
 export default function EntitiesPage() {
   const router = useRouter();
@@ -55,6 +70,15 @@ export default function EntitiesPage() {
   const [selectedType, setSelectedType] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
+
+  // Read URL parameters on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const typeParam = params.get('type');
+    if (typeParam) {
+      setSelectedType(typeParam);
+    }
+  }, []);
 
   // Check authentication first
   useEffect(() => {
@@ -102,6 +126,22 @@ export default function EntitiesPage() {
       fetchEntities(selectedType);
     }
   }, [selectedType, authChecking, session]);
+
+  // Handle type filter click
+  const handleTypeClick = (type: string) => {
+    // Toggle off if clicking the same type
+    const newType = selectedType === type ? '' : type;
+    setSelectedType(newType);
+
+    // Update URL
+    const url = new URL(window.location.href);
+    if (newType) {
+      url.searchParams.set('type', newType);
+    } else {
+      url.searchParams.delete('type');
+    }
+    window.history.pushState({}, '', url.toString());
+  };
 
   // Filter entities by search query
   const filteredEntities = entities.filter((entity) => {
@@ -190,7 +230,7 @@ export default function EntitiesPage() {
 
       {/* Main Content */}
       <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '2rem' }}>
-        {/* Stats Summary */}
+        {/* Stats Summary - Clickable Cards */}
         {!isLoading && Object.keys(stats).length > 0 && (
           <div
             style={{
@@ -200,38 +240,80 @@ export default function EntitiesPage() {
               marginBottom: '2rem',
             }}
           >
-            {Object.entries(stats).map(([type, count]) => (
-              <div
-                key={type}
-                style={{
-                  backgroundColor: '#fff',
-                  border: '1px solid #e5e7eb',
-                  borderRadius: '8px',
-                  padding: '1rem',
-                  textAlign: 'center',
-                }}
-              >
-                <div
+            {Object.entries(stats).map(([type, count]) => {
+              const colors = TYPE_COLORS[type] || {
+                bg: '#f3f4f6',
+                text: '#374151',
+                border: '#9ca3af',
+              };
+              const isActive = selectedType === type;
+
+              return (
+                <button
+                  key={type}
+                  onClick={() => handleTypeClick(type)}
                   style={{
-                    fontSize: '2rem',
-                    fontWeight: '700',
-                    color: '#111',
+                    backgroundColor: isActive ? colors.bg : '#fff',
+                    border: `2px solid ${isActive ? colors.border : '#e5e7eb'}`,
+                    borderRadius: '8px',
+                    padding: '1rem',
+                    textAlign: 'center',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                    outline: 'none',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isActive) {
+                      e.currentTarget.style.backgroundColor = colors.bg;
+                      e.currentTarget.style.borderColor = colors.border;
+                      e.currentTarget.style.transform = 'translateY(-2px)';
+                      e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isActive) {
+                      e.currentTarget.style.backgroundColor = '#fff';
+                      e.currentTarget.style.borderColor = '#e5e7eb';
+                      e.currentTarget.style.transform = 'translateY(0)';
+                      e.currentTarget.style.boxShadow = 'none';
+                    }
                   }}
                 >
-                  {count}
-                </div>
-                <div
-                  style={{
-                    fontSize: '0.875rem',
-                    color: '#6b7280',
-                    textTransform: 'capitalize',
-                    marginTop: '0.25rem',
-                  }}
-                >
-                  {type.replace('_', ' ')}
-                </div>
-              </div>
-            ))}
+                  <div
+                    style={{
+                      fontSize: '2rem',
+                      fontWeight: '700',
+                      color: isActive ? colors.text : '#111',
+                    }}
+                  >
+                    {count}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: '0.875rem',
+                      color: isActive ? colors.text : '#6b7280',
+                      textTransform: 'capitalize',
+                      marginTop: '0.25rem',
+                      fontWeight: isActive ? '600' : '400',
+                    }}
+                  >
+                    {type.replace('_', ' ')}
+                  </div>
+                  {isActive && (
+                    <div
+                      style={{
+                        fontSize: '0.75rem',
+                        color: colors.text,
+                        marginTop: '0.5rem',
+                        fontWeight: '500',
+                      }}
+                    >
+                      ✓ Active
+                    </div>
+                  )}
+                </button>
+              );
+            })}
           </div>
         )}
 

@@ -21,12 +21,14 @@ export async function POST(request: Request) {
       userId = 'bob@matsuoka.com',
       daysSince = 30,
       excludePromotions = true,
+      folder = 'sent', // Default to SENT emails (user's own communications)
     } = body;
 
     console.log('[Batch Extract] Starting batch extraction...', {
       maxEmails,
       userId,
       daysSince,
+      folder,
     });
 
     // 0. Look up user ID from email
@@ -54,10 +56,10 @@ export async function POST(request: Request) {
 
     console.log('[Batch Extract] Fetching emails from Gmail...');
 
-    // 2. Fetch recent emails
+    // 2. Fetch recent emails (default to SENT for high-signal user context)
     const sinceDate = new Date(Date.now() - daysSince * 24 * 60 * 60 * 1000);
     const emailBatch = await gmailService.fetchEmails({
-      folder: 'all',
+      folder: folder as 'inbox' | 'sent' | 'all',
       maxResults: maxEmails,
       since: sinceDate,
       excludePromotions,
