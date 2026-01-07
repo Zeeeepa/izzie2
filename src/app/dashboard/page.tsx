@@ -5,13 +5,50 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 
 type DateRange = '7d' | '30d' | '90d' | 'all';
 
+type ExtractionStatus = 'idle' | 'running' | 'paused' | 'completed' | 'error';
+type ExtractionSource = 'email' | 'calendar' | 'drive';
+
+interface SourceProgress {
+  id: string;
+  source: ExtractionSource;
+  status: ExtractionStatus;
+  totalItems: number;
+  processedItems: number;
+  failedItems: number;
+  entitiesExtracted: number;
+  progressPercentage: number;
+  oldestDateExtracted?: string;
+  newestDateExtracted?: string;
+  lastRunAt?: string;
+  totalCost?: number; // Cost in cents
+}
+
+const SOURCE_LABELS: Record<ExtractionSource, string> = {
+  email: 'Email',
+  calendar: 'Calendar',
+  drive: 'Google Drive',
+};
+
+const SOURCE_ICONS: Record<ExtractionSource, string> = {
+  email: '📧',
+  calendar: '📅',
+  drive: '📁',
+};
+
+const STATUS_COLORS: Record<ExtractionStatus, { bg: string; text: string; border: string }> = {
+  idle: { bg: '#f3f4f6', text: '#6b7280', border: '#e5e7eb' },
+  running: { bg: '#dbeafe', text: '#1e40af', border: '#93c5fd' },
+  paused: { bg: '#fef3c7', text: '#92400e', border: '#fcd34d' },
+  completed: { bg: '#d1fae5', text: '#065f46', border: '#6ee7b7' },
+  error: { bg: '#fee2e2', text: '#991b1b', border: '#fca5a5' },
+};
+
 export default function DashboardPage() {
-  const [syncing, setSyncing] = useState(false);
   const [status, setStatus] = useState('');
   const [sources, setSources] = useState({
     email: true,
@@ -19,6 +56,8 @@ export default function DashboardPage() {
     drive: false,
   });
   const [dateRange, setDateRange] = useState<DateRange>('30d');
+  const [progress, setProgress] = useState<SourceProgress[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const toggleSource = (source: 'email' | 'calendar' | 'drive') => {
     setSources((prev) => ({ ...prev, [source]: !prev[source] }));
@@ -37,90 +76,122 @@ export default function DashboardPage() {
     }
   };
 
-  const handleSync = async () => {
-    setSyncing(true);
-    setStatus('');
+  // Fetch extraction status
+  const fetchStatus = async () => {
+    try {
+      const res = await fetch('/api/extraction/status');
+      const data = await res.json();
+      if (data.success && data.progress) {
+        setProgress(data.progress);
+      }
+    } catch (error) {
+      console.error('Failed to fetch status:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    const results: string[] = [];
-    const errors: string[] = [];
+  // Poll for status updates
+  useEffect(() => {
+    // Initial fetch
+    fetchStatus();
+
+    // Poll every 2 seconds if any source is running
+    const interval = setInterval(() => {
+      if (progress.some((p) => p.status === 'running')) {
+        fetchStatus();
+      }
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [progress]);
+
+  // Get progress for a specific source
+  const getSourceProgress = (source: ExtractionSource): SourceProgress | undefined => {
+    return progress.find((p) => p.source === source);
+  };
+
+  // Check if any source is running
+  const isAnySourceRunning = progress.some((p) => p.status === 'running');
+
+  // Start extraction
+  const handleStart = async () => {
+    setStatus('');
+    try {
+      const selectedSources = Object.entries(sources)
+        .filter(([_, enabled]) => enabled)
+        .map(([source]) => source);
+
+      if (selectedSources.length === 0) {
+        setStatus('Please select at least one source');
+        return;
+      }
+
+      const days = dateRangeToDays(dateRange);
+      const res = await fetch('/api/extraction/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sources: selectedSources,
+          days,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        setStatus('Extraction started');
+        fetchStatus();
+      } else {
+        setStatus(`Error: ${data.error}`);
+      }
+    } catch (error) {
+      setStatus('Failed to start extraction');
+      console.error('Start error:', error);
+    }
+  };
+
+  // Pause extraction
+  const handlePause = async () => {
+    try {
+      const res = await fetch('/api/extraction/pause', {
+        method: 'POST',
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        setStatus('Extraction paused');
+        fetchStatus();
+      } else {
+        setStatus(`Error: ${data.error}`);
+      }
+    } catch (error) {
+      setStatus('Failed to pause extraction');
+      console.error('Pause error:', error);
+    }
+  };
+
+  // Reset extraction
+  const handleReset = async () => {
+    if (!confirm('Are you sure you want to reset all extraction progress?')) {
+      return;
+    }
 
     try {
-      // Sync Email
-      if (sources.email) {
-        try {
-          const days = dateRangeToDays(dateRange);
-          const res = await fetch('/api/gmail/sync-user', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              maxResults: 100,
-              folder: 'sent',
-              ...(days && { days })
-            }),
-          });
-          const data = await res.json();
-          if (data.error) {
-            errors.push(`Email: ${data.error}`);
-          } else {
-            results.push('Email sync started');
-          }
-        } catch (e) {
-          errors.push('Email sync failed');
-        }
-      }
+      const res = await fetch('/api/extraction/reset', {
+        method: 'POST',
+      });
 
-      // Sync Calendar (placeholder - add when endpoint exists)
-      if (sources.calendar) {
-        try {
-          const days = dateRangeToDays(dateRange);
-          const res = await fetch('/api/calendar/sync', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ...(days && { days }) }),
-          });
-          const data = await res.json();
-          if (data.error) {
-            errors.push(`Calendar: ${data.error}`);
-          } else {
-            results.push('Calendar sync started');
-          }
-        } catch (e) {
-          errors.push('Calendar sync failed');
-        }
-      }
-
-      // Sync Drive (placeholder - add when endpoint exists)
-      if (sources.drive) {
-        try {
-          const days = dateRangeToDays(dateRange);
-          const res = await fetch('/api/drive/sync', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ...(days && { days }) }),
-          });
-          const data = await res.json();
-          if (data.error) {
-            errors.push(`Drive: ${data.error}`);
-          } else {
-            results.push('Drive sync started');
-          }
-        } catch (e) {
-          errors.push('Drive sync failed');
-        }
-      }
-
-      // Set combined status
-      if (errors.length > 0) {
-        setStatus(`Errors: ${errors.join(', ')}`);
-      } else if (results.length > 0) {
-        setStatus(`${results.join(', ')} successfully!`);
+      const data = await res.json();
+      if (data.success) {
+        setStatus('Extraction reset');
+        fetchStatus();
       } else {
-        setStatus('Please select at least one source to sync');
+        setStatus(`Error: ${data.error}`);
       }
-    } catch (e) {
-      setStatus('Failed to start sync');
+    } catch (error) {
+      setStatus('Failed to reset extraction');
+      console.error('Reset error:', error);
     }
-    setSyncing(false);
   };
 
   return (
@@ -277,7 +348,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Data Sync Section */}
+      {/* Data Extraction Section */}
       <div
         style={{
           backgroundColor: '#fff',
@@ -296,11 +367,120 @@ export default function DashboardPage() {
               marginBottom: '0.25rem',
             }}
           >
-            Data Sync
+            Data Extraction
           </h3>
           <p style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '1.5rem' }}>
-            Sync your data sources to extract entities
+            Extract entities from your data sources
           </p>
+
+          {/* Progress Bars */}
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
+              Loading status...
+            </div>
+          ) : (
+            <div style={{ marginBottom: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {(['email', 'calendar', 'drive'] as const).map((source) => {
+                const sourceProgress = getSourceProgress(source);
+                const percentage = sourceProgress?.progressPercentage || 0;
+                const statusInfo = sourceProgress
+                  ? STATUS_COLORS[sourceProgress.status]
+                  : STATUS_COLORS.idle;
+
+                return (
+                  <div
+                    key={source}
+                    style={{
+                      border: '1px solid #e5e7eb',
+                      borderRadius: '8px',
+                      padding: '1rem',
+                    }}
+                  >
+                    {/* Header with icon, name, and status badge */}
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        marginBottom: '0.75rem',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span style={{ fontSize: '1.25rem' }}>{SOURCE_ICONS[source]}</span>
+                        <span style={{ fontSize: '0.875rem', fontWeight: '600', color: '#111' }}>
+                          {SOURCE_LABELS[source]}
+                        </span>
+                      </div>
+                      <span
+                        style={{
+                          fontSize: '0.75rem',
+                          fontWeight: '600',
+                          padding: '0.25rem 0.75rem',
+                          borderRadius: '9999px',
+                          backgroundColor: statusInfo.bg,
+                          color: statusInfo.text,
+                          border: `1px solid ${statusInfo.border}`,
+                          textTransform: 'capitalize',
+                        }}
+                      >
+                        {sourceProgress?.status || 'idle'}
+                      </span>
+                    </div>
+
+                    {/* Progress bar */}
+                    <div
+                      style={{
+                        backgroundColor: '#e5e7eb',
+                        borderRadius: '4px',
+                        height: '8px',
+                        marginBottom: '0.5rem',
+                        overflow: 'hidden',
+                      }}
+                    >
+                      <div
+                        style={{
+                          backgroundColor: '#6366f1',
+                          width: `${percentage}%`,
+                          height: '100%',
+                          borderRadius: '4px',
+                          transition: 'width 0.3s ease-in-out',
+                        }}
+                      />
+                    </div>
+
+                    {/* Stats */}
+                    <div
+                      style={{
+                        display: 'flex',
+                        gap: '1rem',
+                        fontSize: '0.75rem',
+                        color: '#6b7280',
+                      }}
+                    >
+                      <span>
+                        Progress: {percentage}%
+                      </span>
+                      {sourceProgress && (
+                        <>
+                          <span>
+                            Items: {sourceProgress.processedItems}/{sourceProgress.totalItems}
+                          </span>
+                          <span>
+                            Entities: {sourceProgress.entitiesExtracted}
+                          </span>
+                          {sourceProgress.failedItems > 0 && (
+                            <span style={{ color: '#dc2626' }}>
+                              Failed: {sourceProgress.failedItems}
+                            </span>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           {/* Source Selection */}
           <div style={{ marginBottom: '1.5rem' }}>
@@ -320,6 +500,7 @@ export default function DashboardPage() {
                 <button
                   key={source}
                   onClick={() => toggleSource(source)}
+                  disabled={isAnySourceRunning}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -331,7 +512,8 @@ export default function DashboardPage() {
                     color: sources[source] ? '#4f46e5' : '#6b7280',
                     fontSize: '0.875rem',
                     fontWeight: '600',
-                    cursor: 'pointer',
+                    cursor: isAnySourceRunning ? 'not-allowed' : 'pointer',
+                    opacity: isAnySourceRunning ? 0.5 : 1,
                     transition: 'all 0.2s',
                   }}
                 >
@@ -367,6 +549,7 @@ export default function DashboardPage() {
                 <button
                   key={value}
                   onClick={() => setDateRange(value)}
+                  disabled={isAnySourceRunning}
                   style={{
                     padding: '0.625rem 1rem',
                     borderRadius: '8px',
@@ -375,7 +558,8 @@ export default function DashboardPage() {
                     color: dateRange === value ? '#fff' : '#374151',
                     fontSize: '0.875rem',
                     fontWeight: '600',
-                    cursor: 'pointer',
+                    cursor: isAnySourceRunning ? 'not-allowed' : 'pointer',
+                    opacity: isAnySourceRunning ? 0.5 : 1,
                     transition: 'all 0.2s',
                   }}
                 >
@@ -385,49 +569,99 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Sync Button and Status */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          {/* Control Buttons */}
+          <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.75rem' }}>
+            {isAnySourceRunning ? (
+              <button
+                onClick={handlePause}
+                style={{
+                  flex: 1,
+                  backgroundColor: '#f59e0b',
+                  color: '#fff',
+                  padding: '0.875rem 1.5rem',
+                  borderRadius: '8px',
+                  border: 'none',
+                  fontSize: '0.875rem',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  transition: 'background-color 0.2s',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#d97706';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = '#f59e0b';
+                }}
+              >
+                Pause
+              </button>
+            ) : (
+              <button
+                onClick={handleStart}
+                style={{
+                  flex: 1,
+                  backgroundColor: '#6366f1',
+                  color: '#fff',
+                  padding: '0.875rem 1.5rem',
+                  borderRadius: '8px',
+                  border: 'none',
+                  fontSize: '0.875rem',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  transition: 'background-color 0.2s',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#4f46e5';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = '#6366f1';
+                }}
+              >
+                {progress.some((p) => p.status === 'paused') ? 'Resume' : 'Start Extraction'}
+              </button>
+            )}
             <button
-              onClick={handleSync}
-              disabled={syncing}
+              onClick={handleReset}
+              disabled={isAnySourceRunning}
               style={{
-                backgroundColor: syncing ? '#9ca3af' : '#6366f1',
+                backgroundColor: isAnySourceRunning ? '#d1d5db' : '#ef4444',
                 color: '#fff',
                 padding: '0.875rem 1.5rem',
                 borderRadius: '8px',
                 border: 'none',
                 fontSize: '0.875rem',
                 fontWeight: '600',
-                cursor: syncing ? 'not-allowed' : 'pointer',
+                cursor: isAnySourceRunning ? 'not-allowed' : 'pointer',
                 transition: 'background-color 0.2s',
-                width: '100%',
               }}
               onMouseEnter={(e) => {
-                if (!syncing) {
-                  e.currentTarget.style.backgroundColor = '#4f46e5';
+                if (!isAnySourceRunning) {
+                  e.currentTarget.style.backgroundColor = '#dc2626';
                 }
               }}
               onMouseLeave={(e) => {
-                if (!syncing) {
-                  e.currentTarget.style.backgroundColor = '#6366f1';
+                if (!isAnySourceRunning) {
+                  e.currentTarget.style.backgroundColor = '#ef4444';
                 }
               }}
             >
-              {syncing ? 'Syncing...' : 'Start Sync'}
+              Reset
             </button>
-            {status && (
-              <p
-                style={{
-                  fontSize: '0.875rem',
-                  color: status.startsWith('Error') ? '#dc2626' : '#16a34a',
-                  fontWeight: '500',
-                  textAlign: 'center',
-                }}
-              >
-                {status}
-              </p>
-            )}
           </div>
+
+          {/* Status Message */}
+          {status && (
+            <p
+              style={{
+                fontSize: '0.875rem',
+                color: status.startsWith('Error') ? '#dc2626' : '#16a34a',
+                fontWeight: '500',
+                textAlign: 'center',
+              }}
+            >
+              {status}
+            </p>
+          )}
         </div>
       </div>
 

@@ -486,6 +486,60 @@ export const proxyRollbacks = pgTable(
 );
 
 /**
+ * Extraction Progress Tracking (POC-5)
+ * Tracks data extraction progress for emails, calendar, and drive
+ */
+export const extractionProgress = pgTable(
+  'extraction_progress',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    userId: text('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull(),
+    source: text('source').notNull(), // 'email' | 'calendar' | 'drive'
+    status: text('status').notNull().default('idle'), // 'idle' | 'running' | 'paused' | 'completed' | 'error'
+
+    // Watermarks - track extraction boundaries
+    oldestDateExtracted: timestamp('oldest_date_extracted'),
+    newestDateExtracted: timestamp('newest_date_extracted'),
+
+    // Progress counters
+    totalItems: integer('total_items').default(0),
+    processedItems: integer('processed_items').default(0),
+    failedItems: integer('failed_items').default(0),
+
+    // Chunk configuration
+    chunkSizeDays: integer('chunk_size_days').default(7),
+    currentChunkStart: timestamp('current_chunk_start'),
+    currentChunkEnd: timestamp('current_chunk_end'),
+
+    // Stats
+    entitiesExtracted: integer('entities_extracted').default(0),
+    totalCost: integer('total_cost').default(0), // Cost in cents
+
+    // Timestamps
+    lastRunAt: timestamp('last_run_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    userIdIdx: index('extraction_progress_user_id_idx').on(table.userId),
+    sourceIdx: index('extraction_progress_source_idx').on(table.source),
+    statusIdx: index('extraction_progress_status_idx').on(table.status),
+    userSourceUnique: index('extraction_progress_user_source_unique').on(
+      table.userId,
+      table.source
+    ),
+  })
+);
+
+/**
+ * Type exports for extraction progress
+ */
+export type ExtractionProgress = typeof extractionProgress.$inferSelect;
+export type NewExtractionProgress = typeof extractionProgress.$inferInsert;
+
+/**
  * Type exports for proxy authorization
  */
 export type ProxyAuthorization = typeof proxyAuthorizations.$inferSelect;

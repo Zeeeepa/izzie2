@@ -11,6 +11,14 @@ import { OAuth2Client } from 'google-auth-library';
 import type { SyncStatus } from '@/lib/google/types';
 import { inngest } from '@/lib/events';
 import type { EmailContentExtractedPayload } from '@/lib/events/types';
+import {
+  getOrCreateProgress,
+  updateProgress,
+  startExtraction,
+  completeExtraction,
+  updateCounters,
+  markExtractionError,
+} from '@/lib/extraction/progress';
 
 // In-memory sync status
 let syncStatus: SyncStatus & { eventsSent?: number } = {
@@ -203,11 +211,34 @@ async function startUserSync(
 
     console.log('[Gmail Sync User] Fetching with query:', query);
 
+    // Calculate date range for progress tracking
+    const endDate = new Date();
+    const startDate = sinceDate || new Date(endDate.getTime() - 30 * 24 * 60 * 60 * 1000); // Default 30 days
+
+    // Initialize progress tracking
+    await getOrCreateProgress(userId, 'email');
+    await startExtraction(userId, 'email', startDate, endDate);
+
+    console.log('[Gmail Sync User] Progress tracking started:', {
+      userId,
+      source: 'email',
+      dateRange: { start: startDate, end: endDate },
+    });
+
     // Fetch emails with pagination
     let pageToken: string | undefined;
     let totalProcessed = 0;
+    let entitiesCount = 0;
 
     do {
+      // Check for pause requests before each batch
+      const currentProgress = await getOrCreateProgress(userId, 'email');
+      if (currentProgress.status === 'paused') {
+        console.log('[Gmail Sync User] Sync paused by user');
+        syncStatus.isRunning = false;
+        return;
+      }
+
       const response = await gmail.users.messages.list({
         userId: 'me',
         maxResults: Math.min(maxResults - totalProcessed, 100),
@@ -277,8 +308,17 @@ async function startUserSync(
           });
 
           totalProcessed++;
+          entitiesCount++; // Increment for each email sent for extraction
           syncStatus.emailsProcessed = totalProcessed;
           syncStatus.eventsSent = (syncStatus.eventsSent || 0) + 1;
+
+          // Update progress after each email (or batch of 10 for efficiency)
+          if (totalProcessed % 10 === 0 || totalProcessed === maxResults) {
+            await updateCounters(userId, 'email', {
+              processedItems: totalProcessed,
+              entitiesExtracted: entitiesCount,
+            });
+          }
 
           console.log(`[Gmail Sync User] Processed ${totalProcessed}/${maxResults}: ${subject}`);
 
@@ -286,6 +326,12 @@ async function startUserSync(
           await new Promise((resolve) => setTimeout(resolve, 100));
         } catch (error) {
           console.error(`[Gmail Sync User] Error processing message ${message.id}:`, error);
+
+          // Update failed items counter
+          await updateCounters(userId, 'email', {
+            failedItems: currentProgress.failedItems + 1,
+          });
+
           // Continue with other emails
         }
 
@@ -303,13 +349,37 @@ async function startUserSync(
       }
     } while (pageToken);
 
+    // Mark extraction as completed
+    await completeExtraction(userId, 'email', {
+      oldestDate: startDate,
+      newestDate: endDate,
+    });
+
+    // Final counter update
+    await updateCounters(userId, 'email', {
+      totalItems: totalProcessed,
+      processedItems: totalProcessed,
+      entitiesExtracted: entitiesCount,
+    });
+
     syncStatus.isRunning = false;
     syncStatus.lastSync = new Date();
+
     console.log(
       `[Gmail Sync User] Completed. Processed ${totalProcessed} emails, sent ${syncStatus.eventsSent} events for extraction`
     );
+    console.log('[Gmail Sync User] Progress tracking completed:', {
+      userId,
+      source: 'email',
+      totalItems: totalProcessed,
+      entitiesExtracted: entitiesCount,
+    });
   } catch (error) {
     console.error('[Gmail Sync User] Sync failed:', error);
+
+    // Mark extraction as error
+    await markExtractionError(userId, 'email');
+
     syncStatus.isRunning = false;
     syncStatus.error = error instanceof Error ? error.message : 'Unknown error';
     throw error;
