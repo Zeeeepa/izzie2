@@ -13,9 +13,9 @@ import {
   resetProgress,
   type ExtractionSource,
 } from '@/lib/extraction/progress';
-import { db } from '@/lib/db';
-import { entities } from '@/lib/db/schema';
-import { and, eq } from 'drizzle-orm';
+import { dbClient } from '@/lib/db';
+import { memoryEntries } from '@/lib/db/schema';
+import { and, eq, sql } from 'drizzle-orm';
 
 /**
  * POST /api/extraction/reset
@@ -56,12 +56,13 @@ export async function POST(request: NextRequest) {
       // Map source to entity source string
       const entitySource = `${source}_extraction`;
 
+      const db = await dbClient.getDb();
       const result = await db
-        .delete(entities)
+        .delete(memoryEntries)
         .where(
           and(
-            eq(entities.userId, session.user.id),
-            eq(entities.source, entitySource)
+            eq(memoryEntries.userId, session.user.id),
+            sql`${memoryEntries.metadata}->>'source' = ${entitySource}`
           )
         );
 
