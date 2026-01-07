@@ -442,8 +442,8 @@ export default function EntitiesPage() {
               gap: '1.5rem',
             }}
           >
-            {filteredEntities.map((entity) => (
-              <EntityCard key={entity.id} entity={entity} />
+            {filteredEntities.map((entity, index) => (
+              <EntityCard key={`${entity.id}-${entity.type}-${index}`} entity={entity} />
             ))}
           </div>
         )}

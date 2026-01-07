@@ -66,9 +66,24 @@ Classify if this email is spam/promotional/low-value based on:
 - For action_item: extract assignee, deadline, and priority if mentioned
 - Classify spam with score 0-1 (0=definitely not spam, 1=definitely spam)
 
-**CRITICAL**: DO NOT extract person entities from email body text.
-Person entities should ONLY come from email headers (To, CC, From fields).
-Continue extracting company, project, topic, action_item from body text.
+**CRITICAL PERSON vs COMPANY RULES:**
+1. DO NOT extract person entities from email body text - ONLY from To/CC/From headers
+2. Email addresses are NOT person names (e.g., "bob@example.com" is not a person entity)
+3. Company indicators - these are COMPANIES, not people:
+   - "Support from [X]" → X is a company
+   - "[X] Team" or "Team at [X]" → X is a company
+   - "[X] Notifications" or "[X] Support" → X is a company
+   - Known company names (Reddit, Apple, Google, Microsoft, Meta, etc.)
+   - From field with company domain (e.g., "notifications@company.com" → company is company)
+4. Only extract ACTUAL HUMAN NAMES as person entities
+5. When in doubt between person/company, choose company
+
+**Examples:**
+- "Support from Flume" → company: Flume
+- "Reddit Notifications" → company: Reddit
+- "Apple Support" → company: Apple
+- "john@company.com" → NO person entity (email is not a name)
+- "John Doe <john@company.com>" → person: John Doe
 
 **Response Format (JSON only):**
 {
