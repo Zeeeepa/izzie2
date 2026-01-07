@@ -15,7 +15,7 @@ const PROTECTED_ROUTES = ['/dashboard', '/calendar', '/profile', '/admin'];
 /**
  * Public routes that should not be protected
  */
-const PUBLIC_ROUTES = ['/', '/api/auth', '/sign-in', '/sign-up'];
+const PUBLIC_ROUTES = ['/', '/api/auth', '/sign-in', '/sign-up', '/login'];
 
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
@@ -42,20 +42,20 @@ export async function middleware(request: NextRequest) {
     });
 
     if (!session) {
-      // Not authenticated - redirect to sign-in
-      const signInUrl = new URL('/api/auth/sign-in/google', request.url);
-      signInUrl.searchParams.set('callbackURL', pathname);
-      return NextResponse.redirect(signInUrl);
+      // Not authenticated - redirect to login page
+      const loginUrl = new URL('/login', request.url);
+      loginUrl.searchParams.set('callbackURL', pathname);
+      return NextResponse.redirect(loginUrl);
     }
 
     // Authenticated - allow access
     return NextResponse.next();
   } catch (error) {
     console.error('Auth middleware error:', error);
-    // On error, redirect to sign-in
-    const signInUrl = new URL('/api/auth/sign-in/google', request.url);
-    signInUrl.searchParams.set('callbackURL', pathname);
-    return NextResponse.redirect(signInUrl);
+    // On error, redirect to login page
+    const loginUrl = new URL('/login', request.url);
+    loginUrl.searchParams.set('callbackURL', pathname);
+    return NextResponse.redirect(loginUrl);
   }
 }
 

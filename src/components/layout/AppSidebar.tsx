@@ -85,8 +85,8 @@ export function AppSidebar({ user }: AppSidebarProps) {
                   <span className="text-xl">🤖</span>
                 </div>
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold">Izzie</span>
-                  <span className="truncate text-xs">AI Assistant</span>
+                  <span className="truncate font-semibold tracking-tight">Izzie</span>
+                  <span className="truncate text-xs text-muted-foreground">AI Assistant</span>
                 </div>
               </Link>
             </SidebarMenuButton>
@@ -106,7 +106,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
                   <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton asChild isActive={active}>
                       <Link href={item.href}>
-                        <Icon />
+                        <Icon className="h-4 w-4 stroke-[1.5]" />
                         <span>{item.label}</span>
                       </Link>
                     </SidebarMenuButton>
@@ -128,19 +128,19 @@ export function AppSidebar({ user }: AppSidebarProps) {
                   className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
                 >
                   <Avatar className="h-8 w-8 rounded-lg">
-                    <AvatarFallback className="rounded-lg">
+                    <AvatarFallback className="rounded-lg text-xs font-medium">
                       {getUserInitials()}
                     </AvatarFallback>
                   </Avatar>
                   <div className="grid flex-1 text-left text-sm leading-tight">
-                    <span className="truncate font-semibold">
+                    <span className="truncate font-semibold tracking-tight">
                       {user?.name || 'User'}
                     </span>
                     <span className="truncate text-xs text-muted-foreground">
                       {user?.email || ''}
                     </span>
                   </div>
-                  <ChevronDown className="ml-auto size-4" />
+                  <ChevronDown className="ml-auto h-4 w-4 stroke-[1.5]" />
                 </SidebarMenuButton>
               </DropdownMenuTrigger>
               <DropdownMenuContent
@@ -151,8 +151,8 @@ export function AppSidebar({ user }: AppSidebarProps) {
               >
                 <DropdownMenuItem asChild>
                   <SignOutButton variant="ghost" className="w-full justify-start">
-                    <LogOut className="mr-2 h-4 w-4" />
-                    Sign Out
+                    <LogOut className="mr-2 h-4 w-4 stroke-[1.5]" />
+                    <span className="text-sm">Sign Out</span>
                   </SignOutButton>
                 </DropdownMenuItem>
               </DropdownMenuContent>
