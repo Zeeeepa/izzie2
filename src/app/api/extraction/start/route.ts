@@ -50,7 +50,8 @@ function calculateDateRange(range: DateRange): { start: Date; end: Date } {
 async function triggerSync(
   source: ExtractionSource,
   dateRange: { start: Date; end: Date },
-  userId: string
+  userId: string,
+  cookies: string | null
 ): Promise<void> {
   // Build sync URL based on source
   const syncUrls: Record<ExtractionSource, string> = {
@@ -85,11 +86,12 @@ async function triggerSync(
     throw new Error('Drive extraction not yet implemented');
   }
 
-  // Trigger sync endpoint
+  // Trigger sync endpoint with authentication cookies
   const response = await fetch(`${baseUrl}${url}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      'Cookie': cookies || '',
     },
     body: JSON.stringify(body),
   });
@@ -164,7 +166,9 @@ export async function POST(request: NextRequest) {
     );
 
     // Trigger actual sync (don't await - run in background)
-    triggerSync(source, dates, session.user.id).catch((error) => {
+    // Forward cookies for authentication
+    const cookies = request.headers.get('cookie');
+    triggerSync(source, dates, session.user.id, cookies).catch((error) => {
       console.error(`[Extraction Start] Failed to trigger ${source} sync:`, error);
     });
 
