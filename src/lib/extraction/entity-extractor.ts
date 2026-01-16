@@ -363,7 +363,7 @@ export class EntityExtractor {
 
       // Validate structure
       if (!parsed.entities || !Array.isArray(parsed.entities)) {
-        console.warn(`${LOG_PREFIX} Invalid response structure`);
+        console.warn(`${LOG_PREFIX} Invalid response structure - missing or invalid 'entities' array`);
         return {
           entities: [],
           spam: { isSpam: false, spamScore: 0 },
@@ -390,8 +390,14 @@ export class EntityExtractor {
 
       return { entities: validEntities, spam };
     } catch (error) {
-      console.error(`${LOG_PREFIX} Failed to parse JSON response:`, error);
-      console.error(`${LOG_PREFIX} Response content:`, content);
+      if (error instanceof SyntaxError) {
+        console.error(`${LOG_PREFIX} JSON parsing failed - malformed response from LLM`);
+        console.error(`${LOG_PREFIX} SyntaxError: ${error.message}`);
+        console.error(`${LOG_PREFIX} Response snippet: ${content.substring(0, 200)}...`);
+      } else {
+        console.error(`${LOG_PREFIX} Failed to parse JSON response:`, error);
+        console.error(`${LOG_PREFIX} Response content:`, content);
+      }
       return {
         entities: [],
         spam: { isSpam: false, spamScore: 0 },

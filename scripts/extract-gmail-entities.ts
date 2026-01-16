@@ -1,0 +1,550 @@
+#!/usr/bin/env ts-node
+/**
+ * Headless Gmail Entity Extraction Script
+ *
+ * Triggers entity extraction from Gmail without the dashboard UI.
+ *
+ * Usage:
+ *   npx tsx scripts/extract-gmail-entities.ts
+ *   npx tsx scripts/extract-gmail-entities.ts --user user@example.com
+ *   npx tsx scripts/extract-gmail-entities.ts --limit 50
+ *   npx tsx scripts/extract-gmail-entities.ts --user user@example.com --limit 20
+ *   npx tsx scripts/extract-gmail-entities.ts --skip-graph
+ *
+ * Options:
+ *   --user <email>     Target specific user by email (default: all users with Gmail)
+ *   --limit <number>   Maximum number of emails to process (default: 100)
+ *   --since <days>     Fetch emails from the last N days (default: 7)
+ *   --skip-graph       Skip Neo4j graph storage (only extract entities)
+ *   --help            Show help message
+ */
+
+import { dbClient } from '@/lib/db';
+import { users, accounts } from '@/lib/db/schema';
+import { eq, and } from 'drizzle-orm';
+import { google } from 'googleapis';
+import { OAuth2Client } from 'google-auth-library';
+import { getEntityExtractor } from '@/lib/extraction/entity-extractor';
+import { processExtraction } from '@/lib/graph/graph-builder';
+import { neo4jClient } from '@/lib/graph/neo4j-client';
+import {
+  getOrCreateProgress,
+  startExtraction,
+  completeExtraction,
+  updateCounters,
+  markExtractionError,
+} from '@/lib/extraction/progress';
+import type { Email } from '@/lib/google/types';
+
+const LOG_PREFIX = '[ExtractGmail]';
+
+// Global flag for Neo4j availability
+let neo4jConfigured = false;
+let neo4jWarningShown = false;
+
+// Parse command line arguments
+interface Args {
+  user?: string;
+  limit: number;
+  since: number;
+  skipGraph: boolean;
+  help: boolean;
+}
+
+function parseArgs(): Args {
+  const args: Args = {
+    limit: 100,
+    since: 7,
+    skipGraph: false,
+    help: false,
+  };
+
+  for (let i = 2; i < process.argv.length; i++) {
+    const arg = process.argv[i];
+
+    if (arg === '--help' || arg === '-h') {
+      args.help = true;
+    } else if (arg === '--user') {
+      args.user = process.argv[++i];
+    } else if (arg === '--limit') {
+      args.limit = parseInt(process.argv[++i], 10);
+    } else if (arg === '--since') {
+      args.since = parseInt(process.argv[++i], 10);
+    } else if (arg === '--skip-graph') {
+      args.skipGraph = true;
+    }
+  }
+
+  return args;
+}
+
+function showHelp() {
+  console.log(`
+Headless Gmail Entity Extraction Script
+
+Usage:
+  npx tsx scripts/extract-gmail-entities.ts [options]
+
+Options:
+  --user <email>     Target specific user by email (default: all users)
+  --limit <number>   Maximum number of emails to process (default: 100)
+  --since <days>     Fetch emails from the last N days (default: 7)
+  --skip-graph       Skip Neo4j graph storage (only extract entities)
+  --help, -h        Show this help message
+
+Examples:
+  # Extract from all users
+  npx tsx scripts/extract-gmail-entities.ts
+
+  # Extract from specific user
+  npx tsx scripts/extract-gmail-entities.ts --user john@example.com
+
+  # Limit to 50 emails from last 14 days
+  npx tsx scripts/extract-gmail-entities.ts --limit 50 --since 14
+
+  # Skip graph storage (no Neo4j required)
+  npx tsx scripts/extract-gmail-entities.ts --skip-graph
+`);
+}
+
+/**
+ * Safely save entities to Neo4j graph (if configured)
+ */
+async function saveToGraph(
+  extractionResult: any,
+  emailMetadata: any,
+  skipGraph: boolean
+): Promise<void> {
+  // Skip if explicitly requested
+  if (skipGraph) {
+    return;
+  }
+
+  // Check if Neo4j is configured
+  if (!neo4jConfigured) {
+    if (!neo4jWarningShown) {
+      console.log(`${LOG_PREFIX} ⚠️  Neo4j not configured - skipping graph storage`);
+      console.log(`${LOG_PREFIX} ℹ️  Set NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD to enable graph storage`);
+      neo4jWarningShown = true;
+    }
+    return;
+  }
+
+  // Save to graph
+  try {
+    await processExtraction(extractionResult, emailMetadata);
+  } catch (error) {
+    console.error(`${LOG_PREFIX} ❌ Failed to save to graph:`, error);
+  }
+}
+
+/**
+ * Get users with Gmail OAuth tokens
+ */
+async function getUsersWithGmail(targetEmail?: string) {
+  const db = dbClient.getDb();
+
+  let query = db
+    .select({
+      userId: users.id,
+      email: users.email,
+      accessToken: accounts.accessToken,
+      refreshToken: accounts.refreshToken,
+      accessTokenExpiresAt: accounts.accessTokenExpiresAt,
+    })
+    .from(users)
+    .innerJoin(accounts, eq(users.id, accounts.userId))
+    .where(eq(accounts.providerId, 'google'));
+
+  const usersWithGoogle = await query;
+
+  // Filter by email if specified
+  if (targetEmail) {
+    return usersWithGoogle.filter(u => u.email === targetEmail);
+  }
+
+  return usersWithGoogle;
+}
+
+/**
+ * Initialize Gmail client with user's OAuth tokens
+ */
+function getUserGmailClient(tokens: {
+  accessToken: string | null;
+  refreshToken: string | null;
+  accessTokenExpiresAt: Date | null;
+}) {
+  const oauth2Client = new OAuth2Client(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET,
+    process.env.NEXT_PUBLIC_APP_URL
+      ? `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/callback/google`
+      : 'http://localhost:3300/api/auth/callback/google'
+  );
+
+  oauth2Client.setCredentials({
+    access_token: tokens.accessToken || undefined,
+    refresh_token: tokens.refreshToken || undefined,
+    expiry_date: tokens.accessTokenExpiresAt
+      ? new Date(tokens.accessTokenExpiresAt).getTime()
+      : undefined,
+  });
+
+  return google.gmail({ version: 'v1', auth: oauth2Client });
+}
+
+/**
+ * Extract entities from Gmail for a single user
+ */
+async function extractForUser(
+  userId: string,
+  email: string,
+  tokens: {
+    accessToken: string | null;
+    refreshToken: string | null;
+    accessTokenExpiresAt: Date | null;
+  },
+  options: {
+    maxEmails: number;
+    sinceDays: number;
+    skipGraph: boolean;
+  }
+) {
+  console.log(`\n${'='.repeat(80)}`);
+  console.log(`${LOG_PREFIX} Processing user: ${email}`);
+  console.log(`${'='.repeat(80)}\n`);
+
+  // Check for valid tokens
+  if (!tokens.accessToken && !tokens.refreshToken) {
+    console.error(`${LOG_PREFIX} ❌ No valid OAuth tokens for ${email}`);
+    return {
+      userId,
+      email,
+      error: 'No valid OAuth tokens',
+      emailsProcessed: 0,
+      entitiesExtracted: 0,
+    };
+  }
+
+  try {
+    // Initialize Gmail client
+    const gmail = getUserGmailClient(tokens);
+
+    // Calculate date range
+    const sinceDate = new Date(Date.now() - options.sinceDays * 24 * 60 * 60 * 1000);
+    const endDate = new Date();
+    const query = `after:${Math.floor(sinceDate.getTime() / 1000)}`;
+
+    console.log(`${LOG_PREFIX} 📅 Date range: ${sinceDate.toISOString()} to ${endDate.toISOString()}`);
+    console.log(`${LOG_PREFIX} 📊 Max emails: ${options.maxEmails}\n`);
+
+    // Initialize progress tracking
+    await getOrCreateProgress(userId, 'email');
+    await startExtraction(userId, 'email', sinceDate, endDate);
+
+    // Initialize entity extractor
+    const extractor = getEntityExtractor();
+
+    // Fetch and process emails
+    let totalProcessed = 0;
+    let entitiesCount = 0;
+    let totalCost = 0;
+    let pageToken: string | undefined;
+    const startTime = Date.now();
+
+    do {
+      // Check for pause
+      const currentProgress = await getOrCreateProgress(userId, 'email');
+      if (currentProgress.status === 'paused') {
+        console.log(`${LOG_PREFIX} ⏸️  Extraction paused by user`);
+        break;
+      }
+
+      // Fetch email list
+      const response = await gmail.users.messages.list({
+        userId: 'me',
+        maxResults: Math.min(options.maxEmails - totalProcessed, 100),
+        pageToken,
+        q: query || undefined,
+      });
+
+      const messages = response.data.messages || [];
+
+      if (messages.length === 0) {
+        console.log(`${LOG_PREFIX} ℹ️  No more emails to process`);
+        break;
+      }
+
+      console.log(`${LOG_PREFIX} 📬 Fetched ${messages.length} email(s) from Gmail API`);
+
+      // Process each email
+      for (const message of messages) {
+        if (!message.id) continue;
+
+        try {
+          // Get full message
+          const fullMessage = await gmail.users.messages.get({
+            userId: 'me',
+            id: message.id,
+            format: 'full',
+          });
+
+          // Parse email data
+          const headers = fullMessage.data.payload?.headers || [];
+          const getHeader = (name: string) =>
+            headers.find((h) => h.name?.toLowerCase() === name.toLowerCase())?.value || '';
+
+          const subject = getHeader('Subject');
+          const from = getHeader('From');
+          const to = getHeader('To');
+          const date = getHeader('Date');
+
+          // Extract body
+          let body = '';
+          if (fullMessage.data.payload?.body?.data) {
+            body = Buffer.from(fullMessage.data.payload.body.data, 'base64').toString('utf-8');
+          } else if (fullMessage.data.payload?.parts) {
+            const textPart = fullMessage.data.payload.parts.find(
+              (p) => p.mimeType === 'text/plain' || p.mimeType === 'text/html'
+            );
+            if (textPart?.body?.data) {
+              body = Buffer.from(textPart.body.data, 'base64').toString('utf-8');
+            }
+          }
+
+          // Build Email object
+          const emailData: Email = {
+            id: message.id,
+            subject,
+            body,
+            from: {
+              name: from.split('<')[0].trim(),
+              email: from.match(/<(.+)>/)?.[1] || from,
+            },
+            to: to.split(',').map((addr) => ({
+              name: addr.split('<')[0].trim(),
+              email: addr.match(/<(.+)>/)?.[1] || addr.trim(),
+            })),
+            date: new Date(date),
+            threadId: fullMessage.data.threadId || message.id,
+            labels: fullMessage.data.labelIds || [],
+            snippet: fullMessage.data.snippet || '',
+            isSent: (fullMessage.data.labelIds || []).includes('SENT'),
+            hasAttachments: false,
+            internalDate: new Date(date).getTime(),
+          };
+
+          // Extract entities
+          let extractionResult;
+          try {
+            extractionResult = await extractor.extractFromEmail(emailData);
+            totalCost += extractionResult.cost;
+          } catch (error) {
+            console.error(`${LOG_PREFIX} ❌ Failed to extract entities from email ${message.id}:`, error);
+            const currentProgress = await getOrCreateProgress(userId, 'email');
+            await updateCounters(userId, 'email', {
+              failedItems: currentProgress.failedItems + 1,
+            });
+            totalProcessed++;
+            continue;
+          }
+
+          // Progress indicator
+          const entityCount = extractionResult.entities.length;
+          const progress = `[${totalProcessed + 1}/${options.maxEmails}]`;
+
+          if (entityCount > 0) {
+            console.log(
+              `${LOG_PREFIX} ✅ ${progress} Email: "${subject.substring(0, 50)}..." → ${entityCount} entities`
+            );
+
+            // Save to graph (if configured and not skipped)
+            await saveToGraph(
+              extractionResult,
+              {
+                subject,
+                timestamp: new Date(date),
+                threadId: fullMessage.data.threadId || message.id,
+                from,
+                to: to.split(',').map((addr) => addr.trim()),
+              },
+              options.skipGraph
+            );
+
+            entitiesCount += entityCount;
+          } else {
+            console.log(
+              `${LOG_PREFIX} ⚪ ${progress} Email: "${subject.substring(0, 50)}..." → No entities`
+            );
+          }
+
+          totalProcessed++;
+
+          // Update progress
+          await updateCounters(userId, 'email', {
+            processedItems: totalProcessed,
+            entitiesExtracted: entitiesCount,
+          });
+
+          // Rate limiting
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        } catch (error) {
+          console.error(`${LOG_PREFIX} ❌ Error processing message ${message.id}:`, error);
+          const currentProgress = await getOrCreateProgress(userId, 'email');
+          await updateCounters(userId, 'email', {
+            failedItems: currentProgress.failedItems + 1,
+          });
+        }
+
+        if (totalProcessed >= options.maxEmails) break;
+      }
+
+      pageToken = response.data.nextPageToken || undefined;
+
+      if (totalProcessed >= options.maxEmails) break;
+    } while (pageToken);
+
+    // Complete extraction
+    const processingTimeMs = Date.now() - startTime;
+    await completeExtraction(userId, 'email', {
+      oldestDate: sinceDate,
+      newestDate: endDate,
+      totalCost: Math.round(totalCost * 100), // Convert to cents
+    });
+
+    await updateCounters(userId, 'email', {
+      totalItems: totalProcessed,
+      processedItems: totalProcessed,
+      entitiesExtracted: entitiesCount,
+    });
+
+    // Summary
+    console.log(`\n${'-'.repeat(80)}`);
+    console.log(`${LOG_PREFIX} ✅ Extraction complete for ${email}`);
+    console.log(`${'-'.repeat(80)}`);
+    console.log(`  📧 Emails processed: ${totalProcessed}`);
+    console.log(`  🏷️  Entities extracted: ${entitiesCount}`);
+    console.log(`  💰 Total cost: $${totalCost.toFixed(6)}`);
+    console.log(`  ⏱️  Processing time: ${(processingTimeMs / 1000).toFixed(2)}s`);
+    console.log(`  📊 Avg: ${(processingTimeMs / totalProcessed).toFixed(0)}ms per email`);
+    console.log(`${'-'.repeat(80)}\n`);
+
+    return {
+      userId,
+      email,
+      emailsProcessed: totalProcessed,
+      entitiesExtracted: entitiesCount,
+      cost: totalCost,
+      processingTimeMs,
+    };
+  } catch (error) {
+    console.error(`${LOG_PREFIX} ❌ Error processing user ${email}:`, error);
+    await markExtractionError(userId, 'email');
+
+    return {
+      userId,
+      email,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      emailsProcessed: 0,
+      entitiesExtracted: 0,
+    };
+  }
+}
+
+/**
+ * Main execution
+ */
+async function main() {
+  const args = parseArgs();
+
+  if (args.help) {
+    showHelp();
+    process.exit(0);
+  }
+
+  console.log(`\n${'='.repeat(80)}`);
+  console.log(`${LOG_PREFIX} Gmail Entity Extraction (Headless)`);
+  console.log(`${'='.repeat(80)}\n`);
+
+  // Check Neo4j configuration
+  neo4jConfigured = neo4jClient.isConfigured();
+  if (!neo4jConfigured && !args.skipGraph) {
+    console.log(`${LOG_PREFIX} ⚠️  Neo4j not configured - graph storage will be skipped`);
+    console.log(`${LOG_PREFIX} ℹ️  Set NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD to enable graph storage`);
+    console.log(`${LOG_PREFIX} ℹ️  Or use --skip-graph to suppress this warning\n`);
+  } else if (args.skipGraph) {
+    console.log(`${LOG_PREFIX} ℹ️  Graph storage disabled via --skip-graph flag\n`);
+  }
+
+  try {
+    // Get users with Gmail
+    console.log(`${LOG_PREFIX} 🔍 Finding users with Gmail OAuth tokens...`);
+    const usersWithGmail = await getUsersWithGmail(args.user);
+
+    if (usersWithGmail.length === 0) {
+      if (args.user) {
+        console.error(`${LOG_PREFIX} ❌ No user found with email: ${args.user}`);
+      } else {
+        console.error(`${LOG_PREFIX} ❌ No users with Gmail OAuth tokens found`);
+      }
+      console.log(`\n${LOG_PREFIX} ℹ️  Make sure users have connected their Gmail account via OAuth`);
+      process.exit(1);
+    }
+
+    console.log(`${LOG_PREFIX} ✅ Found ${usersWithGmail.length} user(s) with Gmail\n`);
+
+    // Process each user
+    const results = [];
+    for (const user of usersWithGmail) {
+      const result = await extractForUser(
+        user.userId,
+        user.email,
+        {
+          accessToken: user.accessToken,
+          refreshToken: user.refreshToken,
+          accessTokenExpiresAt: user.accessTokenExpiresAt,
+        },
+        {
+          maxEmails: args.limit,
+          sinceDays: args.since,
+          skipGraph: args.skipGraph,
+        }
+      );
+
+      results.push(result);
+    }
+
+    // Final summary
+    console.log(`\n${'='.repeat(80)}`);
+    console.log(`${LOG_PREFIX} 🎉 All extractions complete`);
+    console.log(`${'='.repeat(80)}\n`);
+
+    const totalEmails = results.reduce((sum, r) => sum + (r.emailsProcessed || 0), 0);
+    const totalEntities = results.reduce((sum, r) => sum + (r.entitiesExtracted || 0), 0);
+    const totalCost = results.reduce((sum, r) => sum + (r.cost || 0), 0);
+    const successCount = results.filter(r => !r.error).length;
+    const errorCount = results.filter(r => r.error).length;
+
+    console.log(`  👥 Users processed: ${results.length}`);
+    console.log(`  ✅ Successful: ${successCount}`);
+    console.log(`  ❌ Errors: ${errorCount}`);
+    console.log(`  📧 Total emails: ${totalEmails}`);
+    console.log(`  🏷️  Total entities: ${totalEntities}`);
+    console.log(`  💰 Total cost: $${totalCost.toFixed(6)}`);
+
+    if (totalEmails > 0) {
+      console.log(`  📊 Avg entities per email: ${(totalEntities / totalEmails).toFixed(2)}`);
+    }
+
+    console.log(`\n${'='.repeat(80)}\n`);
+
+    // Exit with error if any failed
+    process.exit(errorCount > 0 ? 1 : 0);
+  } catch (error) {
+    console.error(`\n${LOG_PREFIX} ❌ Fatal error:`, error);
+    process.exit(1);
+  }
+}
+
+// Run the script
+main();

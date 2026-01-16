@@ -4,7 +4,8 @@
  */
 
 import { dbClient } from '@/lib/db';
-import { sql } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
+import { extractionProgress } from '@/lib/db/schema';
 
 export type SyncSource = 'gmail' | 'drive';
 
@@ -19,9 +20,13 @@ export interface SyncState {
 }
 
 /**
- * In-memory sync state cache (could be moved to Redis for multi-instance support)
+ * Map source names to extraction_progress source values
  */
-const syncStateCache = new Map<string, SyncState>();
+function mapSourceName(source: SyncSource): string {
+  if (source === 'gmail') return 'email';
+  if (source === 'drive') return 'drive';
+  return source;
+}
 
 /**
  * Get sync state for a source
@@ -30,49 +35,33 @@ export async function getSyncState(
   userId: string,
   source: SyncSource
 ): Promise<SyncState | null> {
-  const cacheKey = `${userId}:${source}`;
-
-  // Check cache first
-  if (syncStateCache.has(cacheKey)) {
-    return syncStateCache.get(cacheKey)!;
-  }
-
   try {
-    // Query from database
-    // Note: This assumes a metadata_store table exists
-    // For MVP, we'll use a simple key-value approach
-    const result = await dbClient.execute(sql`
-      SELECT
-        data->>'source' as source,
-        (data->>'lastSyncTime')::timestamp as last_sync_time,
-        data->>'lastPageToken' as last_page_token,
-        data->>'lastHistoryId' as last_history_id,
-        (data->>'itemsProcessed')::int as items_processed,
-        data->>'lastError' as last_error,
-        updated_at
-      FROM metadata_store
-      WHERE user_id = ${userId}
-        AND key = 'sync_state:' || ${source}
-      LIMIT 1
-    `);
+    const db = dbClient.getDb();
+    const mappedSource = mapSourceName(source);
 
-    if (!result.rows || result.rows.length === 0) {
+    const result = await db
+      .select()
+      .from(extractionProgress)
+      .where(
+        and(
+          eq(extractionProgress.userId, userId),
+          eq(extractionProgress.source, mappedSource)
+        )
+      )
+      .limit(1);
+
+    if (!result || result.length === 0) {
       return null;
     }
 
-    const row = result.rows[0] as any;
+    const row = result[0];
     const state: SyncState = {
-      source: row.source as SyncSource,
-      lastSyncTime: new Date(row.last_sync_time),
-      lastPageToken: row.last_page_token || undefined,
-      lastHistoryId: row.last_history_id || undefined,
-      itemsProcessed: row.items_processed || 0,
-      lastError: row.last_error || undefined,
-      updatedAt: new Date(row.updated_at),
+      source,
+      lastSyncTime: row.lastRunAt || row.createdAt,
+      itemsProcessed: row.processedItems || 0,
+      lastError: row.status === 'error' ? 'Extraction failed' : undefined,
+      updatedAt: row.updatedAt,
     };
-
-    // Cache it
-    syncStateCache.set(cacheKey, state);
 
     return state;
   } catch (error) {
@@ -89,44 +78,65 @@ export async function updateSyncState(
   source: SyncSource,
   updates: Partial<SyncState>
 ): Promise<void> {
-  const cacheKey = `${userId}:${source}`;
-
   try {
-    // Get current state
-    const currentState = await getSyncState(userId, source);
+    const db = dbClient.getDb();
+    const mappedSource = mapSourceName(source);
 
-    // Merge updates
-    const newState: SyncState = {
-      source,
-      lastSyncTime: updates.lastSyncTime || currentState?.lastSyncTime || new Date(),
-      lastPageToken: updates.lastPageToken ?? currentState?.lastPageToken,
-      lastHistoryId: updates.lastHistoryId ?? currentState?.lastHistoryId,
-      itemsProcessed: updates.itemsProcessed ?? currentState?.itemsProcessed ?? 0,
-      lastError: updates.lastError ?? currentState?.lastError,
+    // Get or create progress record first
+    const existing = await db
+      .select()
+      .from(extractionProgress)
+      .where(
+        and(
+          eq(extractionProgress.userId, userId),
+          eq(extractionProgress.source, mappedSource)
+        )
+      )
+      .limit(1);
+
+    // Build update object
+    const updateData: Partial<typeof extractionProgress.$inferInsert> = {
       updatedAt: new Date(),
     };
 
-    // Update database
-    await dbClient.execute(sql`
-      INSERT INTO metadata_store (user_id, key, data, updated_at)
-      VALUES (
-        ${userId},
-        'sync_state:' || ${source},
-        ${JSON.stringify(newState)}::jsonb,
-        NOW()
-      )
-      ON CONFLICT (user_id, key)
-      DO UPDATE SET
-        data = ${JSON.stringify(newState)}::jsonb,
-        updated_at = NOW()
-    `);
+    if (updates.lastSyncTime) {
+      updateData.lastRunAt = updates.lastSyncTime;
+    }
 
-    // Update cache
-    syncStateCache.set(cacheKey, newState);
+    if (updates.itemsProcessed !== undefined) {
+      updateData.processedItems = updates.itemsProcessed;
+    }
+
+    if (updates.lastError !== undefined) {
+      updateData.status = updates.lastError ? 'error' : 'running';
+    }
+
+    if (existing.length > 0) {
+      // Update existing record
+      await db
+        .update(extractionProgress)
+        .set(updateData)
+        .where(
+          and(
+            eq(extractionProgress.userId, userId),
+            eq(extractionProgress.source, mappedSource)
+          )
+        );
+    } else {
+      // Create new record
+      await db
+        .insert(extractionProgress)
+        .values({
+          userId,
+          source: mappedSource,
+          status: 'idle',
+          ...updateData,
+        });
+    }
 
     console.log(`[SyncState] Updated state for ${source}:`, {
-      lastSyncTime: newState.lastSyncTime,
-      itemsProcessed: newState.itemsProcessed,
+      lastSyncTime: updates.lastSyncTime,
+      itemsProcessed: updates.itemsProcessed,
     });
   } catch (error) {
     console.error(`[SyncState] Failed to update sync state for ${source}:`, error);
@@ -156,18 +166,19 @@ export async function initializeSyncState(
  * Clear sync state (for re-sync)
  */
 export async function clearSyncState(userId: string, source: SyncSource): Promise<void> {
-  const cacheKey = `${userId}:${source}`;
-
   try {
-    // Delete from database
-    await dbClient.execute(sql`
-      DELETE FROM metadata_store
-      WHERE user_id = ${userId}
-        AND key = 'sync_state:' || ${source}
-    `);
+    const db = dbClient.getDb();
+    const mappedSource = mapSourceName(source);
 
-    // Clear cache
-    syncStateCache.delete(cacheKey);
+    // Delete from database
+    await db
+      .delete(extractionProgress)
+      .where(
+        and(
+          eq(extractionProgress.userId, userId),
+          eq(extractionProgress.source, mappedSource)
+        )
+      );
 
     console.log(`[SyncState] Cleared state for ${source}`);
   } catch (error) {
