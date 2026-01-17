@@ -2,31 +2,32 @@
 /**
  * Headless Gmail Entity Extraction Script
  *
- * Triggers entity extraction from Gmail without the dashboard UI.
+ * Triggers entity extraction from Gmail and saves to Weaviate without the dashboard UI.
  *
  * Usage:
  *   npx tsx scripts/extract-gmail-entities.ts
  *   npx tsx scripts/extract-gmail-entities.ts --user user@example.com
  *   npx tsx scripts/extract-gmail-entities.ts --limit 50
  *   npx tsx scripts/extract-gmail-entities.ts --user user@example.com --limit 20
- *   npx tsx scripts/extract-gmail-entities.ts --skip-graph
+ *   npx tsx scripts/extract-gmail-entities.ts --skip-weaviate
  *
  * Options:
- *   --user <email>     Target specific user by email (default: all users with Gmail)
- *   --limit <number>   Maximum number of emails to process (default: 100)
- *   --since <days>     Fetch emails from the last N days (default: 7)
- *   --skip-graph       Skip Neo4j graph storage (only extract entities)
- *   --help            Show help message
+ *   --user <email>       Target specific user by email (default: all users with Gmail)
+ *   --limit <number>     Maximum number of emails to process (default: 100)
+ *   --since <days>       Fetch emails from the last N days (default: 7)
+ *   --incremental        Only fetch emails newer than last extraction (ignores --since)
+ *   --skip-weaviate      Skip Weaviate entity storage (testing only)
+ *   --help              Show help message
  */
 
+import 'dotenv/config';
 import { dbClient } from '@/lib/db';
 import { users, accounts } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { google } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
 import { getEntityExtractor } from '@/lib/extraction/entity-extractor';
-import { processExtraction } from '@/lib/graph/graph-builder';
-import { neo4jClient } from '@/lib/graph/neo4j-client';
+import { saveEntities } from '@/lib/weaviate';
 import {
   getOrCreateProgress,
   startExtraction,
@@ -38,16 +39,13 @@ import type { Email } from '@/lib/google/types';
 
 const LOG_PREFIX = '[ExtractGmail]';
 
-// Global flag for Neo4j availability
-let neo4jConfigured = false;
-let neo4jWarningShown = false;
-
 // Parse command line arguments
 interface Args {
   user?: string;
   limit: number;
   since: number;
-  skipGraph: boolean;
+  incremental: boolean;
+  skipWeaviate: boolean;
   help: boolean;
 }
 
@@ -55,7 +53,8 @@ function parseArgs(): Args {
   const args: Args = {
     limit: 100,
     since: 7,
-    skipGraph: false,
+    incremental: false,
+    skipWeaviate: false,
     help: false,
   };
 
@@ -70,8 +69,10 @@ function parseArgs(): Args {
       args.limit = parseInt(process.argv[++i], 10);
     } else if (arg === '--since') {
       args.since = parseInt(process.argv[++i], 10);
-    } else if (arg === '--skip-graph') {
-      args.skipGraph = true;
+    } else if (arg === '--incremental') {
+      args.incremental = true;
+    } else if (arg === '--skip-weaviate') {
+      args.skipWeaviate = true;
     }
   }
 
@@ -86,14 +87,15 @@ Usage:
   npx tsx scripts/extract-gmail-entities.ts [options]
 
 Options:
-  --user <email>     Target specific user by email (default: all users)
-  --limit <number>   Maximum number of emails to process (default: 100)
-  --since <days>     Fetch emails from the last N days (default: 7)
-  --skip-graph       Skip Neo4j graph storage (only extract entities)
-  --help, -h        Show this help message
+  --user <email>       Target specific user by email (default: all users)
+  --limit <number>     Maximum number of emails to process (default: 100)
+  --since <days>       Fetch emails from the last N days (default: 7)
+  --incremental        Only fetch emails newer than last extraction (ignores --since)
+  --skip-weaviate      Skip Weaviate entity storage (only extract entities)
+  --help, -h          Show this help message
 
 Examples:
-  # Extract from all users
+  # Extract from all users and save to Weaviate
   npx tsx scripts/extract-gmail-entities.ts
 
   # Extract from specific user
@@ -102,39 +104,40 @@ Examples:
   # Limit to 50 emails from last 14 days
   npx tsx scripts/extract-gmail-entities.ts --limit 50 --since 14
 
-  # Skip graph storage (no Neo4j required)
-  npx tsx scripts/extract-gmail-entities.ts --skip-graph
+  # Incremental extraction (only new emails since last run)
+  npx tsx scripts/extract-gmail-entities.ts --incremental
+
+  # Skip Weaviate storage (testing only)
+  npx tsx scripts/extract-gmail-entities.ts --skip-weaviate
 `);
 }
 
 /**
- * Safely save entities to Neo4j graph (if configured)
+ * Save entities to Weaviate (if not skipped)
  */
-async function saveToGraph(
-  extractionResult: any,
-  emailMetadata: any,
-  skipGraph: boolean
-): Promise<void> {
+async function saveToWeaviate(
+  entities: any[],
+  userId: string,
+  emailId: string,
+  skipWeaviate: boolean
+): Promise<number> {
   // Skip if explicitly requested
-  if (skipGraph) {
-    return;
+  if (skipWeaviate) {
+    return 0;
   }
 
-  // Check if Neo4j is configured
-  if (!neo4jConfigured) {
-    if (!neo4jWarningShown) {
-      console.log(`${LOG_PREFIX} ⚠️  Neo4j not configured - skipping graph storage`);
-      console.log(`${LOG_PREFIX} ℹ️  Set NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD to enable graph storage`);
-      neo4jWarningShown = true;
-    }
-    return;
+  // Skip if no entities
+  if (entities.length === 0) {
+    return 0;
   }
 
-  // Save to graph
+  // Save to Weaviate
   try {
-    await processExtraction(extractionResult, emailMetadata);
+    await saveEntities(entities, userId, emailId);
+    return entities.length;
   } catch (error) {
-    console.error(`${LOG_PREFIX} ❌ Failed to save to graph:`, error);
+    console.error(`${LOG_PREFIX} ❌ Failed to save to Weaviate:`, error);
+    return 0;
   }
 }
 
@@ -207,7 +210,8 @@ async function extractForUser(
   options: {
     maxEmails: number;
     sinceDays: number;
-    skipGraph: boolean;
+    incremental: boolean;
+    skipWeaviate: boolean;
   }
 ) {
   console.log(`\n${'='.repeat(80)}`);
@@ -230,16 +234,31 @@ async function extractForUser(
     // Initialize Gmail client
     const gmail = getUserGmailClient(tokens);
 
-    // Calculate date range
-    const sinceDate = new Date(Date.now() - options.sinceDays * 24 * 60 * 60 * 1000);
-    const endDate = new Date();
-    const query = `after:${Math.floor(sinceDate.getTime() / 1000)}`;
+    // Get existing progress for incremental mode
+    const existingProgress = await getOrCreateProgress(userId, 'email');
 
+    // Calculate date range
+    let sinceDate: Date;
+    let query: string;
+
+    if (options.incremental && existingProgress.newestDateExtracted) {
+      // Incremental mode: only fetch emails newer than last extraction
+      sinceDate = new Date(existingProgress.newestDateExtracted);
+      query = `after:${Math.floor(sinceDate.getTime() / 1000)}`;
+      console.log(`${LOG_PREFIX} 🔄 Incremental mode: fetching emails since last extraction`);
+      console.log(`${LOG_PREFIX} 📅 Last extraction: ${sinceDate.toISOString()}`);
+    } else {
+      // Full extraction: use --since parameter
+      sinceDate = new Date(Date.now() - options.sinceDays * 24 * 60 * 60 * 1000);
+      query = `after:${Math.floor(sinceDate.getTime() / 1000)}`;
+      console.log(`${LOG_PREFIX} 📅 Full extraction: fetching emails from last ${options.sinceDays} days`);
+    }
+
+    const endDate = new Date();
     console.log(`${LOG_PREFIX} 📅 Date range: ${sinceDate.toISOString()} to ${endDate.toISOString()}`);
     console.log(`${LOG_PREFIX} 📊 Max emails: ${options.maxEmails}\n`);
 
-    // Initialize progress tracking
-    await getOrCreateProgress(userId, 'email');
+    // Start extraction tracking
     await startExtraction(userId, 'email', sinceDate, endDate);
 
     // Initialize entity extractor
@@ -251,6 +270,10 @@ async function extractForUser(
     let totalCost = 0;
     let pageToken: string | undefined;
     const startTime = Date.now();
+
+    // Track actual email date boundaries
+    let oldestEmailDate: Date | null = null;
+    let newestEmailDate: Date | null = null;
 
     do {
       // Check for pause
@@ -313,6 +336,7 @@ async function extractForUser(
           }
 
           // Build Email object
+          const emailDate = new Date(date);
           const emailData: Email = {
             id: message.id,
             subject,
@@ -325,14 +349,22 @@ async function extractForUser(
               name: addr.split('<')[0].trim(),
               email: addr.match(/<(.+)>/)?.[1] || addr.trim(),
             })),
-            date: new Date(date),
+            date: emailDate,
             threadId: fullMessage.data.threadId || message.id,
             labels: fullMessage.data.labelIds || [],
             snippet: fullMessage.data.snippet || '',
             isSent: (fullMessage.data.labelIds || []).includes('SENT'),
             hasAttachments: false,
-            internalDate: new Date(date).getTime(),
+            internalDate: emailDate.getTime(),
           };
+
+          // Track date boundaries
+          if (!oldestEmailDate || emailDate < oldestEmailDate) {
+            oldestEmailDate = emailDate;
+          }
+          if (!newestEmailDate || emailDate > newestEmailDate) {
+            newestEmailDate = emailDate;
+          }
 
           // Extract entities
           let extractionResult;
@@ -343,7 +375,7 @@ async function extractForUser(
             console.error(`${LOG_PREFIX} ❌ Failed to extract entities from email ${message.id}:`, error);
             const currentProgress = await getOrCreateProgress(userId, 'email');
             await updateCounters(userId, 'email', {
-              failedItems: currentProgress.failedItems + 1,
+              failedItems: (currentProgress.failedItems || 0) + 1,
             });
             totalProcessed++;
             continue;
@@ -358,18 +390,17 @@ async function extractForUser(
               `${LOG_PREFIX} ✅ ${progress} Email: "${subject.substring(0, 50)}..." → ${entityCount} entities`
             );
 
-            // Save to graph (if configured and not skipped)
-            await saveToGraph(
-              extractionResult,
-              {
-                subject,
-                timestamp: new Date(date),
-                threadId: fullMessage.data.threadId || message.id,
-                from,
-                to: to.split(',').map((addr) => addr.trim()),
-              },
-              options.skipGraph
+            // Save to Weaviate (if not skipped)
+            const savedCount = await saveToWeaviate(
+              extractionResult.entities,
+              userId,
+              message.id,
+              options.skipWeaviate
             );
+
+            if (savedCount > 0) {
+              console.log(`${LOG_PREFIX} 💾 Saved ${savedCount} entities to Weaviate`);
+            }
 
             entitiesCount += entityCount;
           } else {
@@ -392,7 +423,7 @@ async function extractForUser(
           console.error(`${LOG_PREFIX} ❌ Error processing message ${message.id}:`, error);
           const currentProgress = await getOrCreateProgress(userId, 'email');
           await updateCounters(userId, 'email', {
-            failedItems: currentProgress.failedItems + 1,
+            failedItems: (currentProgress.failedItems || 0) + 1,
           });
         }
 
@@ -406,9 +437,14 @@ async function extractForUser(
 
     // Complete extraction
     const processingTimeMs = Date.now() - startTime;
+
+    // Use actual email dates if available, otherwise fall back to query range
+    const finalOldestDate = oldestEmailDate || sinceDate;
+    const finalNewestDate = newestEmailDate || endDate;
+
     await completeExtraction(userId, 'email', {
-      oldestDate: sinceDate,
-      newestDate: endDate,
+      oldestDate: finalOldestDate,
+      newestDate: finalNewestDate,
       totalCost: Math.round(totalCost * 100), // Convert to cents
     });
 
@@ -466,14 +502,12 @@ async function main() {
   console.log(`${LOG_PREFIX} Gmail Entity Extraction (Headless)`);
   console.log(`${'='.repeat(80)}\n`);
 
-  // Check Neo4j configuration
-  neo4jConfigured = neo4jClient.isConfigured();
-  if (!neo4jConfigured && !args.skipGraph) {
-    console.log(`${LOG_PREFIX} ⚠️  Neo4j not configured - graph storage will be skipped`);
-    console.log(`${LOG_PREFIX} ℹ️  Set NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD to enable graph storage`);
-    console.log(`${LOG_PREFIX} ℹ️  Or use --skip-graph to suppress this warning\n`);
-  } else if (args.skipGraph) {
-    console.log(`${LOG_PREFIX} ℹ️  Graph storage disabled via --skip-graph flag\n`);
+  // Check Weaviate storage flag
+  if (args.skipWeaviate) {
+    console.log(`${LOG_PREFIX} ⚠️  Weaviate storage disabled via --skip-weaviate flag`);
+    console.log(`${LOG_PREFIX} ℹ️  Entities will be extracted but NOT saved\n`);
+  } else {
+    console.log(`${LOG_PREFIX} 💾 Weaviate storage enabled - entities will be saved\n`);
   }
 
   try {
@@ -507,7 +541,8 @@ async function main() {
         {
           maxEmails: args.limit,
           sinceDays: args.since,
-          skipGraph: args.skipGraph,
+          incremental: args.incremental,
+          skipWeaviate: args.skipWeaviate,
         }
       );
 

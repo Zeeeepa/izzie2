@@ -5,7 +5,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, getGoogleTokens } from '@/lib/auth';
+import { requireAuth, getGoogleTokens, updateGoogleTokens } from '@/lib/auth';
 import { google } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
 import type { SyncStatus } from '@/lib/google/types';
@@ -20,7 +20,7 @@ import {
   markExtractionError,
 } from '@/lib/extraction/progress';
 import { getEntityExtractor } from '@/lib/extraction/entity-extractor';
-import { processExtraction } from '@/lib/graph/graph-builder';
+import { saveEntities } from '@/lib/weaviate';
 import type { Email } from '@/lib/google/types';
 
 // In-memory sync status
@@ -59,7 +59,7 @@ async function getUserGmailClient(userId: string) {
     // Auto-refresh tokens
     oauth2Client.on('tokens', async (newTokens) => {
       console.log('[Gmail Sync User] Tokens refreshed for user:', userId);
-      // TODO: Update tokens in database (same as calendar)
+      await updateGoogleTokens(userId, newTokens);
     });
 
     // Initialize Gmail API
@@ -319,18 +319,12 @@ async function startUserSync(
               `[Gmail Sync User] Extracted ${extractionResult.entities.length} entities from email ${message.id}`
             );
 
-            // Save to graph if entities were found
+            // Save to Weaviate if entities were found
             if (extractionResult.entities.length > 0) {
-              await processExtraction(extractionResult, {
-                subject,
-                timestamp: new Date(date),
-                threadId: fullMessage.data.threadId || message.id,
-                from: from,
-                to: to.split(',').map((addr) => addr.trim()),
-              });
+              await saveEntities(extractionResult.entities, userId, message.id);
 
               console.log(
-                `[Gmail Sync User] Saved ${extractionResult.entities.length} entities to graph for email ${message.id}`
+                `[Gmail Sync User] Saved ${extractionResult.entities.length} entities to Weaviate for email ${message.id}`
               );
 
               // Increment entity count by actual entities extracted
@@ -362,8 +356,9 @@ async function startUserSync(
           console.error(`[Gmail Sync User] Error processing message ${message.id}:`, error);
 
           // Update failed items counter
+          const currentProgress = await getOrCreateProgress(userId, 'email');
           await updateCounters(userId, 'email', {
-            failedItems: currentProgress.failedItems + 1,
+            failedItems: (currentProgress.failedItems || 0) + 1,
           });
 
           // Continue with other emails
