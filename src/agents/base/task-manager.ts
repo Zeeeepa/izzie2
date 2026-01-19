@@ -35,7 +35,10 @@ export interface CreateTaskOptions {
  * Provides database operations for agent tasks
  */
 export class TaskManager {
-  private db = dbClient.getDb();
+  // Get drizzle instance lazily (for build compatibility)
+  private getDb() {
+    return dbClient.getDb();
+  }
 
   /**
    * Create a new agent task
@@ -66,7 +69,7 @@ export class TaskManager {
       totalCost: 0,
     };
 
-    const [task] = await this.db.insert(agentTasks).values(newTask).returning();
+    const [task] = await this.getDb().insert(agentTasks).values(newTask).returning();
 
     console.log(`[TaskManager] Created task ${task.id} for agent ${agentType}`);
 
@@ -251,7 +254,7 @@ export class TaskManager {
    */
   async addCost(taskId: string, tokens: number, cost: number): Promise<void> {
     // Use SQL increment to avoid race conditions
-    await this.db.execute(sql`
+    await this.getDb().execute(sql`
       UPDATE agent_tasks
       SET
         tokens_used = tokens_used + ${tokens},
