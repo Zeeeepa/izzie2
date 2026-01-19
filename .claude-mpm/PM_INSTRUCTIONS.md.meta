@@ -1,4 +1,5 @@
 {
+  "_comment": "MPM instruction metadata - content_hash is SHA-256, not a secret. pragma: allowlist file",
   "version": "1.0",
   "content_type": "assembled_instruction",
   "components": [
@@ -8,7 +9,7 @@
     "agent_capabilities",
     "temporal_context"
   ],
-  "content_hash": "fb97189be4566bf8726cceb35440e6c75d223cbaf1fc1ebb5305969058393d87",
-  "content_size_bytes": 88579,
-  "cached_at": "2026-01-05T13:31:28.947585+00:00"
+  "content_hash": "14b2d713f6e04bcaea617ca323d84a013ede9ce4afe6e09963af6d90a31e86e5",
+  "content_size_bytes": 77551,
+  "cached_at": "2026-01-19T04:49:54.911902+00:00"
 }

@@ -12,6 +12,7 @@ export { ingestCalendar } from './ingest-calendar';
 export { extractTaskEntities } from './ingest-tasks';
 export { extractEntitiesFromEmail, extractEntitiesFromDrive, extractEntitiesFromCalendar } from './extract-entities';
 export { updateGraph } from './update-graph';
+export { researchTask } from './research-task';
 
 /**
  * All functions array for Inngest serve handler
@@ -25,6 +26,7 @@ import { ingestCalendar } from './ingest-calendar';
 import { extractTaskEntities } from './ingest-tasks';
 import { extractEntitiesFromEmail, extractEntitiesFromDrive, extractEntitiesFromCalendar } from './extract-entities';
 import { updateGraph } from './update-graph';
+import { researchTask } from './research-task';
 
 export const functions = [
   classifyEvent,
@@ -39,4 +41,5 @@ export const functions = [
   extractEntitiesFromDrive,
   extractEntitiesFromCalendar,
   updateGraph,
+  researchTask,
 ];

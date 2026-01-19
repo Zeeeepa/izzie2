@@ -204,3 +204,102 @@ export interface CalendarEventBatch {
   events: CalendarEvent[];
   nextPageToken?: string;
 }
+
+/**
+ * Google Tasks API Type Definitions
+ */
+
+export interface TaskList {
+  id: string;
+  title: string;
+  updated?: string;
+  selfLink?: string;
+}
+
+export interface Task {
+  id: string;
+  title: string;
+  updated: string;
+  selfLink?: string;
+  parent?: string;
+  position?: string;
+  notes?: string;
+  status: 'needsAction' | 'completed';
+  due?: string; // RFC 3339 timestamp
+  completed?: string; // RFC 3339 timestamp
+  deleted?: boolean;
+  hidden?: boolean;
+  links?: Array<{
+    type: string;
+    description?: string;
+    link: string;
+  }>;
+}
+
+export interface TaskListBatch {
+  taskLists: TaskList[];
+  nextPageToken?: string;
+}
+
+export interface TaskBatch {
+  tasks: Task[];
+  nextPageToken?: string;
+}
+
+/**
+ * Google People API (Contacts) Type Definitions
+ */
+
+export interface ContactEmail {
+  value: string;
+  type: string; // 'home', 'work', 'other'
+  primary: boolean;
+}
+
+export interface ContactPhone {
+  value: string;
+  type: string; // 'home', 'work', 'mobile', 'other'
+  primary: boolean;
+}
+
+export interface ContactOrganization {
+  name: string;
+  title?: string;
+  department?: string;
+}
+
+export interface ContactAddress {
+  formattedValue: string;
+  type: string; // 'home', 'work', 'other'
+  city?: string;
+  region?: string;
+  country?: string;
+}
+
+export interface ContactBirthday {
+  date?: {
+    year?: number;
+    month?: number;
+    day?: number;
+  };
+}
+
+export interface Contact {
+  resourceName: string; // Unique identifier (e.g., "people/c1234567890")
+  displayName: string; // Full display name
+  givenName?: string; // First name
+  familyName?: string; // Last name
+  emails: ContactEmail[];
+  phoneNumbers: ContactPhone[];
+  organizations: ContactOrganization[];
+  photoUrl?: string;
+  biography?: string;
+  addresses: ContactAddress[];
+  birthdays: ContactBirthday[];
+}
+
+export interface ContactsBatch {
+  contacts: Contact[];
+  nextPageToken?: string;
+  totalContacts: number;
+}

@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const userEmail = searchParams.get('userEmail') || undefined;
     const maxResults = parseInt(searchParams.get('maxResults') || '5', 10);
-    const folder = (searchParams.get('folder') || 'inbox') as 'inbox' | 'sent' | 'all';
+    const folder = (searchParams.get('folder') || 'sent') as 'inbox' | 'sent' | 'all'; // Default to SENT emails (high-signal)
 
     console.log('[Gmail Test] Starting connection test...');
 

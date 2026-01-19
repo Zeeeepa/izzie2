@@ -1,0 +1,207 @@
+/**
+ * Research Task Inngest Function
+ * Orchestrates research agent execution with step-by-step tracking
+ */
+
+import { inngest } from '../index';
+import { ResearchAgent } from '@/agents/research/research-agent';
+import { TaskManager } from '@/agents/base/task-manager';
+import type { AgentContext } from '@/agents/base/types';
+import type { ResearchInput } from '@/agents/research/types';
+
+const taskManager = new TaskManager();
+
+/**
+ * Research task event payload schema
+ */
+export interface ResearchTaskPayload {
+  taskId: string;
+  userId: string;
+  query: string;
+  context?: string;
+  maxSources?: number;
+  maxDepth?: number;
+  focusAreas?: string[];
+  excludeDomains?: string[];
+}
+
+/**
+ * Inngest function: Execute research task
+ */
+export const researchTask = inngest.createFunction(
+  {
+    id: 'research-task',
+    name: 'Research Task Execution',
+    retries: 2,
+  },
+  { event: 'izzie/research.request' },
+  async ({ event, step, logger }) => {
+    const {
+      taskId,
+      userId,
+      query,
+      context: userContext,
+      maxSources = 10,
+      maxDepth = 1,
+      focusAreas,
+      excludeDomains,
+    } = event.data as ResearchTaskPayload;
+
+    logger.info('Starting research task', {
+      taskId,
+      userId,
+      query,
+      maxSources,
+    });
+
+    // Step 1: Validate task exists
+    const task = await step.run('validate-task', async () => {
+      const t = await taskManager.getTask(taskId);
+      if (!t) {
+        throw new Error(`Task ${taskId} not found`);
+      }
+      logger.info('Task validated', { taskId, agentType: t.agentType });
+      return t;
+    });
+
+    // Step 2: Update task to running status
+    await step.run('mark-running', async () => {
+      await taskManager.updateTask(taskId, {
+        status: 'running',
+        startedAt: new Date(),
+        currentStep: 'Initializing',
+      });
+      logger.info('Task marked as running');
+    });
+
+    try {
+      // Step 3: Create agent and build context
+      const result = await step.run('execute-research', async () => {
+        const agent = new ResearchAgent();
+
+        // Build agent context
+        const context: AgentContext = {
+          task,
+          userId,
+          sessionId: task.sessionId,
+
+          updateProgress: async (progress) => {
+            await taskManager.updateTask(taskId, progress);
+          },
+
+          addCost: async (tokens, cost) => {
+            const currentTask = await taskManager.getTask(taskId);
+            if (!currentTask) return;
+
+            await taskManager.updateTask(taskId, {
+              tokensUsed: currentTask.tokensUsed + tokens,
+              totalCost: currentTask.totalCost + cost,
+            });
+          },
+
+          checkBudget: async () => {
+            const currentTask = await taskManager.getTask(taskId);
+            if (!currentTask || !currentTask.budgetLimit) return true;
+            return currentTask.totalCost < currentTask.budgetLimit;
+          },
+
+          isCancelled: async () => {
+            const currentTask = await taskManager.getTask(taskId);
+            return currentTask?.status === 'paused';
+          },
+        };
+
+        // Prepare input
+        const input: ResearchInput = {
+          query,
+          context: userContext,
+          maxSources,
+          maxDepth,
+          focusAreas,
+          excludeDomains,
+        };
+
+        logger.info('Executing research agent', { query, maxSources });
+
+        // Execute agent
+        const result = await agent.run(input, context);
+
+        logger.info('Research execution complete', {
+          success: result.success,
+          tokensUsed: result.tokensUsed,
+          totalCost: result.totalCost.toFixed(4),
+        });
+
+        return result;
+      });
+
+      // Step 4: Update task with results
+      await step.run('save-results', async () => {
+        if (result.success && result.data) {
+          await taskManager.updateTask(taskId, {
+            status: 'completed',
+            output: result.data as any,
+            completedAt: new Date(),
+            progress: 100,
+          });
+
+          logger.info('Task completed successfully', {
+            findingsCount: result.data.findings.length,
+            sourcesCount: result.data.sources.length,
+          });
+        } else {
+          await taskManager.updateTask(taskId, {
+            status: 'failed',
+            error: result.error,
+            completedAt: new Date(),
+          });
+
+          logger.error('Task failed', { error: result.error });
+        }
+      });
+
+      // Step 5: Emit completion event
+      await step.sendEvent('research-complete', {
+        name: 'izzie/research.completed',
+        data: {
+          taskId,
+          userId,
+          success: result.success,
+          tokensUsed: result.tokensUsed,
+          totalCost: result.totalCost,
+        },
+      });
+
+      logger.info('Research task pipeline complete', { taskId, success: result.success });
+
+      return result;
+    } catch (error) {
+      // Handle execution errors
+      logger.error('Research task failed with error', {
+        taskId,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+
+      // Update task status
+      await step.run('mark-failed', async () => {
+        await taskManager.updateTask(taskId, {
+          status: 'failed',
+          error: error instanceof Error ? error.message : 'Unknown error',
+          completedAt: new Date(),
+        });
+      });
+
+      // Emit failure event
+      await step.sendEvent('research-failed', {
+        name: 'izzie/research.failed',
+        data: {
+          taskId,
+          userId,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        },
+      });
+
+      throw error;
+    }
+  }
+);

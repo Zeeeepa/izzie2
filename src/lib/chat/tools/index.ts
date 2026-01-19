@@ -1,0 +1,56 @@
+/**
+ * Chat Tools Registry
+ * Centralized registry of all available chat tools
+ */
+
+import { researchTool, checkResearchStatusTool } from './research';
+
+/**
+ * All available chat tools
+ * Tools are automatically exposed to the chat API for LLM function calling
+ */
+export const chatTools = {
+  research: researchTool,
+  check_research_status: checkResearchStatusTool,
+};
+
+/**
+ * Tool type definition
+ */
+export type ChatToolName = keyof typeof chatTools;
+
+/**
+ * Execute a chat tool by name
+ * @param toolName - Name of the tool to execute
+ * @param params - Tool parameters
+ * @param userId - User ID who is executing the tool
+ * @returns Tool execution result
+ */
+export async function executeChatTool(
+  toolName: ChatToolName,
+  params: Record<string, unknown>,
+  userId: string
+): Promise<unknown> {
+  const tool = chatTools[toolName];
+
+  if (!tool) {
+    throw new Error(`Unknown tool: ${toolName}`);
+  }
+
+  return await tool.execute(params as any, userId);
+}
+
+/**
+ * Get all tool definitions in OpenAI function calling format
+ * @returns Array of tool definitions
+ */
+export function getChatToolDefinitions() {
+  return Object.entries(chatTools).map(([name, tool]) => ({
+    type: 'function' as const,
+    function: {
+      name,
+      description: tool.description,
+      parameters: tool.parameters,
+    },
+  }));
+}

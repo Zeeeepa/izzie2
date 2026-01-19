@@ -22,6 +22,9 @@ import {
 import { getEntityExtractor } from '@/lib/extraction/entity-extractor';
 import { saveEntities } from '@/lib/weaviate';
 import type { Email } from '@/lib/google/types';
+import { getUserIdentity, normalizeToCurrentUser } from '@/lib/extraction/user-identity';
+import { deduplicateWithStats } from '@/lib/extraction/deduplication';
+import { applyPostFilters, logFilterStats } from '@/lib/extraction/post-filters';
 
 // In-memory sync status
 let syncStatus: SyncStatus & { eventsSent?: number } = {
@@ -228,6 +231,15 @@ async function startUserSync(
       dateRange: { start: startDate, end: endDate },
     });
 
+    // Get user identity for entity normalization
+    console.log('[Gmail Sync User] Loading user identity for', userEmail);
+    const userIdentity = await getUserIdentity(userId);
+    console.log('[Gmail Sync User] User identity loaded:', {
+      primaryName: userIdentity.primaryName,
+      primaryEmail: userIdentity.primaryEmail,
+      aliasCount: userIdentity.aliases.length,
+    });
+
     // Fetch emails with pagination
     let pageToken: string | undefined;
     let totalProcessed = 0;
@@ -312,23 +324,42 @@ async function startUserSync(
             };
 
             // Extract entities using AI
-            const extractor = getEntityExtractor();
+            const extractor = getEntityExtractor(undefined, userIdentity);
             const extractionResult = await extractor.extractFromEmail(email);
 
             console.log(
-              `[Gmail Sync User] Extracted ${extractionResult.entities.length} entities from email ${message.id}`
+              `[Gmail Sync User] Extracted ${extractionResult.entities.length} raw entities from email ${message.id}`
             );
 
-            // Save to Weaviate if entities were found
-            if (extractionResult.entities.length > 0) {
-              await saveEntities(extractionResult.entities, userId, message.id);
+            // Post-process entities:
+            // Step 1: Normalize user identity (consolidate "me" entities)
+            let processedEntities = normalizeToCurrentUser(extractionResult.entities, userIdentity);
+
+            // Step 2: Apply post-processing filters (quality improvement)
+            const filterResult = applyPostFilters(processedEntities, {
+              strictNameFormat: false, // Lenient mode: allow "John Q. Public"
+              logFiltered: false, // Don't log individual filtered entities (too verbose)
+            });
+            processedEntities = filterResult.filtered;
+
+            // Step 3: Deduplicate entities
+            const [deduplicatedEntities, dedupeStats] = deduplicateWithStats(processedEntities);
+
+            console.log(
+              `[Gmail Sync User] Processed entities: ${extractionResult.entities.length} raw → ` +
+              `${filterResult.filtered.length} filtered → ${deduplicatedEntities.length} deduplicated`
+            );
+
+            // Save to Weaviate if entities remain after processing
+            if (deduplicatedEntities.length > 0) {
+              await saveEntities(deduplicatedEntities, userId, message.id);
 
               console.log(
-                `[Gmail Sync User] Saved ${extractionResult.entities.length} entities to Weaviate for email ${message.id}`
+                `[Gmail Sync User] Saved ${deduplicatedEntities.length} entities to Weaviate for email ${message.id}`
               );
 
-              // Increment entity count by actual entities extracted
-              entitiesCount += extractionResult.entities.length;
+              // Increment entity count by FINAL count (after all processing)
+              entitiesCount += deduplicatedEntities.length;
             }
           } catch (extractionError) {
             console.error(

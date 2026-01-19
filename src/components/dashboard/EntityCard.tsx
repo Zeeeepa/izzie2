@@ -17,10 +17,11 @@ interface EntityCardProps {
     assignee?: string;
     deadline?: string;
     priority?: string;
-    emailId: string;
+    sourceId?: string;
     emailContent: string;
     emailSummary?: string;
     createdAt: Date;
+    occurrences?: number;
   };
 }
 
@@ -72,19 +73,36 @@ export function EntityCard({ entity }: EntityCardProps) {
         <h3 style={{ fontSize: '1.125rem', fontWeight: '600', color: '#111', margin: 0 }}>
           {entity.value}
         </h3>
-        <span
-          style={{
-            backgroundColor: colors.bg,
-            color: colors.text,
-            padding: '0.25rem 0.75rem',
-            borderRadius: '9999px',
-            fontSize: '0.75rem',
-            fontWeight: '600',
-            textTransform: 'uppercase',
-          }}
-        >
-          {entity.type.replace('_', ' ')}
-        </span>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          {entity.occurrences && entity.occurrences > 1 && (
+            <span
+              style={{
+                backgroundColor: '#f3f4f6',
+                color: '#6b7280',
+                padding: '0.25rem 0.75rem',
+                borderRadius: '9999px',
+                fontSize: '0.75rem',
+                fontWeight: '600',
+              }}
+              title={`This entity appears in ${entity.occurrences} emails`}
+            >
+              {entity.occurrences}x
+            </span>
+          )}
+          <span
+            style={{
+              backgroundColor: colors.bg,
+              color: colors.text,
+              padding: '0.25rem 0.75rem',
+              borderRadius: '9999px',
+              fontSize: '0.75rem',
+              fontWeight: '600',
+              textTransform: 'uppercase',
+            }}
+          >
+            {entity.type.replace('_', ' ')}
+          </span>
+        </div>
       </div>
 
       {/* Normalized name if different */}
@@ -203,7 +221,7 @@ export function EntityCard({ entity }: EntityCardProps) {
         </p>
         <div style={{ marginTop: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
-            ID: {entity.emailId.substring(0, 8)}...
+            ID: {entity.sourceId?.substring(0, 8) || 'N/A'}...
           </span>
           <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
             {new Date(entity.createdAt).toLocaleDateString()}

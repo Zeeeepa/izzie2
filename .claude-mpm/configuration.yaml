@@ -252,6 +252,17 @@ skills:
   - langgraph
   - mcp
   - mcp-builder
+  - mpm-agent-update-workflow
+  - mpm-bug-reporting
+  - mpm-circuit-breaker-enforcement
+  - mpm-delegation-patterns
+  - mpm-git-file-tracking
+  - mpm-pr-workflow
+  - mpm-session-management
+  - mpm-teaching-mode
+  - mpm-ticketing-integration
+  - mpm-tool-usage-guide
+  - mpm-verification-protocols
   - mypy
   - neon
   - netlify
@@ -293,9 +304,27 @@ skills:
   - test-driven-development
   - test-quality-inspector
   - testing-anti-patterns
+  - toolchains-nextjs-api-validated-handler
+  - toolchains-python-data-sqlalchemy
+  - toolchains-python-validation-pydantic
+  - toolchains-typescript-data-drizzle-migrations
+  - toolchains-typescript-validation-zod
+  - toolchains-universal-dead-code-elimination
+  - toolchains-universal-dependency-audit
+  - toolchains-universal-infrastructure-github-actions
+  - toolchains-universal-security-api-review
   - trpc
   - turborepo
   - typescript-core
+  - universal-data-database-migration
+  - universal-debugging-systematic-debugging
+  - universal-debugging-verification-before-completion
+  - universal-operations-emergency-release
+  - universal-testing-test-quality-inspector
+  - universal-testing-testing-anti-patterns
+  - universal-verification-bug-fix
+  - universal-verification-pre-merge
+  - universal-verification-screenshot
   - validated-handler
   - vercel-overview
   - verification-before-completion

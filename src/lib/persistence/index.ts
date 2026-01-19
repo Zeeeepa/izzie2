@@ -21,17 +21,17 @@ import { vectorOps, type VectorSearchResult } from '@/lib/db/vectors';
 import { neo4jClient } from '@/lib/graph/neo4j-client';
 import { createEntityNode, createMentionedIn } from '@/lib/graph/graph-builder';
 import type { MemoryEntry } from '@/lib/db/schema';
-import type {
-  PersistenceResult,
-  MemoryStorageRequest,
-  MemoryUpdateRequest,
-  MemoryDeletionRequest,
-  PersistenceConfig,
+import {
   DEFAULT_PERSISTENCE_CONFIG,
-  VectorStoreError,
-  GraphStoreError,
-  StorageStatus,
-  HealthCheck,
+  type PersistenceResult,
+  type MemoryStorageRequest,
+  type MemoryUpdateRequest,
+  type MemoryDeletionRequest,
+  type PersistenceConfig,
+  type VectorStoreError,
+  type GraphStoreError,
+  type StorageStatus,
+  type HealthCheck,
 } from './types';
 
 /**

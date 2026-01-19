@@ -89,9 +89,14 @@ export class OpenRouterClient {
           messages: messages.map((m) => ({
             role: m.role,
             content: m.content,
+            tool_calls: m.tool_calls,
+            tool_call_id: m.tool_call_id,
+            name: m.name,
           })),
           max_tokens: maxTokens,
           temperature,
+          tools: options.tools,
+          tool_choice: options.tool_choice,
           ...options.extra,
         });
 
@@ -110,8 +115,9 @@ export class OpenRouterClient {
         // Track usage
         this.trackUsage(model as ModelId, usage.prompt_tokens, usage.completion_tokens, actualCost);
 
+        const message = completion.choices[0]?.message;
         const response: ChatResponse = {
-          content: completion.choices[0]?.message?.content || '',
+          content: message?.content || '',
           model,
           usage: {
             promptTokens: usage.prompt_tokens,
@@ -120,6 +126,7 @@ export class OpenRouterClient {
             cost: actualCost,
           },
           finishReason: completion.choices[0]?.finish_reason || 'stop',
+          tool_calls: message?.tool_calls as any,
         };
 
         if (options.logCost) {
@@ -170,10 +177,15 @@ export class OpenRouterClient {
       messages: messages.map((m) => ({
         role: m.role,
         content: m.content,
+        tool_calls: m.tool_calls,
+        tool_call_id: m.tool_call_id,
+        name: m.name,
       })),
       max_tokens: maxTokens,
       temperature,
       stream: true,
+      tools: options.tools,
+      tool_choice: options.tool_choice,
       ...options.extra,
     });
 

@@ -1,12 +1,15 @@
 /**
  * Weaviate Schema Definitions
  *
- * Defines collections for extracted entities:
+ * Defines collections for extracted entities and memories:
  * - Person, Company, Project, Date, Topic, Location, ActionItem
+ * - Memory (with temporal decay)
  */
 
 import { getWeaviateClient } from './client';
 import type { EntityType } from '../extraction/types';
+import { initializeMemorySchema } from '../memory/storage';
+import { initResearchFindingSchema } from './research-findings';
 
 const LOG_PREFIX = '[Weaviate Schema]';
 
@@ -22,6 +25,11 @@ export const COLLECTIONS: Record<EntityType, string> = {
   location: 'Location',
   action_item: 'ActionItem',
 };
+
+/**
+ * Relationship collection name
+ */
+export const RELATIONSHIP_COLLECTION = 'Relationship';
 
 /**
  * Common properties for all entity collections
@@ -184,6 +192,43 @@ export async function initializeSchema(): Promise<void> {
     }
   }
 
+  // Initialize Relationship collection
+  try {
+    const relationshipExists = await client.collections.exists(RELATIONSHIP_COLLECTION);
+
+    if (relationshipExists) {
+      console.log(`${LOG_PREFIX} Collection '${RELATIONSHIP_COLLECTION}' already exists`);
+    } else {
+      await client.collections.create({
+        name: RELATIONSHIP_COLLECTION,
+        description: 'Inferred relationships between entities',
+        properties: [
+          { name: 'fromEntityType', dataType: 'text', description: 'Source entity type' },
+          { name: 'fromEntityValue', dataType: 'text', description: 'Source entity normalized value' },
+          { name: 'toEntityType', dataType: 'text', description: 'Target entity type' },
+          { name: 'toEntityValue', dataType: 'text', description: 'Target entity normalized value' },
+          { name: 'relationshipType', dataType: 'text', description: 'Type of relationship (WORKS_WITH, etc.)' },
+          { name: 'confidence', dataType: 'number', description: 'Confidence score (0-1)' },
+          { name: 'evidence', dataType: 'text', description: 'Evidence/context for relationship' },
+          { name: 'sourceId', dataType: 'text', description: 'Source email/event ID' },
+          { name: 'userId', dataType: 'text', description: 'User ID who owns this relationship' },
+          { name: 'inferredAt', dataType: 'text', description: 'ISO timestamp of inference' },
+        ] as any,
+      });
+
+      console.log(`${LOG_PREFIX} Created collection '${RELATIONSHIP_COLLECTION}'`);
+    }
+  } catch (error) {
+    console.error(`${LOG_PREFIX} Failed to create collection '${RELATIONSHIP_COLLECTION}':`, error);
+    throw error;
+  }
+
+  // Initialize Memory collection
+  await initializeMemorySchema();
+
+  // Initialize ResearchFinding collection
+  await initResearchFindingSchema();
+
   console.log(`${LOG_PREFIX} Schema initialization complete`);
 }
 
@@ -195,6 +240,7 @@ export async function deleteAllCollections(): Promise<void> {
 
   console.log(`${LOG_PREFIX} Deleting all collections...`);
 
+  // Delete entity collections
   for (const collectionName of Object.values(COLLECTIONS)) {
     try {
       const exists = await client.collections.exists(collectionName);
@@ -205,6 +251,17 @@ export async function deleteAllCollections(): Promise<void> {
     } catch (error) {
       console.error(`${LOG_PREFIX} Failed to delete collection '${collectionName}':`, error);
     }
+  }
+
+  // Delete relationship collection
+  try {
+    const exists = await client.collections.exists(RELATIONSHIP_COLLECTION);
+    if (exists) {
+      await client.collections.delete(RELATIONSHIP_COLLECTION);
+      console.log(`${LOG_PREFIX} Deleted collection '${RELATIONSHIP_COLLECTION}'`);
+    }
+  } catch (error) {
+    console.error(`${LOG_PREFIX} Failed to delete collection '${RELATIONSHIP_COLLECTION}':`, error);
   }
 
   console.log(`${LOG_PREFIX} All collections deleted`);

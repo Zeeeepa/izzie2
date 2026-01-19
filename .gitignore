@@ -60,3 +60,6 @@ tests/e2e/playwright/.auth/
 playwright-report/
 test-results/
 .playwright/
+
+# Screenshots (large files, not needed in version control)
+screenshots/

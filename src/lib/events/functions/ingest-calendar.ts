@@ -18,7 +18,7 @@ const LOG_PREFIX = '[IngestCalendar]';
 
 /**
  * Calendar ingestion function
- * Runs every 6 hours to fetch upcoming calendar events
+ * Runs every hour to fetch upcoming calendar events
  */
 export const ingestCalendar = inngest.createFunction(
   {
@@ -26,7 +26,7 @@ export const ingestCalendar = inngest.createFunction(
     name: 'Ingest Calendar Events',
     retries: 3,
   },
-  { cron: '0 */6 * * *' }, // Run every 6 hours
+  { cron: '0 * * * *' }, // Run every hour
   async ({ step }) => {
     const userId = process.env.DEFAULT_USER_ID || 'default';
 

@@ -38,7 +38,7 @@ export const auth = betterAuth({
     google: {
       clientId: process.env.GOOGLE_CLIENT_ID || '',
       clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
-      // Request Calendar, Gmail, Tasks, and Drive API scopes for future use
+      // Request Calendar, Gmail, Tasks, Drive, and Contacts API scopes
       scope: [
         'openid',
         'email',
@@ -48,6 +48,7 @@ export const auth = betterAuth({
         'https://www.googleapis.com/auth/gmail.readonly',
         'https://www.googleapis.com/auth/tasks.readonly',
         'https://www.googleapis.com/auth/drive.readonly',
+        'https://www.googleapis.com/auth/contacts.readonly',
       ],
       // Request offline access to get refresh token
       accessType: 'offline',
@@ -134,4 +135,45 @@ export async function getGoogleTokens(userId: string) {
     refreshTokenExpiresAt: account.refreshTokenExpiresAt,
     scope: account.scope,
   };
+}
+
+/**
+ * Update Google OAuth tokens in database
+ * Called when OAuth2Client auto-refreshes tokens
+ */
+export async function updateGoogleTokens(
+  userId: string,
+  tokens: {
+    access_token?: string | null;
+    refresh_token?: string | null;
+    expiry_date?: number | null;
+  }
+): Promise<void> {
+  const db = dbClient.getDb();
+
+  // Build update object with only provided tokens
+  const updateData: Partial<typeof accounts.$inferInsert> = {};
+
+  if (tokens.access_token) {
+    updateData.accessToken = tokens.access_token;
+  }
+
+  if (tokens.refresh_token) {
+    updateData.refreshToken = tokens.refresh_token;
+  }
+
+  if (tokens.expiry_date) {
+    updateData.accessTokenExpiresAt = new Date(tokens.expiry_date);
+  }
+
+  // Update the account record
+  await db
+    .update(accounts)
+    .set({
+      ...updateData,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(accounts.userId, userId), eq(accounts.providerId, 'google')));
+
+  console.log('[Auth] Updated Google OAuth tokens for user:', userId);
 }

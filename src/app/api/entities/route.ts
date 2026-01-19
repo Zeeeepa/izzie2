@@ -1,6 +1,6 @@
 /**
  * Entity API Route
- * GET /api/entities - List all extracted entities
+ * GET /api/entities - List all extracted entities from Weaviate
  * Query params:
  *  - type: Filter by entity type (person, company, project, action_item, etc.)
  *  - limit: Max results (default: 100)
@@ -8,10 +8,22 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { dbClient } from '@/lib/db';
-import { memoryEntries } from '@/lib/db/schema';
-import { sql, desc } from 'drizzle-orm';
 import { requireAuth } from '@/lib/auth';
+import { listEntitiesByType } from '@/lib/weaviate/entities';
+import type { EntityType } from '@/lib/extraction/types';
+
+const LOG_PREFIX = '[Entities API]';
+
+// Valid entity types
+const VALID_TYPES: EntityType[] = [
+  'person',
+  'company',
+  'project',
+  'date',
+  'topic',
+  'location',
+  'action_item',
+];
 
 interface EntityData {
   id: string;
@@ -24,93 +36,119 @@ interface EntityData {
   assignee?: string;
   deadline?: string;
   priority?: string;
-  emailId: string;
-  emailContent: string;
-  emailSummary?: string;
-  createdAt: Date;
+  sourceId: string;
+  createdAt: string;
+  occurrences?: number; // Number of times this entity appeared
 }
 
 export async function GET(request: NextRequest) {
   try {
-    // Require authentication
+    // Require authentication (but don't filter by userId for single-user app)
     const session = await requireAuth(request);
-    const userId = session.user.id;
 
     // Parse query params
     const { searchParams } = new URL(request.url);
-    const type = searchParams.get('type');
-    const limit = parseInt(searchParams.get('limit') || '100', 10);
-    const offset = parseInt(searchParams.get('offset') || '0', 10);
+    const typeParam = searchParams.get('type');
+    const limit = Math.min(parseInt(searchParams.get('limit') || '500', 10), 1000);
 
-    // Get database instance
-    const db = dbClient.getDb();
+    console.log(`${LOG_PREFIX} Fetching entities type=${typeParam || 'all'} (single-user app, no userId filter)`);
+    console.log(`${LOG_PREFIX} Session:`, JSON.stringify(session, null, 2));
 
-    // Query memory entries that have entities in metadata
-    const query = db
-      .select({
-        id: memoryEntries.id,
-        content: memoryEntries.content,
-        summary: memoryEntries.summary,
-        metadata: memoryEntries.metadata,
-        createdAt: memoryEntries.createdAt,
-      })
-      .from(memoryEntries)
-      .where(sql`${memoryEntries.metadata}->>'entities' IS NOT NULL`)
-      .orderBy(desc(memoryEntries.createdAt))
-      .limit(limit)
-      .offset(offset);
-
-    const results = await query;
-
-    // Extract and flatten entities
     const entities: EntityData[] = [];
+    const stats: Record<string, number> = {};
 
-    for (const entry of results) {
-      const metadata = entry.metadata as any;
-      const extractedEntities = metadata?.entities || [];
+    // Determine which types to fetch
+    const typesToFetch: EntityType[] = typeParam
+      ? [typeParam as EntityType]
+      : VALID_TYPES;
 
-      for (const entity of extractedEntities) {
-        // Filter by type if specified
-        if (type && entity.type !== type) {
-          continue;
+    // Fetch entities from Weaviate for each type (no userId filter for single-user app)
+    for (const entityType of typesToFetch) {
+      try {
+        const typeEntities = await listEntitiesByType(undefined, entityType, limit);
+
+        for (const entity of typeEntities) {
+          entities.push({
+            id: `${entityType}-${entity.normalized || entity.value}`.replace(/\s+/g, '-'),
+            type: entityType,
+            value: entity.value || '',
+            normalized: entity.normalized || entity.value || '',
+            confidence: entity.confidence || 0,
+            source: entity.source || 'unknown',
+            context: entity.context,
+            assignee: (entity as any).assignee,
+            deadline: (entity as any).deadline,
+            priority: (entity as any).priority,
+            sourceId: entity.sourceId || '',
+            createdAt: entity.extractedAt || new Date().toISOString(),
+          });
         }
 
-        entities.push({
-          id: `${entry.id}-${entity.type}-${entity.normalized}`,
-          type: entity.type,
-          value: entity.value,
-          normalized: entity.normalized,
-          confidence: entity.confidence,
-          source: entity.source,
-          context: entity.context,
-          assignee: entity.assignee,
-          deadline: entity.deadline,
-          priority: entity.priority,
-          emailId: entry.id,
-          emailContent: entry.content.substring(0, 200) + '...', // Truncate for preview
-          emailSummary: entry.summary || undefined,
-          createdAt: entry.createdAt,
-        });
+        stats[entityType] = typeEntities.length;
+      } catch (error) {
+        console.error(`${LOG_PREFIX} Error fetching ${entityType} entities:`, error);
+        stats[entityType] = 0;
       }
     }
 
-    // Calculate stats by type
-    const stats: Record<string, number> = {};
-    entities.forEach((entity) => {
-      stats[entity.type] = (stats[entity.type] || 0) + 1;
-    });
+    // Deduplicate entities by type + normalized key
+    console.log(`${LOG_PREFIX} Deduplicating ${entities.length} entities...`);
+    const entityMap = new Map<string, EntityData>();
+
+    for (const entity of entities) {
+      const key = `${entity.type}:${entity.normalized.toLowerCase()}`;
+      const existing = entityMap.get(key);
+
+      if (!existing) {
+        // First occurrence - add with count of 1
+        entityMap.set(key, { ...entity, occurrences: 1 });
+      } else {
+        // Update occurrences count
+        existing.occurrences = (existing.occurrences || 1) + 1;
+
+        // Determine if we should replace the existing entity
+        // Priority: higher confidence > longer value (more details) > more recent
+        const shouldReplace =
+          entity.confidence > existing.confidence ||
+          (entity.confidence === existing.confidence &&
+            entity.value.length > existing.value.length) ||
+          (entity.confidence === existing.confidence &&
+            entity.value.length === existing.value.length &&
+            new Date(entity.createdAt).getTime() > new Date(existing.createdAt).getTime());
+
+        if (shouldReplace) {
+          // Keep the better entity but preserve occurrences count
+          entityMap.set(key, { ...entity, occurrences: existing.occurrences });
+        }
+      }
+    }
+
+    const deduplicatedEntities = Array.from(entityMap.values());
+    console.log(`${LOG_PREFIX} Deduplicated to ${deduplicatedEntities.length} unique entities`);
+
+    // Sort by createdAt descending
+    deduplicatedEntities.sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+
+    // Apply limit after deduplication
+    const limitedEntities = deduplicatedEntities.slice(0, limit);
+
+    console.log(`${LOG_PREFIX} Returning ${limitedEntities.length} entities`);
 
     return NextResponse.json({
-      entities,
+      entities: limitedEntities,
       stats,
-      total: entities.length,
+      total: limitedEntities.length,
       limit,
-      offset,
     });
   } catch (error) {
-    console.error('Failed to fetch entities:', error);
+    console.error(`${LOG_PREFIX} Failed to fetch entities:`, error);
     return NextResponse.json(
-      { error: 'Failed to fetch entities', details: error instanceof Error ? error.message : 'Unknown error' },
+      {
+        error: 'Failed to fetch entities',
+        details: error instanceof Error ? error.message : 'Unknown error',
+      },
       { status: 500 }
     );
   }

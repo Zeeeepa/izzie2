@@ -9,6 +9,11 @@ import { getCalendarService } from '@/lib/google/calendar';
 import type { SyncStatus } from '@/lib/google/types';
 import { inngest } from '@/lib/events';
 import type { CalendarEventExtractedPayload } from '@/lib/events/types';
+import {
+  updateCounters,
+  completeExtraction,
+  markExtractionError,
+} from '@/lib/extraction/progress';
 
 // In-memory sync status (in production, use Redis or database)
 let syncStatus: SyncStatus & { eventsSent?: number } = {
@@ -89,6 +94,8 @@ async function startSync(
     lastSync: new Date(),
   };
 
+  const userId = userEmail || 'default';
+
   try {
     // Get authentication
     const auth = await getServiceAccountAuth(userEmail);
@@ -114,6 +121,12 @@ async function startSync(
 
       totalProcessed += batch.events.length;
       syncStatus.emailsProcessed = totalProcessed; // Reuse field for event count
+
+      // Update extraction progress table
+      await updateCounters(userId, 'calendar', {
+        totalItems: totalProcessed,
+        processedItems: totalProcessed,
+      });
 
       // Emit events for entity extraction (batch send for efficiency)
       if (batch.events.length > 0) {
@@ -150,6 +163,13 @@ async function startSync(
 
     syncStatus.isRunning = false;
     syncStatus.lastSync = new Date();
+
+    // Mark extraction as completed in database
+    await completeExtraction(userId, 'calendar', {
+      oldestDate: timeMin,
+      newestDate: timeMax,
+    });
+
     console.log(
       `[Calendar Sync] Completed. Processed ${totalProcessed} calendar events, sent ${syncStatus.eventsSent} events for extraction`
     );
@@ -157,6 +177,10 @@ async function startSync(
     console.error('[Calendar Sync] Sync failed:', error);
     syncStatus.isRunning = false;
     syncStatus.error = error instanceof Error ? error.message : 'Unknown error';
+
+    // Mark extraction as error in database
+    await markExtractionError(userId, 'calendar');
+
     throw error;
   }
 }

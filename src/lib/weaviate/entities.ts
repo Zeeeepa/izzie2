@@ -157,8 +157,24 @@ export async function searchEntities(
     }
   }
 
-  console.log(`${LOG_PREFIX} Found ${allResults.length} matching entities`);
-  return allResults;
+  // Deduplicate entities by type + normalized value (or value if no normalized)
+  const entityMap = new Map<string, typeof allResults[0]>();
+
+  for (const entity of allResults) {
+    // Key by type + normalized value (or value if no normalized)
+    const key = `${entity.type}:${(entity.normalized || entity.value).toLowerCase()}`;
+    const existing = entityMap.get(key);
+
+    // Keep the one with highest confidence, or first one if equal
+    if (!existing || (entity.confidence || 0) > (existing.confidence || 0)) {
+      entityMap.set(key, entity);
+    }
+  }
+
+  const deduplicated = Array.from(entityMap.values());
+  console.log(`${LOG_PREFIX} Deduplicated ${allResults.length} → ${deduplicated.length} entities`);
+  console.log(`${LOG_PREFIX} Found ${deduplicated.length} matching entities`);
+  return deduplicated;
 }
 
 /**
@@ -304,4 +320,92 @@ export async function getEntityStats(userId: string): Promise<Record<EntityType,
 
   console.log(`${LOG_PREFIX} Stats:`, stats);
   return stats;
+}
+
+/**
+ * List all entities of a specific type for a user
+ * @param userId - Optional user ID filter (omit for single-user apps)
+ */
+export async function listEntitiesByType(
+  userId: string | undefined,
+  entityType: EntityType,
+  limit: number = 500
+): Promise<(Entity & { sourceId?: string; extractedAt?: string })[]> {
+  const client = await getWeaviateClient();
+  const collectionName = COLLECTIONS[entityType];
+
+  if (!collectionName) {
+    console.warn(`${LOG_PREFIX} Unknown entity type: ${entityType}`);
+    return [];
+  }
+
+  const userFilter = userId ? ` for user ${userId}` : ' (all users)';
+  console.log(`${LOG_PREFIX} Listing ${entityType} entities${userFilter}...`);
+
+  try {
+    const collection = client.collections.get(collectionName);
+
+    // Base properties for all collections
+    const baseProperties = [
+      'value',
+      'normalized',
+      'confidence',
+      'source',
+      'sourceId',
+      'userId',
+      'extractedAt',
+      'context',
+    ];
+
+    // Add action_item specific properties only for ActionItem collection
+    const returnProperties =
+      entityType === 'action_item'
+        ? [...baseProperties, 'assignee', 'deadline', 'priority']
+        : baseProperties;
+
+    const result = await collection.query.fetchObjects({
+      limit,
+      returnProperties,
+    });
+
+    console.log(`${LOG_PREFIX} Raw fetch returned ${result.objects.length} objects`);
+
+    if (userId) {
+      console.log(`${LOG_PREFIX} Filtering by userId: ${userId}`);
+      // Log first object's userId for debugging
+      if (result.objects.length > 0) {
+        const firstUserId = (result.objects[0] as any).properties.userId;
+        console.log(`${LOG_PREFIX} First object userId: ${firstUserId}`);
+        console.log(`${LOG_PREFIX} UserIds match: ${firstUserId === userId}`);
+      }
+    } else {
+      console.log(`${LOG_PREFIX} No userId filter - returning all entities`);
+    }
+
+    // Filter by userId only if provided (for single-user apps, skip filtering)
+    const entities = result.objects
+      .filter((obj: any) => !userId || obj.properties.userId === userId)
+      .map((obj: any) => ({
+        type: entityType,
+        value: obj.properties.value,
+        normalized: obj.properties.normalized,
+        confidence: obj.properties.confidence,
+        source: obj.properties.source as 'metadata' | 'body' | 'subject',
+        context: obj.properties.context,
+        sourceId: obj.properties.sourceId,
+        extractedAt: obj.properties.extractedAt,
+        // Action item specific fields
+        ...(entityType === 'action_item' && {
+          assignee: obj.properties.assignee,
+          deadline: obj.properties.deadline,
+          priority: obj.properties.priority as 'low' | 'medium' | 'high',
+        }),
+      }));
+
+    console.log(`${LOG_PREFIX} Found ${entities.length} ${entityType} entities`);
+    return entities;
+  } catch (error) {
+    console.error(`${LOG_PREFIX} Failed to list ${entityType} entities:`, error);
+    return [];
+  }
 }

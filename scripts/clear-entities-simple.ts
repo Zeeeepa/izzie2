@@ -1,4 +1,3 @@
-#!/usr/bin/env tsx
 /**
  * Clear Entity Data Script (Simple Version)
  *

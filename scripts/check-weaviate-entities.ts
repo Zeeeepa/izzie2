@@ -1,4 +1,3 @@
-#!/usr/bin/env ts-node
 /**
  * Check Weaviate Entity Storage
  *

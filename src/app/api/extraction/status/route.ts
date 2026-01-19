@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { getAllProgress, calculateProgress } from '@/lib/extraction/progress';
+import { getAllProgress, calculateProgress, getEffectiveStatus } from '@/lib/extraction/progress';
 
 /**
  * Calculate processing rate (items per second) and ETA
@@ -62,13 +62,16 @@ export async function GET(request: NextRequest) {
     // Get all progress records for user
     const allProgress = await getAllProgress(session.user.id);
 
-    // Transform to include calculated progress percentage, rate, and ETA
+    // Transform to include calculated progress percentage, rate, ETA, and effective status
     const progressWithMetrics = allProgress.map((progress) => {
       const percentage = calculateProgress(progress);
       const { processingRate, estimatedSecondsRemaining } = calculateRateAndEta(progress);
+      const effectiveStatus = getEffectiveStatus(progress);
 
       return {
         ...progress,
+        status: effectiveStatus, // Use effective status (marks stale as error)
+        originalStatus: progress.status, // Keep original for debugging
         progressPercentage: percentage,
         processingRate,
         estimatedSecondsRemaining,

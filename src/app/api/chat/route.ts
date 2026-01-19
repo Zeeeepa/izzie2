@@ -1,232 +1,410 @@
 /**
- * Chat API Route
- * POST /api/chat - Context-aware chatbot with entity retrieval
+ * Chat API Route with Session Management
+ * POST /api/chat - Context-aware chatbot with session persistence
  *
  * Features:
- * - Semantic search across extracted entities
+ * - Session-based conversation tracking with compression
+ * - Current task management
+ * - Semantic search across extracted entities (Weaviate)
+ * - Memory retrieval with temporal decay
  * - Streams AI responses in real-time
- * - Includes relevant entities in context
- * - Tracks conversation history
+ * - Incremental history compression
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { getAIClient } from '@/lib/ai/client';
 import { MODELS } from '@/lib/ai/models';
-import { vectorOps } from '@/lib/db/vectors';
-import { dbClient } from '@/lib/db';
-import { memoryEntries } from '@/lib/db/schema';
-import { desc, sql, eq } from 'drizzle-orm';
-import type { ChatMessage } from '@/types';
+import { retrieveContext } from '@/lib/chat/context-retrieval';
+import { formatContextForPrompt } from '@/lib/chat/context-formatter';
+import { refreshMemoryAccess } from '@/lib/memory/storage';
+import {
+  getSessionManager,
+  type StructuredLLMResponse,
+  RESPONSE_FORMAT_INSTRUCTION,
+} from '@/lib/chat/session';
+import {
+  getSelfAwarenessContext,
+  formatSelfAwarenessForPrompt,
+} from '@/lib/chat/self-awareness';
+import { getMCPClientManager } from '@/lib/mcp';
+import type { MCPTool } from '@/lib/mcp/types';
+import type { Tool, ToolCall } from '@/types';
+import { getChatToolDefinitions, executeChatTool } from '@/lib/chat/tools';
 
 const LOG_PREFIX = '[Chat API]';
 
 interface ChatRequest {
   message: string;
-  history?: ChatMessage[];
-}
-
-interface EntityContext {
-  type: string;
-  value: string;
-  context?: string;
-  source: string;
-  emailContent?: string;
+  sessionId?: string; // Optional: create new if not provided
 }
 
 /**
- * Generate embeddings for a query
- * Uses text-embedding-3-small model (1536 dimensions)
+ * Convert MCP tools to OpenAI tool format
  */
-async function generateEmbedding(text: string): Promise<number[]> {
-  const response = await fetch('https://api.openai.com/v1/embeddings', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+function convertMCPToolsToOpenAI(mcpTools: MCPTool[]): Tool[] {
+  return mcpTools.map((tool) => ({
+    type: 'function' as const,
+    function: {
+      name: `${tool.serverId}__${tool.name}`,
+      description: tool.description || '',
+      parameters: tool.inputSchema,
     },
-    body: JSON.stringify({
-      model: 'text-embedding-3-small',
-      input: text,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to generate embedding');
-  }
-
-  const data = await response.json();
-  return data.data[0].embedding;
+  }));
 }
 
 /**
- * Search for relevant entities using semantic search
+ * Execute an MCP tool
  */
-async function searchEntities(
-  userId: string,
-  query: string,
-  limit: number = 20
-): Promise<EntityContext[]> {
+async function executeMCPTool(
+  toolName: string,
+  args: Record<string, unknown>
+): Promise<{ success: boolean; result?: unknown; error?: string }> {
+  const mcpManager = getMCPClientManager();
+
   try {
-    // Generate embedding for query
-    const embedding = await generateEmbedding(query);
-
-    // Search similar memory entries
-    const results = await vectorOps.searchSimilar(embedding, {
-      userId,
-      limit,
-      threshold: 0.6, // Lower threshold for broader matches
-      excludeDeleted: true,
-    });
-
-    console.log(`${LOG_PREFIX} Found ${results.length} relevant memories`);
-
-    // Extract entities from memory entries
-    const entities: EntityContext[] = [];
-
-    for (const result of results) {
-      const metadata = result.metadata as any;
-      const extractedEntities = metadata?.entities || [];
-
-      for (const entity of extractedEntities) {
-        entities.push({
-          type: entity.type,
-          value: entity.value,
-          context: entity.context,
-          source: entity.source,
-          emailContent: result.content.substring(0, 300), // Truncate for context
-        });
-      }
+    // Parse serverId and toolName from format: serverId__toolName
+    const parts = toolName.split('__');
+    if (parts.length !== 2) {
+      throw new Error(`Invalid tool name format: ${toolName}`);
     }
 
-    // Deduplicate entities by value
-    const uniqueEntities = Array.from(
-      new Map(entities.map((e) => [e.value, e])).values()
-    );
+    const [serverId, actualToolName] = parts;
 
-    console.log(`${LOG_PREFIX} Extracted ${uniqueEntities.length} unique entities`);
+    console.log(`${LOG_PREFIX} Executing MCP tool: ${actualToolName} on server ${serverId}`);
 
-    return uniqueEntities;
+    const result = await mcpManager.executeTool(serverId, actualToolName, args);
+
+    return {
+      success: true,
+      result,
+    };
   } catch (error) {
-    console.error(`${LOG_PREFIX} Search error:`, error);
-    return [];
+    console.error(`${LOG_PREFIX} MCP tool execution failed:`, error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
   }
 }
 
 /**
- * Build context prompt with relevant entities
+ * Execute a tool (either MCP or native chat tool)
  */
-function buildContextPrompt(entities: EntityContext[], query: string): string {
-  if (entities.length === 0) {
-    return `You are a helpful assistant that answers questions about the user's emails, calendar, and tasks.
-
-User query: ${query}
-
-Note: No relevant context found. Provide a helpful response based on general knowledge, or suggest what information would help answer the question.`;
-  }
-
-  // Group entities by type
-  const entitiesByType: Record<string, EntityContext[]> = {};
-  entities.forEach((entity) => {
-    if (!entitiesByType[entity.type]) {
-      entitiesByType[entity.type] = [];
+async function executeTool(
+  toolName: string,
+  args: Record<string, unknown>,
+  userId: string
+): Promise<{ success: boolean; result?: unknown; error?: string }> {
+  try {
+    // Check if it's an MCP tool (has __ separator)
+    if (toolName.includes('__')) {
+      return await executeMCPTool(toolName, args);
     }
-    entitiesByType[entity.type].push(entity);
-  });
 
-  // Build context sections
-  const contextSections: string[] = [];
+    // Otherwise, it's a native chat tool
+    console.log(`${LOG_PREFIX} Executing native chat tool: ${toolName}`);
+    const result = await executeChatTool(toolName as any, args, userId);
 
-  Object.entries(entitiesByType).forEach(([type, typeEntities]) => {
-    const entityList = typeEntities
-      .slice(0, 10) // Limit per type
-      .map((e) => `  - ${e.value}${e.context ? ` (${e.context})` : ''}`)
-      .join('\n');
-
-    contextSections.push(`${type.toUpperCase()}:\n${entityList}`);
-  });
-
-  return `You are a helpful assistant that answers questions about the user's emails, calendar, and tasks.
-
-Based on the user's data, here are relevant entities:
-
-${contextSections.join('\n\n')}
-
-User query: ${query}
-
-Provide a helpful, conversational response based on the context above. Include specific names, companies, or details when relevant. If you mention entities, be natural and don't just list them.`;
+    return {
+      success: true,
+      result,
+    };
+  } catch (error) {
+    console.error(`${LOG_PREFIX} Tool execution failed:`, error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
 }
 
 /**
  * POST /api/chat
- * Handle chat messages with streaming response
+ * Handle chat messages with session management and streaming response
  */
 export async function POST(request: NextRequest) {
   try {
     // Require authentication
-    const session = await requireAuth(request);
-    const userId = session.user.id;
+    const authSession = await requireAuth(request);
+    const userId = authSession.user.id;
+    const userName = authSession.user.name || 'there';
 
     // Parse request body
     const body: ChatRequest = await request.json();
-    const { message, history = [] } = body;
+    const { message, sessionId } = body;
 
     if (!message || message.trim().length === 0) {
-      return NextResponse.json(
-        { error: 'Message is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Message is required' }, { status: 400 });
     }
 
-    console.log(`${LOG_PREFIX} User ${userId} asked: "${message}"`);
+    console.log(`${LOG_PREFIX} User ${userId} sent message (session: ${sessionId || 'new'})`);
 
-    // Search for relevant entities
-    const entities = await searchEntities(userId, message);
+    // Get or create session
+    const sessionManager = getSessionManager();
+    const chatSession = await sessionManager.getOrCreateSession(userId, sessionId);
 
-    // Build context prompt
-    const contextPrompt = buildContextPrompt(entities, message);
+    // Generate title for new sessions
+    if (!chatSession.title && chatSession.messageCount === 0) {
+      chatSession.title = await sessionManager.generateTitle(message);
+    }
 
-    // Build messages for AI
-    const messages: ChatMessage[] = [
-      {
-        role: 'system',
-        content: contextPrompt,
-      },
-      ...history,
-      {
-        role: 'user',
-        content: message,
-      },
-    ];
+    // Retrieve relevant context (entities + memories) from Weaviate
+    const context = await retrieveContext(userId, message, undefined, {
+      maxEntities: 10,
+      maxMemories: 10,
+      minMemoryStrength: 0.3,
+    });
+
+    console.log(
+      `${LOG_PREFIX} Retrieved context: ${context.entities.length} entities, ${context.memories.length} memories`
+    );
+
+    // Format entity context for prompt
+    const entityContext = formatContextForPrompt(context);
+
+    // Get self-awareness context
+    const selfAwareness = await getSelfAwarenessContext(userId);
+    const selfAwarenessPrompt = formatSelfAwarenessForPrompt(selfAwareness);
+
+    // Build system prompt with response format instructions
+    const systemPrompt = `You are Izzie, ${userName}'s personal AI assistant. You have access to ${userName}'s emails, calendar, and previous conversations.
+
+${selfAwarenessPrompt}
+
+${RESPONSE_FORMAT_INSTRUCTION}
+
+**Instructions:**
+- Address ${userName} by name when appropriate (not every message, but naturally)
+- When you see a person's name with a nickname in parentheses like "Robert (Masa) Matsuoka", use their nickname (Masa) when addressing them - it's more personal
+- Use the context provided to give personalized, relevant responses
+- Reference specific people, companies, projects, and memories when helpful
+- Be conversational, warm, and natural - you're ${userName}'s trusted assistant
+- When asked about yourself, your capabilities, or your architecture, explain accurately using your self-awareness context
+- Update the currentTask field appropriately:
+  - Set to null if ${userName} is just chatting/asking questions
+  - Create/update when ${userName} has a specific task or goal
+  - Track progress, blockers, and next steps
+- When ${userName} shares a preference, fact, or correction about themselves, include it in memoriesToSave:
+  - Name preferences are HIGH importance (0.9)
+  - General preferences are MEDIUM importance (0.7)
+  - Facts about their life are MEDIUM importance (0.6)
+- Weave context into your response naturally`;
+
+    // Build complete message context using session manager
+    const messages = sessionManager.buildContext(
+      chatSession,
+      systemPrompt,
+      entityContext,
+      message
+    );
 
     // Get AI client
     const aiClient = getAIClient();
+
+    // Get available tools (both MCP and native chat tools)
+    const mcpManager = getMCPClientManager();
+    const mcpTools = mcpManager.getAllTools();
+    const mcpToolDefs = mcpTools.length > 0 ? convertMCPToolsToOpenAI(mcpTools) : [];
+    const chatToolDefs = getChatToolDefinitions();
+    const tools = [...mcpToolDefs, ...chatToolDefs];
+
+    if (tools.length > 0) {
+      console.log(
+        `${LOG_PREFIX} ${tools.length} tools available (${mcpToolDefs.length} MCP, ${chatToolDefs.length} native)`
+      );
+    }
+
+    // Refresh accessed memories (slows decay for frequently used context)
+    if (context.memories.length > 0) {
+      const topMemories = context.memories.slice(0, 5);
+      await Promise.all(topMemories.map((m) => refreshMemoryAccess(m.id)));
+      console.log(`${LOG_PREFIX} Refreshed ${topMemories.length} memory access timestamps`);
+    }
 
     // Create streaming response
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
         try {
-          // Stream response from AI
-          for await (const chunk of aiClient.streamChat(messages, {
-            model: MODELS.GENERAL,
-            temperature: 0.7,
-            maxTokens: 2000,
-          })) {
-            // Send chunk as SSE
-            const data = JSON.stringify({
-              delta: chunk.delta,
-              content: chunk.content,
-              done: chunk.done,
-              entities: entities.slice(0, 10), // Include top entities for reference
-            });
+          let conversationMessages = [...messages];
+          let fullContent = '';
+          const MAX_TOOL_ITERATIONS = 5;
+          let toolIterations = 0;
 
-            controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+          // Tool execution loop
+          while (toolIterations < MAX_TOOL_ITERATIONS) {
+            // Use non-streaming API when tools are available to detect tool calls
+            if (tools && tools.length > 0) {
+              const response = await aiClient.chat(conversationMessages, {
+                model: MODELS.GENERAL,
+                temperature: 0.7,
+                maxTokens: 2000,
+                tools,
+                tool_choice: 'auto',
+              });
 
-            if (chunk.done) {
-              controller.close();
+              fullContent = response.content;
+              const toolCalls = response.tool_calls;
+
+              // If model wants to use tools, execute them and continue
+              if (toolCalls && toolCalls.length > 0) {
+                console.log(`${LOG_PREFIX} Model requested ${toolCalls.length} tool calls`);
+
+                // Add assistant message with tool calls to conversation
+                conversationMessages.push({
+                  role: 'assistant',
+                  content: fullContent,
+                  tool_calls: toolCalls,
+                });
+
+                // Execute each tool and add results
+                for (const toolCall of toolCalls) {
+                  const toolName = toolCall.function.name;
+                  const toolArgs = JSON.parse(toolCall.function.arguments);
+
+                  console.log(`${LOG_PREFIX} Executing tool: ${toolName}`);
+
+                  // Send tool execution notification to client
+                  const toolNotification = JSON.stringify({
+                    type: 'tool_execution',
+                    tool: toolName,
+                    status: 'executing',
+                  });
+                  controller.enqueue(encoder.encode(`data: ${toolNotification}\n\n`));
+
+                  const result = await executeTool(toolName, toolArgs, userId);
+
+                  // Add tool result to conversation
+                  conversationMessages.push({
+                    role: 'tool',
+                    content: JSON.stringify(result),
+                    tool_call_id: toolCall.id,
+                    name: toolName,
+                  });
+
+                  // Send tool result notification
+                  const toolResult = JSON.stringify({
+                    type: 'tool_result',
+                    tool: toolName,
+                    success: result.success,
+                  });
+                  controller.enqueue(encoder.encode(`data: ${toolResult}\n\n`));
+                }
+
+                toolIterations++;
+                continue; // Continue loop to get model's response with tool results
+              }
+
+              // No tool calls, this is the final response
+              break;
             }
+
+            // No tools available, use streaming
+            for await (const chunk of aiClient.streamChat(conversationMessages, {
+              model: MODELS.GENERAL,
+              temperature: 0.7,
+              maxTokens: 2000,
+            })) {
+              fullContent = chunk.content;
+
+              // Send chunk as SSE
+              const data = JSON.stringify({
+                delta: chunk.delta,
+                content: chunk.content,
+                done: chunk.done,
+                sessionId: chatSession.id,
+                context: {
+                  entities: context.entities.slice(0, 5),
+                  memories: context.memories.slice(0, 5),
+                },
+              });
+
+              controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+
+              if (chunk.done) {
+                break;
+              }
+            }
+            break; // Exit tool loop after streaming
           }
+
+          // Process final response
+          if (fullContent) {
+              // Parse structured response
+              let structuredResponse: StructuredLLMResponse;
+
+              try {
+                // Strip markdown code blocks if present
+                let jsonContent = fullContent;
+                const jsonMatch = fullContent.match(/```(?:json)?\s*([\s\S]*?)```/);
+                if (jsonMatch) {
+                  jsonContent = jsonMatch[1].trim();
+                }
+
+                // Try to parse as JSON first (if LLM followed instructions)
+                const parsed = JSON.parse(jsonContent);
+                structuredResponse = {
+                  response: parsed.response || fullContent,
+                  currentTask: parsed.currentTask || null,
+                  memoriesToSave: parsed.memoriesToSave,
+                };
+              } catch {
+                // Fallback: treat entire response as conversational response
+                console.log(`${LOG_PREFIX} LLM did not return JSON, using full content`);
+                structuredResponse = {
+                  response: fullContent,
+                  currentTask: null, // No task tracking if not structured
+                };
+              }
+
+              // Save any memories from the response
+              if (structuredResponse.memoriesToSave && structuredResponse.memoriesToSave.length > 0) {
+                const { saveMemory } = await import('@/lib/memory/storage');
+
+                for (const mem of structuredResponse.memoriesToSave) {
+                  try {
+                    await saveMemory({
+                      userId,
+                      category: mem.category,
+                      content: mem.content,
+                      importance: mem.importance,
+                      sourceType: 'chat',
+                      sourceId: chatSession.id,
+                      context: mem.context,
+                      sourceDate: new Date(),
+                    });
+                    console.log(`${LOG_PREFIX} Saved memory: ${mem.content.substring(0, 50)}...`);
+                  } catch (error) {
+                    console.error(`${LOG_PREFIX} Failed to save memory:`, error);
+                  }
+                }
+              }
+
+              // Process response and update session
+              const updatedSession = await sessionManager.processResponse(
+                chatSession,
+                message,
+                structuredResponse,
+                {
+                  model: MODELS.GENERAL,
+                }
+              );
+
+              // Send final metadata
+              const metaData = JSON.stringify({
+                type: 'metadata',
+                sessionId: updatedSession.id,
+                title: updatedSession.title,
+                messageCount: updatedSession.messageCount,
+                hasCurrentTask: !!updatedSession.currentTask,
+                compressionActive: !!updatedSession.compressedHistory,
+              });
+
+              controller.enqueue(encoder.encode(`data: ${metaData}\n\n`));
+          }
+
+          controller.close();
         } catch (error) {
           console.error(`${LOG_PREFIX} Stream error:`, error);
           const errorData = JSON.stringify({

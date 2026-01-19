@@ -19,25 +19,35 @@ import type {
 } from './types';
 import { DEFAULT_EXTRACTION_CONFIG } from './types';
 import { buildExtractionPrompt, buildCalendarExtractionPrompt } from './prompts';
+import type { UserIdentity } from './user-identity';
 
 const LOG_PREFIX = '[Extraction]';
 
 export class EntityExtractor {
   private config: ExtractionConfig;
   private client = getAIClient();
+  private userIdentity?: UserIdentity;
 
-  constructor(config?: Partial<ExtractionConfig>) {
+  constructor(config?: Partial<ExtractionConfig>, userIdentity?: UserIdentity) {
     this.config = {
       ...DEFAULT_EXTRACTION_CONFIG,
       ...config,
     };
+    this.userIdentity = userIdentity;
+  }
+
+  /**
+   * Set user identity for extraction context
+   */
+  setUserIdentity(userIdentity: UserIdentity) {
+    this.userIdentity = userIdentity;
   }
 
   /**
    * Extract entities from a single email
    */
   async extractFromEmail(email: Email): Promise<ExtractionResult> {
-    const prompt = buildExtractionPrompt(email, this.config);
+    const prompt = buildExtractionPrompt(email, this.config, this.userIdentity);
 
     try {
       // Use Mistral Small (cheap tier) for extraction
@@ -423,9 +433,12 @@ export class EntityExtractor {
  */
 let extractorInstance: EntityExtractor | null = null;
 
-export function getEntityExtractor(config?: Partial<ExtractionConfig>): EntityExtractor {
-  if (!extractorInstance || config) {
-    extractorInstance = new EntityExtractor(config);
+export function getEntityExtractor(
+  config?: Partial<ExtractionConfig>,
+  userIdentity?: UserIdentity
+): EntityExtractor {
+  if (!extractorInstance || config || userIdentity) {
+    extractorInstance = new EntityExtractor(config, userIdentity);
   }
   return extractorInstance;
 }

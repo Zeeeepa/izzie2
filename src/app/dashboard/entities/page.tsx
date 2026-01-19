@@ -23,6 +23,7 @@ interface Entity {
   emailContent: string;
   emailSummary?: string;
   createdAt: Date;
+  occurrences?: number;
 }
 
 interface EntityResponse {
@@ -81,9 +82,11 @@ export default function EntitiesPage() {
     try {
       const params = new URLSearchParams();
       if (type) params.set('type', type);
-      params.set('limit', '100');
+      params.set('limit', '1000');
 
-      const response = await fetch(`/api/entities?${params}`);
+      const response = await fetch(`/api/entities?${params}`, {
+        credentials: 'include'
+      });
       if (response.ok) {
         const data: EntityResponse = await response.json();
         setEntities(data.entities);

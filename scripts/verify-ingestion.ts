@@ -1,4 +1,3 @@
-#!/usr/bin/env tsx
 /**
  * Ingestion Pipeline Verification Script
  * Checks that all components are properly configured

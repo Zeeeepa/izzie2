@@ -226,6 +226,117 @@ export const EntitiesExtractedSchema = z.object({
 export type EntitiesExtractedPayload = z.infer<typeof EntitiesExtractedSchema>;
 
 /**
+ * Research agent event schemas
+ * For POC-8 Research Agent Framework
+ */
+
+/**
+ * Research request schema
+ * Emitted when a research task is requested
+ */
+export const ResearchRequestSchema = z.object({
+  taskId: z.string(),
+  query: z.string(),
+  options: z.object({
+    maxSources: z.number().optional(),
+    maxDepth: z.number().optional(),
+    timeoutMs: z.number().optional(),
+    includeTypes: z.array(z.enum(['html', 'pdf', 'docs'])).optional(),
+    excludeDomains: z.array(z.string()).optional(),
+  }).optional(),
+});
+
+export type ResearchRequestPayload = z.infer<typeof ResearchRequestSchema>;
+
+/**
+ * Research started schema
+ */
+export const ResearchStartedSchema = z.object({
+  taskId: z.string(),
+});
+
+export type ResearchStartedPayload = z.infer<typeof ResearchStartedSchema>;
+
+/**
+ * Research progress schema
+ */
+export const ResearchProgressSchema = z.object({
+  taskId: z.string(),
+  progress: z.number().min(0).max(100),
+  step: z.string(),
+});
+
+export type ResearchProgressPayload = z.infer<typeof ResearchProgressSchema>;
+
+/**
+ * Research completed schema
+ */
+export const ResearchCompletedSchema = z.object({
+  taskId: z.string(),
+  resultId: z.string(),
+});
+
+export type ResearchCompletedPayload = z.infer<typeof ResearchCompletedSchema>;
+
+/**
+ * Research failed schema
+ */
+export const ResearchFailedSchema = z.object({
+  taskId: z.string(),
+  error: z.string(),
+});
+
+export type ResearchFailedPayload = z.infer<typeof ResearchFailedSchema>;
+
+/**
+ * Research sub-task events
+ */
+
+/**
+ * Research search schema
+ * Emitted when a search query needs to be executed
+ */
+export const ResearchSearchSchema = z.object({
+  taskId: z.string(),
+  query: z.string(),
+});
+
+export type ResearchSearchPayload = z.infer<typeof ResearchSearchSchema>;
+
+/**
+ * Research fetch schema
+ * Emitted when a source URL needs to be fetched
+ */
+export const ResearchFetchSchema = z.object({
+  taskId: z.string(),
+  sourceId: z.string(),
+  url: z.string(),
+});
+
+export type ResearchFetchPayload = z.infer<typeof ResearchFetchSchema>;
+
+/**
+ * Research analyze schema
+ * Emitted when a source needs to be analyzed for findings
+ */
+export const ResearchAnalyzeSchema = z.object({
+  taskId: z.string(),
+  sourceId: z.string(),
+});
+
+export type ResearchAnalyzePayload = z.infer<typeof ResearchAnalyzeSchema>;
+
+/**
+ * Research synthesize schema
+ * Emitted when findings need to be synthesized into a final result
+ */
+export const ResearchSynthesizeSchema = z.object({
+  taskId: z.string(),
+});
+
+export type ResearchSynthesizePayload = z.infer<typeof ResearchSynthesizeSchema>;
+
+/**
  * Inngest Events Type Definition
  * Maps event names to their data payloads
  */
@@ -260,6 +371,34 @@ export type Events = {
   'izzie/ingestion.entities.extracted': {
     data: EntitiesExtractedPayload;
   };
+  // Research agent events
+  'izzie/research.request': {
+    data: ResearchRequestPayload;
+  };
+  'izzie/research.started': {
+    data: ResearchStartedPayload;
+  };
+  'izzie/research.progress': {
+    data: ResearchProgressPayload;
+  };
+  'izzie/research.completed': {
+    data: ResearchCompletedPayload;
+  };
+  'izzie/research.failed': {
+    data: ResearchFailedPayload;
+  };
+  'izzie/research.search': {
+    data: ResearchSearchPayload;
+  };
+  'izzie/research.fetch': {
+    data: ResearchFetchPayload;
+  };
+  'izzie/research.analyze': {
+    data: ResearchAnalyzePayload;
+  };
+  'izzie/research.synthesize': {
+    data: ResearchSynthesizePayload;
+  };
 };
 
 /**
@@ -280,6 +419,15 @@ export function validateEventData<T extends keyof Events>(
     'izzie/ingestion.task.extracted': TaskContentExtractedSchema,
     'izzie/ingestion.calendar.extracted': CalendarEventExtractedSchema,
     'izzie/ingestion.entities.extracted': EntitiesExtractedSchema,
+    'izzie/research.request': ResearchRequestSchema,
+    'izzie/research.started': ResearchStartedSchema,
+    'izzie/research.progress': ResearchProgressSchema,
+    'izzie/research.completed': ResearchCompletedSchema,
+    'izzie/research.failed': ResearchFailedSchema,
+    'izzie/research.search': ResearchSearchSchema,
+    'izzie/research.fetch': ResearchFetchSchema,
+    'izzie/research.analyze': ResearchAnalyzeSchema,
+    'izzie/research.synthesize': ResearchSynthesizeSchema,
   };
 
   const schema = schemas[eventName];

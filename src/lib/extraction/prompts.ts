@@ -7,11 +7,16 @@
 
 import type { Email, CalendarEvent } from '../google/types';
 import type { ExtractionConfig } from './types';
+import type { UserIdentity } from './user-identity';
 
 /**
- * Build extraction prompt for Mistral
+ * Build extraction prompt for Mistral with user identity context
  */
-export function buildExtractionPrompt(email: Email, config: ExtractionConfig): string {
+export function buildExtractionPrompt(
+  email: Email,
+  config: ExtractionConfig,
+  userIdentity?: UserIdentity
+): string {
   const sources: string[] = [];
 
   if (config.extractFromMetadata) {
@@ -30,23 +35,44 @@ export function buildExtractionPrompt(email: Email, config: ExtractionConfig): s
     sources.push(`**Body:**\n${email.body}`);
   }
 
+  // User identity context (if available)
+  const userContext = userIdentity
+    ? `
+**USER IDENTITY CONTEXT:**
+- Current user name: ${userIdentity.primaryName}
+- Current user email: ${userIdentity.primaryEmail}
+- User aliases: ${userIdentity.aliases.slice(0, 5).join(', ')}${userIdentity.aliases.length > 5 ? '...' : ''}
+
+**IMPORTANT:**
+- If you see "${userIdentity.primaryName}" in From/To/CC, this is the CURRENT USER (mark with high confidence)
+- DO NOT extract the current user's name from emails they sent (From field when isSent=true)
+- DO extract recipients of sent emails (To/CC) - these are people the user communicates with
+`
+    : '';
+
   // Context-aware person extraction: restrict to metadata only
   const personExtractionRule = email.isSent
     ? '1. **person** - People\'s names (ONLY from To/CC recipient lists - people you sent this email to)'
     : '1. **person** - People\'s names (ONLY from From/To/CC metadata - NOT from email body text)';
 
   return `Extract structured entities and classify spam from this email.
-
+${userContext}
 ${sources.join('\n')}
 
 **Entity Types to Extract:**
 ${personExtractionRule}
 2. **company** - Organizations and companies (from metadata, subject, and body)
-3. **project** - Project names and references (from metadata, subject, and body)
+3. **project** - SPECIFIC project names with proper nouns (e.g., "claude-mpm", "Issue #24", "Q4 Migration")
+   - Must be a NAMED project or initiative, not a generic task/feature
+   - Examples: GitHub repo names, issue numbers, codenames, initiative names
+   - DO NOT extract: generic tasks ("database optimization"), features ("email parsing"), technical terms ("sandbox cluster")
 4. **date** - Important dates and deadlines (from metadata, subject, and body)
 5. **topic** - Subject areas and themes (from metadata, subject, and body)
 6. **location** - Geographic locations (from metadata, subject, and body)
-7. **action_item** - Tasks, todos, and action items (from subject and body)
+7. **action_item** - ACTIONABLE tasks with clear context (from subject and body)
+   - Must include what needs to be done AND at least one of: who/when/priority
+   - Extract ONLY if you can identify specific action + (assignee OR deadline OR priority)
+   - DO NOT extract vague items like "check status", "follow up", "review changes" without context
 
 **Spam Classification:**
 Classify if this email is spam/promotional/low-value based on:
@@ -66,17 +92,29 @@ Classify if this email is spam/promotional/low-value based on:
 - For action_item: extract assignee, deadline, and priority if mentioned
 - Classify spam with score 0-1 (0=definitely not spam, 1=definitely spam)
 
-**CRITICAL PERSON vs COMPANY RULES:**
-1. DO NOT extract person entities from email body text - ONLY from To/CC/From headers
-2. Email addresses are NOT person names (e.g., "bob@example.com" is not a person entity)
-3. Company indicators - these are COMPANIES, not people:
-   - "Support from [X]" → X is a company
-   - "[X] Team" or "Team at [X]" → X is a company
-   - "[X] Notifications" or "[X] Support" → X is a company
-   - Known company names (Reddit, Apple, Google, Microsoft, Meta, etc.)
-   - From field with company domain (e.g., "notifications@company.com" → company is company)
-4. Only extract ACTUAL HUMAN NAMES as person entities
-5. When in doubt between person/company, choose company
+**PERSON EXTRACTION (STRICT RULES):**
+1. ONLY extract from To/CC/From headers - NEVER from email body
+2. ONLY extract HUMAN NAMES in "Firstname Lastname" format (e.g., "John Doe", "Sarah Smith")
+3. DO NOT extract the current user's own name from emails they sent (check isSent flag and user context)
+4. DO NOT extract:
+   - Email addresses (e.g., "bob@company.com")
+   - Company/brand names (e.g., "Reddit Notifications", "Apple Support", "Hastings-on-Hudson Safety Posts")
+   - Group names (e.g., "Safety Posts", "Team Updates", "Trending Posts")
+   - Names with indicators: "from X", "X Team", "X Support", "X Notifications", "X Posts"
+5. If From field contains BOTH a person AND company (e.g., "John Doe from Acme Corp"):
+   - Extract person: "John Doe" (unless it's the current user)
+   - Extract company: "Acme Corp"
+6. When in doubt between person/company, choose COMPANY
+
+**COMPANY EXTRACTION (STRICT RULES):**
+1. Extract from metadata, subject, and body
+2. Company indicators (extract as COMPANY, not person):
+   - Pattern: "[Company] Notifications", "[Company] Support", "[Company] Team", "[Company] Posts"
+   - Pattern: "Support from [Company]", "Team at [Company]"
+   - Well-known companies: Reddit, Apple, Google, Microsoft, Meta, GitHub, LinkedIn, Facebook
+   - From field with brand/service name (e.g., "notifications@reddit.com" → company: Reddit)
+   - Group/page names: "[Name] Safety Posts", "[Name] Trending Posts" → company
+3. When in doubt between person/company, choose COMPANY
 
 **Examples:**
 - "Support from Flume" → company: Flume

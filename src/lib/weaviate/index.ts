@@ -5,7 +5,7 @@
  */
 
 export { getWeaviateClient, closeWeaviateClient, isWeaviateReady } from './client';
-export { initializeSchema, deleteAllCollections, COLLECTIONS } from './schema';
+export { initializeSchema, deleteAllCollections, COLLECTIONS, RELATIONSHIP_COLLECTION } from './schema';
 export {
   saveEntities,
   searchEntities,
@@ -13,3 +13,20 @@ export {
   deleteEntitiesBySource,
   getEntityStats,
 } from './entities';
+export {
+  saveRelationships,
+  getEntityRelationships,
+  getAllRelationships,
+  buildRelationshipGraph,
+  getRelationshipStats,
+  deleteRelationshipsBySource,
+} from './relationships';
+export {
+  initResearchFindingSchema,
+  saveFinding,
+  saveFindings,
+  searchFindings,
+  getFindingsByTask,
+  deleteFindingsByTask,
+  RESEARCH_FINDING_COLLECTION,
+} from './research-findings';

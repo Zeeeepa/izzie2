@@ -1,0 +1,45 @@
+====================================================
+QUICKEST WAY TO EXTRACT EMAILS - COPY & PASTE
+====================================================
+
+STEP 1: Open Browser
+--------------------
+Go to: http://localhost:3300
+Make sure you're logged in (signed in with Google)
+
+
+STEP 2: Open Console
+--------------------
+Press F12 (or Cmd+Option+I on Mac)
+Click the "Console" tab
+
+
+STEP 3: Paste and Run This
+---------------------------
+await fetch('http://localhost:3300/trigger-sync.js').then(r => r.text()).then(code => eval(code));
+
+
+STEP 4: Start Extraction
+-------------------------
+triggerSync()
+
+
+DONE! Watch console for progress updates.
+====================================================
+
+OPTIONS:
+--------
+triggerSync({ maxResults: 5 })                    - Test with 5 emails
+triggerSync({ folder: 'inbox', maxResults: 50 })  - 50 inbox emails
+triggerSync({ folder: 'all', maxResults: 200 })   - 200 from all folders
+checkSyncStatus()                                  - Check status anytime
+
+TROUBLESHOOTING:
+----------------
+"Unauthorized" → Log in at http://localhost:3300
+"No Google account" → Sign out and sign in with Google OAuth
+Script won't load → Use trigger-user-sync.html instead
+
+MORE HELP:
+----------
+See START-HERE.md for detailed instructions

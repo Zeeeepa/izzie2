@@ -5,7 +5,7 @@
 
 import { inngest } from '../index';
 import { getDriveService, DriveService } from '@/lib/google/drive';
-import { getAuth } from '@/lib/google/auth';
+import { getServiceAccountAuth } from '@/lib/google/auth';
 import { getSyncState, updateSyncState, incrementProcessedCount, recordSyncError } from '@/lib/ingestion/sync-state';
 import type { DriveContentExtractedPayload } from '../types';
 
@@ -49,7 +49,7 @@ export const ingestDrive = inngest.createFunction(
 
     // Step 2: Get Drive service
     const driveService = await step.run('get-drive-service', async () => {
-      const auth = await getAuth(userId);
+      const auth = await getServiceAccountAuth(userId);
       const service = await getDriveService(auth);
       return service;
     });

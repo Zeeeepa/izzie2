@@ -4,9 +4,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { google } from 'googleapis';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth';
+import { fetchAllTasks } from '@/lib/google/tasks';
 import { inngest } from '@/lib/events';
 import type { TaskContentExtractedPayload } from '@/lib/events/types';
 
@@ -40,32 +39,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get authenticated user session
-    const session = await getServerSession(authOptions);
-
-    if (!session?.accessToken) {
-      return NextResponse.json(
-        { error: 'Not authenticated. Please sign in first.' },
-        { status: 401 }
-      );
-    }
+    // Require authentication
+    const session = await requireAuth(request);
+    const userId = session.user.id;
+    const userEmail = session.user.email || 'unknown';
 
     // Parse request body
     const body = await request.json().catch(() => ({}));
-    const {
-      maxResults = 100,
-      showCompleted = true,
-      showHidden = false,
-    } = body;
+    const { maxTasksPerList = 100, showCompleted = true, showHidden = false } = body;
 
     // Start sync (don't await - run in background)
-    startSync(
-      session.accessToken,
-      session.user?.email || 'default',
-      maxResults,
-      showCompleted,
-      showHidden
-    ).catch((error) => {
+    startSync(userId, userEmail, maxTasksPerList, showCompleted, showHidden).catch((error) => {
       console.error('[Tasks Sync] Background sync failed:', error);
       syncStatus.isRunning = false;
       syncStatus.error = error.message;
@@ -98,9 +82,9 @@ export async function GET() {
  * Background sync function
  */
 async function startSync(
-  accessToken: string,
+  userId: string,
   userEmail: string,
-  maxResults: number,
+  maxTasksPerList: number,
   showCompleted: boolean,
   showHidden: boolean
 ): Promise<void> {
@@ -112,92 +96,20 @@ async function startSync(
   };
 
   try {
-    // Initialize OAuth2 client with user's access token
-    const oauth2Client = new google.auth.OAuth2();
-    oauth2Client.setCredentials({ access_token: accessToken });
+    console.log('[Tasks Sync] Fetching all tasks for user:', userId);
 
-    // Initialize Tasks API
-    const tasks = google.tasks({ version: 'v1', auth: oauth2Client });
-
-    console.log('[Tasks Sync] Fetching task lists...');
-
-    // Get all task lists
-    const taskListsResponse = await tasks.tasklists.list({
-      maxResults: 100,
+    // Fetch all tasks from all task lists
+    const allTasks = await fetchAllTasks(userId, {
+      maxTasksPerList,
+      showCompleted,
+      showHidden,
     });
 
-    const taskLists = taskListsResponse.data.items || [];
-    console.log(`[Tasks Sync] Found ${taskLists.length} task lists`);
-
-    let totalProcessed = 0;
-    const allTasks: Array<{
-      id: string;
-      title: string;
-      notes?: string | null;
-      due?: string | null;
-      status: string;
-      listId: string;
-      listTitle: string;
-      updated?: string | null;
-      completed?: string | null;
-      parent?: string | null;
-    }> = [];
-
-    // Fetch tasks from each list
-    for (const list of taskLists) {
-      if (!list.id || !list.title) continue;
-
-      console.log(`[Tasks Sync] Fetching tasks from list: ${list.title}`);
-
-      try {
-        const tasksResponse = await tasks.tasks.list({
-          tasklist: list.id,
-          maxResults: Math.min(maxResults - totalProcessed, 100),
-          showCompleted,
-          showHidden,
-        });
-
-        const taskItems = tasksResponse.data.items || [];
-
-        for (const task of taskItems) {
-          if (!task.id || !task.title) continue;
-
-          allTasks.push({
-            id: task.id,
-            title: task.title,
-            notes: task.notes,
-            due: task.due,
-            status: task.status || 'needsAction',
-            listId: list.id,
-            listTitle: list.title,
-            updated: task.updated,
-            completed: task.completed,
-            parent: task.parent,
-          });
-
-          totalProcessed++;
-
-          if (totalProcessed >= maxResults) {
-            break;
-          }
-        }
-
-        console.log(`[Tasks Sync] Found ${taskItems.length} tasks in ${list.title}`);
-      } catch (listError) {
-        console.error(`[Tasks Sync] Error fetching tasks from list ${list.title}:`, listError);
-        // Continue with other lists
-      }
-
-      if (totalProcessed >= maxResults) {
-        break;
-      }
-    }
-
-    syncStatus.tasksProcessed = totalProcessed;
+    syncStatus.tasksProcessed = allTasks.length;
 
     // Emit events for entity extraction (batch send for efficiency)
     if (allTasks.length > 0) {
-      const events = allTasks.map((task) => ({
+      const events = allTasks.map(({ task, taskListId, taskListTitle }) => ({
         name: 'izzie/ingestion.task.extracted' as const,
         data: {
           userId: userEmail,
@@ -206,8 +118,8 @@ async function startSync(
           notes: task.notes || '',
           due: task.due || undefined,
           status: task.status,
-          listId: task.listId,
-          listTitle: task.listTitle,
+          listId: taskListId,
+          listTitle: taskListTitle,
           updated: task.updated || undefined,
           completed: task.completed || undefined,
           parent: task.parent || undefined,
@@ -222,7 +134,7 @@ async function startSync(
     syncStatus.isRunning = false;
     syncStatus.lastSync = new Date();
     console.log(
-      `[Tasks Sync] Completed. Processed ${totalProcessed} tasks, sent ${syncStatus.eventsSent} events for extraction`
+      `[Tasks Sync] Completed. Processed ${allTasks.length} tasks, sent ${syncStatus.eventsSent} events for extraction`
     );
   } catch (error) {
     console.error('[Tasks Sync] Sync failed:', error);

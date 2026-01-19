@@ -540,6 +540,330 @@ export type ExtractionProgress = typeof extractionProgress.$inferSelect;
 export type NewExtractionProgress = typeof extractionProgress.$inferInsert;
 
 /**
+ * Chat Sessions table (POC-6)
+ * Tracks chat sessions with compression and current task management
+ */
+export const chatSessions = pgTable(
+  'chat_sessions',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    userId: text('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull(),
+    title: text('title'),
+
+    // Memory layers
+    currentTask: jsonb('current_task').$type<{
+      goal: string;
+      context: string;
+      blockers: string[];
+      progress: string;
+      nextSteps: string[];
+      updatedAt: string; // ISO timestamp
+    } | null>(),
+    compressedHistory: text('compressed_history'),
+    recentMessages: jsonb('recent_messages')
+      .$type<
+        Array<{
+          id: string;
+          role: 'user' | 'assistant';
+          content: string;
+          timestamp: string; // ISO timestamp
+          metadata?: {
+            tokensUsed?: number;
+            model?: string;
+          };
+        }>
+      >()
+      .default([])
+      .notNull(),
+    archivedMessages: jsonb('archived_messages').$type<
+      Array<{
+        id: string;
+        role: 'user' | 'assistant';
+        content: string;
+        timestamp: string;
+        metadata?: {
+          tokensUsed?: number;
+          model?: string;
+        };
+      }>
+    >(),
+
+    // Metadata
+    messageCount: integer('message_count').default(0).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    userIdIdx: index('chat_sessions_user_id_idx').on(table.userId),
+    createdAtIdx: index('chat_sessions_created_at_idx').on(table.createdAt),
+    updatedAtIdx: index('chat_sessions_updated_at_idx').on(table.updatedAt),
+  })
+);
+
+/**
+ * Type exports for chat sessions
+ */
+export type ChatSessionRecord = typeof chatSessions.$inferSelect;
+export type NewChatSessionRecord = typeof chatSessions.$inferInsert;
+
+/**
+ * MCP Server Configuration tables (POC-7)
+ * Stores user-configured MCP servers and tool permissions
+ */
+
+/**
+ * MCP Servers table - user-configured MCP servers
+ * Supports stdio, SSE, and HTTP transports
+ */
+export const mcpServers = pgTable(
+  'mcp_servers',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    userId: text('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull(),
+    name: text('name').notNull(),
+    description: text('description'),
+    transport: text('transport').notNull(), // 'stdio' | 'sse' | 'http'
+
+    // For stdio transport
+    command: text('command'),
+    args: jsonb('args').$type<string[]>(),
+    env: jsonb('env').$type<Record<string, string>>(),
+
+    // For SSE/HTTP transport
+    url: text('url'),
+    headers: jsonb('headers').$type<Record<string, string>>(),
+
+    enabled: boolean('enabled').default(true).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    userIdIdx: index('mcp_servers_user_id_idx').on(table.userId),
+    enabledIdx: index('mcp_servers_enabled_idx').on(table.enabled),
+  })
+);
+
+/**
+ * MCP Tool Permissions table - tracks "Always Allow" settings
+ * Enables user to auto-approve specific tool invocations
+ */
+export const mcpToolPermissions = pgTable(
+  'mcp_tool_permissions',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    userId: text('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull(),
+    serverId: text('server_id')
+      .references(() => mcpServers.id, { onDelete: 'cascade' })
+      .notNull(),
+    toolName: text('tool_name').notNull(),
+    alwaysAllow: boolean('always_allow').default(false).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    userIdIdx: index('mcp_tool_permissions_user_id_idx').on(table.userId),
+    serverIdIdx: index('mcp_tool_permissions_server_id_idx').on(table.serverId),
+    userServerToolUnique: index('mcp_tool_permissions_unique').on(
+      table.userId,
+      table.serverId,
+      table.toolName
+    ),
+  })
+);
+
+/**
+ * MCP Tool Audit Log table - tracks all MCP tool executions
+ * Provides observability and debugging for MCP operations
+ */
+export const mcpToolAuditLog = pgTable(
+  'mcp_tool_audit_log',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    userId: text('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull(),
+    serverId: text('server_id').notNull(),
+    toolName: text('tool_name').notNull(),
+    arguments: jsonb('arguments').$type<Record<string, unknown>>(),
+    result: jsonb('result').$type<unknown>(),
+    error: text('error'),
+    duration: integer('duration'), // milliseconds
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    userIdIdx: index('mcp_tool_audit_log_user_id_idx').on(table.userId),
+    serverIdIdx: index('mcp_tool_audit_log_server_id_idx').on(table.serverId),
+    toolNameIdx: index('mcp_tool_audit_log_tool_name_idx').on(table.toolName),
+    createdAtIdx: index('mcp_tool_audit_log_created_at_idx').on(table.createdAt),
+  })
+);
+
+/**
+ * Type exports for MCP tables
+ */
+export type McpServer = typeof mcpServers.$inferSelect;
+export type NewMcpServer = typeof mcpServers.$inferInsert;
+
+export type McpToolPermission = typeof mcpToolPermissions.$inferSelect;
+export type NewMcpToolPermission = typeof mcpToolPermissions.$inferInsert;
+
+export type McpToolAuditEntry = typeof mcpToolAuditLog.$inferSelect;
+export type NewMcpToolAuditEntry = typeof mcpToolAuditLog.$inferInsert;
+
+/**
+ * Agent Framework tables (POC-8 - Research Agent)
+ * Tracks agent tasks, research sources, and findings
+ */
+
+/**
+ * Agent Tasks table - tracks all agent executions
+ * Provides full lifecycle tracking with progress, costs, and budgets
+ */
+export const agentTasks = pgTable(
+  'agent_tasks',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    agentType: text('agent_type').notNull(), // 'research', 'classifier', 'scheduler', etc.
+    userId: text('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull(),
+    sessionId: text('session_id'), // Optional link to chat session
+
+    // Task status and execution
+    status: text('status').notNull().default('pending'), // 'pending' | 'running' | 'completed' | 'failed' | 'paused'
+    input: jsonb('input').$type<Record<string, unknown>>().notNull(),
+    output: jsonb('output').$type<Record<string, unknown>>(),
+    error: text('error'),
+
+    // Progress tracking
+    progress: integer('progress').default(0).notNull(), // 0-100
+    currentStep: text('current_step'),
+    stepsCompleted: integer('steps_completed').default(0).notNull(),
+    totalSteps: integer('total_steps').default(0).notNull(),
+
+    // Cost tracking
+    tokensUsed: integer('tokens_used').default(0).notNull(),
+    totalCost: integer('total_cost').default(0).notNull(), // Cost in cents
+    budgetLimit: integer('budget_limit'), // Budget limit in cents
+
+    // Hierarchy support (for sub-tasks)
+    parentTaskId: text('parent_task_id').references((): any => agentTasks.id, {
+      onDelete: 'cascade',
+    }),
+
+    // Timestamps
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    startedAt: timestamp('started_at'),
+    completedAt: timestamp('completed_at'),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    userIdIdx: index('agent_tasks_user_id_idx').on(table.userId),
+    agentTypeIdx: index('agent_tasks_agent_type_idx').on(table.agentType),
+    statusIdx: index('agent_tasks_status_idx').on(table.status),
+    sessionIdIdx: index('agent_tasks_session_id_idx').on(table.sessionId),
+    parentTaskIdIdx: index('agent_tasks_parent_task_id_idx').on(table.parentTaskId),
+    createdAtIdx: index('agent_tasks_created_at_idx').on(table.createdAt),
+  })
+);
+
+/**
+ * Research Sources table - tracks source URLs and content for research tasks
+ * Supports caching and credibility scoring
+ */
+export const researchSources = pgTable(
+  'research_sources',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    taskId: text('task_id')
+      .references(() => agentTasks.id, { onDelete: 'cascade' })
+      .notNull(),
+
+    // Source identification
+    url: text('url').notNull(),
+    title: text('title'),
+    content: text('content'),
+    contentType: text('content_type'), // 'html', 'pdf', 'json', etc.
+
+    // Scoring and quality
+    relevanceScore: integer('relevance_score'), // 0-100
+    credibilityScore: integer('credibility_score'), // 0-100
+
+    // Fetch status
+    fetchStatus: text('fetch_status').default('pending').notNull(), // 'pending' | 'fetched' | 'failed'
+    fetchError: text('fetch_error'),
+    fetchedAt: timestamp('fetched_at'),
+
+    // Cache TTL
+    expiresAt: timestamp('expires_at'), // For cache invalidation
+
+    // Timestamps
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    taskIdIdx: index('research_sources_task_id_idx').on(table.taskId),
+    urlIdx: index('research_sources_url_idx').on(table.url),
+    fetchStatusIdx: index('research_sources_fetch_status_idx').on(table.fetchStatus),
+    expiresAtIdx: index('research_sources_expires_at_idx').on(table.expiresAt),
+  })
+);
+
+/**
+ * Research Findings table - stores extracted claims and evidence
+ * Supports semantic search via embeddings
+ */
+export const researchFindings = pgTable(
+  'research_findings',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    taskId: text('task_id')
+      .references(() => agentTasks.id, { onDelete: 'cascade' })
+      .notNull(),
+    sourceId: text('source_id').references(() => researchSources.id, {
+      onDelete: 'set null',
+    }),
+
+    // Finding content
+    claim: text('claim').notNull(),
+    evidence: text('evidence'),
+    confidence: integer('confidence').notNull(), // 0-100
+    citation: text('citation'), // Formatted citation
+    quote: text('quote'), // Direct quote from source
+
+    // Semantic search support (1536 dimensions for text-embedding-3-small)
+    embedding: vector('embedding'),
+
+    // Timestamp
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    taskIdIdx: index('research_findings_task_id_idx').on(table.taskId),
+    sourceIdIdx: index('research_findings_source_id_idx').on(table.sourceId),
+    confidenceIdx: index('research_findings_confidence_idx').on(table.confidence),
+    createdAtIdx: index('research_findings_created_at_idx').on(table.createdAt),
+    // Vector index will be created via migration SQL (not supported by Drizzle schema yet)
+    // CREATE INDEX ON research_findings USING ivfflat (embedding vector_cosine_ops)
+  })
+);
+
+/**
+ * Type exports for agent framework tables
+ */
+export type AgentTask = typeof agentTasks.$inferSelect;
+export type NewAgentTask = typeof agentTasks.$inferInsert;
+
+export type ResearchSource = typeof researchSources.$inferSelect;
+export type NewResearchSource = typeof researchSources.$inferInsert;
+
+export type ResearchFinding = typeof researchFindings.$inferSelect;
+export type NewResearchFinding = typeof researchFindings.$inferInsert;
+
+/**
  * Type exports for proxy authorization
  */
 export type ProxyAuthorization = typeof proxyAuthorizations.$inferSelect;

@@ -1,4 +1,3 @@
-#!/usr/bin/env ts-node
 /**
  * Headless Gmail Entity Extraction Script
  *
@@ -41,6 +40,12 @@ import {
   markExtractionError,
 } from '@/lib/extraction/progress';
 import type { Email } from '@/lib/google/types';
+import { getUserIdentity, normalizeToCurrentUser } from '@/lib/extraction/user-identity';
+import { deduplicateWithStats } from '@/lib/extraction/deduplication';
+import { applyPostFilters, logFilterStats } from '@/lib/extraction/post-filters';
+import { extractMemoriesFromEmail } from '@/lib/memory/extraction';
+import { saveMemories } from '@/lib/memory/storage';
+import type { CreateMemoryInput } from '@/lib/memory/types';
 
 const LOG_PREFIX = '[ExtractGmail]';
 
@@ -49,8 +54,10 @@ interface Args {
   user?: string;
   limit: number;
   since: number;
+  folder: 'inbox' | 'sent' | 'all';
   incremental: boolean;
   skipWeaviate: boolean;
+  extractMemories: boolean;
   help: boolean;
 }
 
@@ -58,8 +65,10 @@ function parseArgs(): Args {
   const args: Args = {
     limit: 100,
     since: 7,
+    folder: 'sent', // Default to SENT emails (high-signal)
     incremental: false,
     skipWeaviate: false,
+    extractMemories: false,
     help: false,
   };
 
@@ -74,10 +83,19 @@ function parseArgs(): Args {
       args.limit = parseInt(process.argv[++i], 10);
     } else if (arg === '--since') {
       args.since = parseInt(process.argv[++i], 10);
+    } else if (arg === '--folder') {
+      const folderValue = process.argv[++i];
+      if (!['inbox', 'sent', 'all'].includes(folderValue)) {
+        console.error(`Invalid folder: ${folderValue}. Must be: inbox, sent, or all`);
+        process.exit(1);
+      }
+      args.folder = folderValue as 'inbox' | 'sent' | 'all';
     } else if (arg === '--incremental') {
       args.incremental = true;
     } else if (arg === '--skip-weaviate') {
       args.skipWeaviate = true;
+    } else if (arg === '--extract-memories') {
+      args.extractMemories = true;
     }
   }
 
@@ -92,16 +110,24 @@ Usage:
   npx tsx scripts/extract-gmail-entities.ts [options]
 
 Options:
-  --user <email>       Target specific user by email (default: all users)
-  --limit <number>     Maximum number of emails to process (default: 100)
-  --since <days>       Fetch emails from the last N days (default: 7)
-  --incremental        Only fetch emails newer than last extraction (ignores --since)
-  --skip-weaviate      Skip Weaviate entity storage (only extract entities)
-  --help, -h          Show this help message
+  --user <email>         Target specific user by email (default: all users)
+  --limit <number>       Maximum number of emails to process (default: 100)
+  --since <days>         Fetch emails from the last N days (default: 7)
+  --folder <folder>      Gmail folder to extract from: inbox, sent, all (default: sent)
+  --incremental          Only fetch emails newer than last extraction (ignores --since)
+  --skip-weaviate        Skip Weaviate entity storage (only extract entities)
+  --extract-memories     Extract memories alongside entities (experimental)
+  --help, -h            Show this help message
 
 Examples:
-  # Extract from all users and save to Weaviate
+  # Extract from all users and save to Weaviate (default: sent emails only)
   npx tsx scripts/extract-gmail-entities.ts
+
+  # Extract from inbox instead of sent
+  npx tsx scripts/extract-gmail-entities.ts --folder inbox
+
+  # Extract from all emails (includes spam, newsletters - not recommended)
+  npx tsx scripts/extract-gmail-entities.ts --folder all
 
   # Extract from specific user
   npx tsx scripts/extract-gmail-entities.ts --user john@example.com
@@ -111,6 +137,9 @@ Examples:
 
   # Incremental extraction (only new emails since last run)
   npx tsx scripts/extract-gmail-entities.ts --incremental
+
+  # Extract memories alongside entities
+  npx tsx scripts/extract-gmail-entities.ts --extract-memories
 
   # Skip Weaviate storage (testing only)
   npx tsx scripts/extract-gmail-entities.ts --skip-weaviate
@@ -215,8 +244,10 @@ async function extractForUser(
   options: {
     maxEmails: number;
     sinceDays: number;
+    folder: 'inbox' | 'sent' | 'all';
     incremental: boolean;
     skipWeaviate: boolean;
+    extractMemories: boolean;
   }
 ) {
   console.log(`\n${'='.repeat(80)}`);
@@ -244,34 +275,56 @@ async function extractForUser(
 
     // Calculate date range
     let sinceDate: Date;
-    let query: string;
+    let queryParts: string[] = [];
 
     if (options.incremental && existingProgress.newestDateExtracted) {
       // Incremental mode: only fetch emails newer than last extraction
       sinceDate = new Date(existingProgress.newestDateExtracted);
-      query = `after:${Math.floor(sinceDate.getTime() / 1000)}`;
+      queryParts.push(`after:${Math.floor(sinceDate.getTime() / 1000)}`);
       console.log(`${LOG_PREFIX} 🔄 Incremental mode: fetching emails since last extraction`);
       console.log(`${LOG_PREFIX} 📅 Last extraction: ${sinceDate.toISOString()}`);
     } else {
       // Full extraction: use --since parameter
       sinceDate = new Date(Date.now() - options.sinceDays * 24 * 60 * 60 * 1000);
-      query = `after:${Math.floor(sinceDate.getTime() / 1000)}`;
+      queryParts.push(`after:${Math.floor(sinceDate.getTime() / 1000)}`);
       console.log(`${LOG_PREFIX} 📅 Full extraction: fetching emails from last ${options.sinceDays} days`);
     }
 
+    // Add folder filter
+    if (options.folder === 'inbox') {
+      queryParts.push('in:inbox');
+    } else if (options.folder === 'sent') {
+      queryParts.push('in:sent');
+    }
+    // 'all' means no folder filter
+
+    // Always exclude spam and trash
+    queryParts.push('-label:spam');
+    queryParts.push('-label:trash');
+
+    const query = queryParts.join(' ');
+
     const endDate = new Date();
+    console.log(`${LOG_PREFIX} 📁 Folder: ${options.folder} (${options.folder === 'sent' ? 'HIGH-SIGNAL: user\'s own communications' : options.folder === 'inbox' ? 'may include newsletters/spam' : 'includes all mail'})`);
     console.log(`${LOG_PREFIX} 📅 Date range: ${sinceDate.toISOString()} to ${endDate.toISOString()}`);
     console.log(`${LOG_PREFIX} 📊 Max emails: ${options.maxEmails}\n`);
 
     // Start extraction tracking
     await startExtraction(userId, 'email', sinceDate, endDate);
 
-    // Initialize entity extractor
-    const extractor = getEntityExtractor();
+    // Get user identity for extraction context
+    console.log(`${LOG_PREFIX} 🔍 Loading user identity for ${email}...`);
+    const userIdentity = await getUserIdentity(userId);
+    console.log(`${LOG_PREFIX} ✅ User identity loaded: ${userIdentity.primaryName} (${userIdentity.primaryEmail})`);
+    console.log(`${LOG_PREFIX} 📝 Aliases: ${userIdentity.aliases.slice(0, 5).join(', ')}${userIdentity.aliases.length > 5 ? '...' : ''}`);
+
+    // Initialize entity extractor with user identity
+    const extractor = getEntityExtractor(undefined, userIdentity);
 
     // Fetch and process emails
     let totalProcessed = 0;
     let entitiesCount = 0;
+    let memoriesCount = 0;
     let totalCost = 0;
     let pageToken: string | undefined;
     const startTime = Date.now();
@@ -279,6 +332,19 @@ async function extractForUser(
     // Track actual email date boundaries
     let oldestEmailDate: Date | null = null;
     let newestEmailDate: Date | null = null;
+
+    // Track filter statistics across all emails
+    let totalFilterStats = {
+      totalEntities: 0,
+      filtered: 0,
+      reclassified: 0,
+      kept: 0,
+      filterBreakdown: {
+        emailAddresses: 0,
+        companyIndicators: 0,
+        singleNames: 0,
+      },
+    };
 
     do {
       // Check for pause
@@ -386,18 +452,79 @@ async function extractForUser(
             continue;
           }
 
+          // Post-process entities:
+          // 1. Normalize user identity (consolidate "me" entities)
+          let processedEntities = normalizeToCurrentUser(extractionResult.entities, userIdentity);
+
+          // 2. Apply post-processing filters (quality improvement)
+          const filterResult = applyPostFilters(processedEntities, {
+            strictNameFormat: false, // Lenient mode: allow "John Q. Public"
+            logFiltered: false, // Don't log individual filtered entities (too verbose)
+          });
+          processedEntities = filterResult.filtered;
+
+          // Accumulate filter statistics
+          totalFilterStats.totalEntities += filterResult.stats.totalEntities;
+          totalFilterStats.filtered += filterResult.stats.filtered;
+          totalFilterStats.reclassified += filterResult.stats.reclassified;
+          totalFilterStats.kept += filterResult.stats.kept;
+          totalFilterStats.filterBreakdown.emailAddresses += filterResult.stats.filterBreakdown.emailAddresses;
+          totalFilterStats.filterBreakdown.companyIndicators += filterResult.stats.filterBreakdown.companyIndicators;
+          totalFilterStats.filterBreakdown.singleNames += filterResult.stats.filterBreakdown.singleNames;
+
+          // 3. Deduplicate entities
+          const [deduplicatedEntities, dedupeStats] = deduplicateWithStats(processedEntities);
+
+          // 4. Extract memories (if enabled)
+          let memoryResult;
+          if (options.extractMemories) {
+            try {
+              memoryResult = await extractMemoriesFromEmail(emailData, userIdentity);
+              totalCost += memoryResult.cost;
+
+              // Save memories to Weaviate
+              if (memoryResult.memories.length > 0 && !options.skipWeaviate) {
+                const memoryInputs: CreateMemoryInput[] = memoryResult.memories.map((m) => ({
+                  userId,
+                  content: m.content,
+                  category: m.category,
+                  sourceType: 'email',
+                  sourceId: message.id,
+                  sourceDate: emailDate,
+                  importance: m.importance,
+                  confidence: m.confidence,
+                  relatedEntities: m.relatedEntities,
+                  tags: m.tags,
+                  expiresAt: m.expiresAt,
+                }));
+
+                await saveMemories(memoryInputs);
+                memoriesCount += memoryResult.memories.length;
+              }
+            } catch (error) {
+              console.error(`${LOG_PREFIX} ❌ Failed to extract memories from email ${message.id}:`, error);
+              // Non-fatal - continue with entity extraction
+            }
+          }
+
           // Progress indicator
-          const entityCount = extractionResult.entities.length;
+          const originalCount = extractionResult.entities.length;
+          const entityCount = deduplicatedEntities.length;
+          const memoryCount = memoryResult?.memories.length || 0;
           const progress = `[${totalProcessed + 1}/${options.maxEmails}]`;
 
-          if (entityCount > 0) {
+          if (entityCount > 0 || memoryCount > 0) {
+            const dedupeInfo = dedupeStats.duplicatesRemoved > 0
+              ? ` (${originalCount} → ${entityCount} after deduplication)`
+              : '';
+            const memoryInfo = options.extractMemories ? `, ${memoryCount} memories` : '';
             console.log(
-              `${LOG_PREFIX} ✅ ${progress} Email: "${subject.substring(0, 50)}..." → ${entityCount} entities`
+              `${LOG_PREFIX} ✅ ${progress} Email: "${subject.substring(0, 50)}..." → ${entityCount} entities${dedupeInfo}${memoryInfo}`
             );
 
-            // Save to Weaviate (if not skipped)
+            // Save entities to Weaviate (if not skipped)
             const savedCount = await saveToWeaviate(
-              extractionResult.entities,
+              deduplicatedEntities,
               userId,
               message.id,
               options.skipWeaviate
@@ -410,7 +537,7 @@ async function extractForUser(
             entitiesCount += entityCount;
           } else {
             console.log(
-              `${LOG_PREFIX} ⚪ ${progress} Email: "${subject.substring(0, 50)}..." → No entities`
+              `${LOG_PREFIX} ⚪ ${progress} Email: "${subject.substring(0, 50)}..." → No entities or memories`
             );
           }
 
@@ -465,9 +592,16 @@ async function extractForUser(
     console.log(`${'-'.repeat(80)}`);
     console.log(`  📧 Emails processed: ${totalProcessed}`);
     console.log(`  🏷️  Entities extracted: ${entitiesCount}`);
+    if (options.extractMemories) {
+      console.log(`  🧠 Memories extracted: ${memoriesCount}`);
+    }
     console.log(`  💰 Total cost: $${totalCost.toFixed(6)}`);
     console.log(`  ⏱️  Processing time: ${(processingTimeMs / 1000).toFixed(2)}s`);
     console.log(`  📊 Avg: ${(processingTimeMs / totalProcessed).toFixed(0)}ms per email`);
+    console.log(`${'-'.repeat(80)}`);
+
+    // Log filter statistics
+    logFilterStats(totalFilterStats);
     console.log(`${'-'.repeat(80)}\n`);
 
     return {
@@ -475,6 +609,7 @@ async function extractForUser(
       email,
       emailsProcessed: totalProcessed,
       entitiesExtracted: entitiesCount,
+      memoriesExtracted: memoriesCount,
       cost: totalCost,
       processingTimeMs,
     };
@@ -546,8 +681,10 @@ async function main() {
         {
           maxEmails: args.limit,
           sinceDays: args.since,
+          folder: args.folder,
           incremental: args.incremental,
           skipWeaviate: args.skipWeaviate,
+          extractMemories: args.extractMemories,
         }
       );
 
@@ -561,6 +698,7 @@ async function main() {
 
     const totalEmails = results.reduce((sum, r) => sum + (r.emailsProcessed || 0), 0);
     const totalEntities = results.reduce((sum, r) => sum + (r.entitiesExtracted || 0), 0);
+    const totalMemories = results.reduce((sum, r) => sum + (r.memoriesExtracted || 0), 0);
     const totalCost = results.reduce((sum, r) => sum + (r.cost || 0), 0);
     const successCount = results.filter(r => !r.error).length;
     const errorCount = results.filter(r => r.error).length;
@@ -570,10 +708,16 @@ async function main() {
     console.log(`  ❌ Errors: ${errorCount}`);
     console.log(`  📧 Total emails: ${totalEmails}`);
     console.log(`  🏷️  Total entities: ${totalEntities}`);
+    if (args.extractMemories) {
+      console.log(`  🧠 Total memories: ${totalMemories}`);
+    }
     console.log(`  💰 Total cost: $${totalCost.toFixed(6)}`);
 
     if (totalEmails > 0) {
       console.log(`  📊 Avg entities per email: ${(totalEntities / totalEmails).toFixed(2)}`);
+      if (args.extractMemories) {
+        console.log(`  📊 Avg memories per email: ${(totalMemories / totalEmails).toFixed(2)}`);
+      }
     }
 
     console.log(`\n${'='.repeat(80)}\n`);

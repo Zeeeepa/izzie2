@@ -109,6 +109,8 @@ export default function ChatPage() {
       }
 
       let buffer = '';
+      let accumulatedContent = '';
+      let latestEntities: EntityReference[] = [];
 
       while (true) {
         const { done, value } = await reader.read();
@@ -130,18 +132,46 @@ export default function ChatPage() {
               break;
             }
 
-            // Update assistant message
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === assistantMessageId
-                  ? {
-                      ...m,
-                      content: data.content || m.content,
-                      entities: data.entities || m.entities,
-                    }
-                  : m
-              )
-            );
+            // Accumulate content but don't display it yet (prevents showing partial JSON)
+            if (data.content) {
+              accumulatedContent = data.content;
+            }
+
+            // Track entities for final update
+            if (data.context?.entities || data.entities) {
+              latestEntities = data.context?.entities || data.entities;
+            }
+
+            // Only update the message when streaming is complete
+            if (data.done) {
+              // Parse the complete accumulated content
+              let responseText = accumulatedContent;
+
+              // Strip markdown code blocks if present
+              let jsonContent = accumulatedContent;
+              const jsonMatch = accumulatedContent.match(/```(?:json)?\s*([\s\S]*?)```/);
+              if (jsonMatch) {
+                jsonContent = jsonMatch[1].trim();
+              }
+
+              // Try to parse as JSON first (structured response)
+              try {
+                const parsed = JSON.parse(jsonContent);
+                responseText = parsed.response || accumulatedContent;
+              } catch {
+                // Not JSON, use content directly
+                responseText = accumulatedContent;
+              }
+
+              // Update with the final parsed response
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantMessageId
+                    ? { ...m, content: responseText, entities: latestEntities }
+                    : m
+                )
+              );
+            }
           }
         }
       }

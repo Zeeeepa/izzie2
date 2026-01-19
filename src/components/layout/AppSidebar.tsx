@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Database, MessageSquare, LogOut, ChevronDown } from 'lucide-react';
+import { Home, Database, MessageSquare, LogOut, ChevronDown, Network } from 'lucide-react';
 import {
   Sidebar,
   SidebarContent,
@@ -46,6 +46,11 @@ const navItems = [
     href: '/dashboard/chat',
     label: 'Chat',
     icon: MessageSquare,
+  },
+  {
+    href: '/dashboard/relationships',
+    label: 'Relationships',
+    icon: Network,
   },
 ];
 

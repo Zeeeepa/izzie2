@@ -5,7 +5,7 @@
 
 import { google, calendar_v3 } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
-import { getGoogleTokens } from '@/lib/auth';
+import { getGoogleTokens, updateGoogleTokens } from '@/lib/auth';
 import type {
   Calendar,
   CalendarEvent,
@@ -50,8 +50,7 @@ async function getCalendarClient(userId: string): Promise<{
     // Auto-refresh tokens if needed
     oauth2Client.on('tokens', async (newTokens) => {
       console.log('[Calendar] Tokens refreshed for user:', userId);
-      // TODO: Update tokens in database
-      // This would require importing dbClient and updating the accounts table
+      await updateGoogleTokens(userId, newTokens);
     });
 
     // Initialize Calendar API
