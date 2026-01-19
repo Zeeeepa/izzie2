@@ -82,7 +82,7 @@ export class TaskManager {
    * @returns Task record or undefined
    */
   async getTask(taskId: string): Promise<AgentTask | undefined> {
-    const [task] = await this.db
+    const [task] = await this.getDb()
       .select()
       .from(agentTasks)
       .where(eq(agentTasks.id, taskId))
@@ -101,7 +101,7 @@ export class TaskManager {
     taskId: string,
     updates: Partial<Omit<AgentTask, 'id' | 'createdAt' | 'userId' | 'agentType'>>
   ): Promise<AgentTask | undefined> {
-    const [task] = await this.db
+    const [task] = await this.getDb()
       .update(agentTasks)
       .set({
         ...updates,
@@ -142,7 +142,7 @@ export class TaskManager {
       conditions.push(eq(agentTasks.parentTaskId, filters.parentTaskId));
     }
 
-    const query = this.db
+    const query = this.getDb()
       .select()
       .from(agentTasks)
       .where(and(...conditions))
@@ -166,7 +166,7 @@ export class TaskManager {
    * @returns Updated task or undefined
    */
   async cancelTask(taskId: string): Promise<AgentTask | undefined> {
-    const [task] = await this.db
+    const [task] = await this.getDb()
       .update(agentTasks)
       .set({
         status: 'paused',
