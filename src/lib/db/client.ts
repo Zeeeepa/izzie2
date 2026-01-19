@@ -61,9 +61,10 @@ class NeonClient {
     };
 
     if (!this.config.connectionString) {
-      throw new Error(
-        '[DB] Database connection string not configured. Set DATABASE_URL environment variable.'
-      );
+      // Don't throw at initialization - defer to runtime when getDb() is called
+      // This allows build-time imports without failing
+      console.warn('[DB] DATABASE_URL not set - database operations will fail at runtime');
+      return;
     }
 
     try {
