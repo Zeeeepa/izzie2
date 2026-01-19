@@ -10,77 +10,91 @@ import { users, sessions, accounts, verifications } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
 
 /**
- * Better Auth instance
+ * Better Auth instance (lazy-initialized for build compatibility)
  * Configured with:
  * - Google OAuth provider with Calendar API scopes
  * - Neon Postgres via Drizzle adapter
  * - Session management
  */
-export const auth = betterAuth({
-  database: drizzleAdapter(dbClient.getDb(), {
-    provider: 'pg',
-    schema: {
-      user: users,
-      session: sessions,
-      account: accounts,
-      verification: verifications,
-    },
-  }),
+let _auth: ReturnType<typeof betterAuth> | null = null;
 
-  // Email and password authentication (optional, can be disabled)
-  emailAndPassword: {
-    enabled: true,
-    requireEmailVerification: false, // Set to true in production
+function getAuth() {
+  if (!_auth) {
+    _auth = betterAuth({
+      database: drizzleAdapter(dbClient.getDb(), {
+        provider: 'pg',
+        schema: {
+          user: users,
+          session: sessions,
+          account: accounts,
+          verification: verifications,
+        },
+      }),
+
+      // Email and password authentication (optional, can be disabled)
+      emailAndPassword: {
+        enabled: true,
+        requireEmailVerification: false, // Set to true in production
+      },
+
+      // Social providers
+      socialProviders: {
+        google: {
+          clientId: process.env.GOOGLE_CLIENT_ID || '',
+          clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
+          // Request Calendar, Gmail, Tasks, Drive, and Contacts API scopes
+          scope: [
+            'openid',
+            'email',
+            'profile',
+            'https://www.googleapis.com/auth/calendar',
+            'https://www.googleapis.com/auth/calendar.events',
+            'https://www.googleapis.com/auth/gmail.readonly',
+            'https://www.googleapis.com/auth/tasks.readonly',
+            'https://www.googleapis.com/auth/drive.readonly',
+            'https://www.googleapis.com/auth/contacts.readonly',
+          ],
+          // Request offline access to get refresh token
+          accessType: 'offline',
+          prompt: 'consent',
+        },
+      },
+
+      // Session configuration
+      session: {
+        expiresIn: 60 * 60 * 24 * 7, // 7 days
+        updateAge: 60 * 60 * 24, // 1 day - update session if older than this
+        cookieCache: {
+          enabled: true,
+          maxAge: 5 * 60, // Cache session for 5 minutes
+        },
+      },
+
+      // Security settings
+      advanced: {
+        cookiePrefix: 'izzie2',
+        crossSubDomainCookies: {
+          enabled: false, // Set to true if using subdomains
+        },
+        useSecureCookies: process.env.NODE_ENV === 'production',
+        generateId: false, // Use database-generated IDs
+      },
+
+      // Base URL for redirects
+      baseURL: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3300',
+
+      // Secret for signing tokens
+      secret: process.env.BETTER_AUTH_SECRET || '',
+    });
+  }
+  return _auth;
+}
+
+// Export as a getter for backward compatibility
+export const auth = new Proxy({} as ReturnType<typeof betterAuth>, {
+  get(_, prop) {
+    return (getAuth() as Record<string, unknown>)[prop as string];
   },
-
-  // Social providers
-  socialProviders: {
-    google: {
-      clientId: process.env.GOOGLE_CLIENT_ID || '',
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
-      // Request Calendar, Gmail, Tasks, Drive, and Contacts API scopes
-      scope: [
-        'openid',
-        'email',
-        'profile',
-        'https://www.googleapis.com/auth/calendar',
-        'https://www.googleapis.com/auth/calendar.events',
-        'https://www.googleapis.com/auth/gmail.readonly',
-        'https://www.googleapis.com/auth/tasks.readonly',
-        'https://www.googleapis.com/auth/drive.readonly',
-        'https://www.googleapis.com/auth/contacts.readonly',
-      ],
-      // Request offline access to get refresh token
-      accessType: 'offline',
-      prompt: 'consent',
-    },
-  },
-
-  // Session configuration
-  session: {
-    expiresIn: 60 * 60 * 24 * 7, // 7 days
-    updateAge: 60 * 60 * 24, // 1 day - update session if older than this
-    cookieCache: {
-      enabled: true,
-      maxAge: 5 * 60, // Cache session for 5 minutes
-    },
-  },
-
-  // Security settings
-  advanced: {
-    cookiePrefix: 'izzie2',
-    crossSubDomainCookies: {
-      enabled: false, // Set to true if using subdomains
-    },
-    useSecureCookies: process.env.NODE_ENV === 'production',
-    generateId: false, // Use database-generated IDs
-  },
-
-  // Base URL for redirects
-  baseURL: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3300',
-
-  // Secret for signing tokens
-  secret: process.env.BETTER_AUTH_SECRET || '',
 });
 
 /**
