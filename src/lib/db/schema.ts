@@ -18,6 +18,7 @@ import {
   integer,
   boolean,
   varchar,
+  bigint,
   index,
   customType,
 } from 'drizzle-orm/pg-core';
@@ -883,3 +884,83 @@ export type NewConsentHistory = typeof consentHistory.$inferInsert;
 
 export type ProxyRollback = typeof proxyRollbacks.$inferSelect;
 export type NewProxyRollback = typeof proxyRollbacks.$inferInsert;
+
+/**
+ * Telegram Integration tables
+ * Links Telegram accounts to users and maps chat sessions
+ */
+
+/**
+ * Telegram Links table - links Telegram accounts to users
+ * Each user can have one Telegram account linked
+ */
+export const telegramLinks = pgTable(
+  'telegram_links',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    userId: text('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull()
+      .unique(),
+    telegramChatId: bigint('telegram_chat_id', { mode: 'bigint' }).notNull().unique(),
+    telegramUsername: text('telegram_username'),
+    linkedAt: timestamp('linked_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    userIdIdx: index('telegram_links_user_id_idx').on(table.userId),
+    telegramChatIdIdx: index('telegram_links_telegram_chat_id_idx').on(table.telegramChatId),
+  })
+);
+
+/**
+ * Telegram Link Codes table - temporary codes for linking accounts
+ * Codes expire after a short time and can only be used once
+ */
+export const telegramLinkCodes = pgTable(
+  'telegram_link_codes',
+  {
+    code: varchar('code', { length: 6 }).primaryKey(),
+    userId: text('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull(),
+    expiresAt: timestamp('expires_at').notNull(),
+    used: boolean('used').default(false).notNull(),
+  },
+  (table) => ({
+    userIdIdx: index('telegram_link_codes_user_id_idx').on(table.userId),
+    expiresAtIdx: index('telegram_link_codes_expires_at_idx').on(table.expiresAt),
+  })
+);
+
+/**
+ * Telegram Sessions table - maps Telegram chats to izzie sessions
+ * Links a Telegram conversation to a chat session for context continuity
+ */
+export const telegramSessions = pgTable(
+  'telegram_sessions',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    telegramChatId: bigint('telegram_chat_id', { mode: 'bigint' }).notNull().unique(),
+    chatSessionId: uuid('chat_session_id')
+      .references(() => chatSessions.id, { onDelete: 'cascade' })
+      .notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    telegramChatIdIdx: index('telegram_sessions_telegram_chat_id_idx').on(table.telegramChatId),
+    chatSessionIdIdx: index('telegram_sessions_chat_session_id_idx').on(table.chatSessionId),
+  })
+);
+
+/**
+ * Type exports for Telegram tables
+ */
+export type TelegramLink = typeof telegramLinks.$inferSelect;
+export type NewTelegramLink = typeof telegramLinks.$inferInsert;
+
+export type TelegramLinkCode = typeof telegramLinkCodes.$inferSelect;
+export type NewTelegramLinkCode = typeof telegramLinkCodes.$inferInsert;
+
+export type TelegramSession = typeof telegramSessions.$inferSelect;
+export type NewTelegramSession = typeof telegramSessions.$inferInsert;

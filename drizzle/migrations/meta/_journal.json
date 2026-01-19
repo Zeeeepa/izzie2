@@ -64,6 +64,20 @@
       "when": 1767811200000,
       "tag": "0008_add_extraction_progress",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1767897600000,
+      "tag": "0009_add_chat_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1737331200000,
+      "tag": "0010_add_telegram_tables",
+      "breakpoints": true
     }
   ]
 }

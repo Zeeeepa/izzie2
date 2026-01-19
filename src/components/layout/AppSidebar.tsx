@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Database, MessageSquare, LogOut, ChevronDown, Network } from 'lucide-react';
+import { Home, Database, MessageSquare, LogOut, ChevronDown, Network, MessageCircle } from 'lucide-react';
 import {
   Sidebar,
   SidebarContent,
@@ -51,6 +51,11 @@ const navItems = [
     href: '/dashboard/relationships',
     label: 'Relationships',
     icon: Network,
+  },
+  {
+    href: '/dashboard/settings/telegram',
+    label: 'Telegram',
+    icon: MessageCircle,
   },
 ];
 
