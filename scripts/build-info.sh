@@ -3,20 +3,33 @@
 # Generate build metadata for Izzie2
 # Creates src/lib/build-info.ts with current build information
 
-set -e
+# Don't exit on error - handle gracefully for Vercel environment
+# set -e
 
 # Get build metadata
 VERSION=$(node -p "require('./package.json').version")
-GIT_HASH=$(git rev-parse --short HEAD)
-GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 NODE_VERSION=$(node --version)
 
-# Get git status
-if [[ -n $(git status -s) ]]; then
-  GIT_DIRTY=true
+# Handle non-git environments (like Vercel)
+if git rev-parse --git-dir > /dev/null 2>&1; then
+  GIT_HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+  GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+  if [[ -n $(git status -s 2>/dev/null) ]]; then
+    GIT_DIRTY=true
+  else
+    GIT_DIRTY=false
+  fi
 else
+  # Vercel/CI environment - use env vars if available
+  GIT_HASH="${VERCEL_GIT_COMMIT_SHA:0:7}"
+  GIT_BRANCH="${VERCEL_GIT_COMMIT_REF:-unknown}"
   GIT_DIRTY=false
+
+  # Fallback if VERCEL env vars not set
+  if [[ -z "$GIT_HASH" ]]; then
+    GIT_HASH="unknown"
+  fi
 fi
 
 # Create build-info.ts
