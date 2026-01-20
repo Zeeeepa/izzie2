@@ -60,3 +60,38 @@ export interface ScoringContext {
   userEmail: string; // to detect sent emails
   totalEmails: number; // for normalization
 }
+
+/**
+ * Calendar Event Scoring Types
+ */
+
+export interface CalendarEventScore {
+  eventId: string;
+  score: number; // 0-100 normalized
+  factors: ScoreFactor[];
+  computedAt: Date;
+}
+
+export interface CalendarScoringConfig {
+  weights: {
+    timeProximity: number; // Events sooner = higher (default: 30)
+    hasAttendees: number; // Meetings with others (default: 20)
+    hasVideoLink: number; // Zoom/Meet links (default: 15)
+    responseAccepted: number; // Accepted vs tentative (default: 10)
+    isRecurring: number; // Recurring vs one-time (default: 5)
+    isTimedEvent: number; // Timed vs all-day (default: 10)
+    duration: number; // Longer meetings (default: 10)
+  };
+}
+
+export const DEFAULT_CALENDAR_SCORING_CONFIG: CalendarScoringConfig = {
+  weights: {
+    timeProximity: 30,
+    hasAttendees: 20,
+    hasVideoLink: 15,
+    responseAccepted: 10,
+    isRecurring: 5,
+    isTimedEvent: 10,
+    duration: 10,
+  },
+};

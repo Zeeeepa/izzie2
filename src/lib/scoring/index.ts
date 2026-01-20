@@ -1,10 +1,11 @@
 /**
- * Email Scoring Module
+ * Scoring Module
  *
- * Exports scoring functionality for email significance and contact analysis.
+ * Exports scoring functionality for email significance, calendar events, and contact analysis.
  */
 
 export { EmailScorer } from './email-scorer';
+export { CalendarScorer } from './calendar-scorer';
 export { ContactAnalyzer } from './contact-analyzer';
 
 export type {
@@ -13,6 +14,8 @@ export type {
   ContactSignificance,
   ScoringConfig,
   ScoringContext,
+  CalendarEventScore,
+  CalendarScoringConfig,
 } from './types';
 
-export { DEFAULT_SCORING_CONFIG } from './types';
+export { DEFAULT_SCORING_CONFIG, DEFAULT_CALENDAR_SCORING_CONFIG } from './types';
