@@ -11,6 +11,11 @@ import {
   createDefaultHandlers,
   type EventDispatcher,
 } from '@/lib/routing';
+import { getTelegramBot } from '@/lib/telegram/bot';
+import { getTelegramLink } from '@/lib/telegram/linking';
+import { dbClient } from '@/lib/db';
+import { digestRecords } from '@/lib/db/schema';
+import { eq } from 'drizzle-orm';
 
 // Global dispatcher instance
 let dispatcher: EventDispatcher | null = null;
@@ -180,17 +185,7 @@ export const sendNotification = inngest.createFunction(
     // Step 1: Send notification based on channel
     const result = await step.run('send-via-channel', async () => {
       if (channel === 'telegram') {
-        // TODO: Implement Telegram notification
-        logger.info('Telegram notification (not implemented)', {
-          recipient,
-          message: message.substring(0, 100),
-        });
-
-        return {
-          success: true,
-          channel: 'telegram',
-          sentAt: new Date().toISOString(),
-        };
+        return await sendTelegramNotification(recipient, message, metadata, logger);
       } else if (channel === 'email') {
         // TODO: Implement email notification
         logger.info('Email notification (not implemented)', {
@@ -208,8 +203,125 @@ export const sendNotification = inngest.createFunction(
       throw new Error(`Unsupported notification channel: ${channel}`);
     });
 
+    // Step 2: Update digest record delivery status if applicable
+    if (result.success && metadata?.digestId) {
+      await step.run('update-delivery-status', async () => {
+        const db = dbClient.getDb();
+        await db
+          .update(digestRecords)
+          .set({ deliveredAt: new Date() })
+          .where(eq(digestRecords.id, metadata.digestId as string));
+
+        logger.info('Updated digest delivery status', { digestId: metadata.digestId });
+      });
+    }
+
     logger.info('Notification sent successfully', result);
 
     return result;
   }
 );
+
+/**
+ * Send notification via Telegram
+ * Looks up user's telegram_chat_id and sends formatted message
+ */
+async function sendTelegramNotification(
+  recipient: string,
+  message: string,
+  metadata: Record<string, unknown> | undefined,
+  logger: { info: (msg: string, data?: unknown) => void; error: (msg: string, data?: unknown) => void }
+): Promise<{ success: boolean; channel: string; sentAt: string; messageId?: number; error?: string }> {
+  // Special case: 'admin' recipient uses environment variable
+  if (recipient === 'admin') {
+    const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
+    if (!adminChatId) {
+      logger.error('Admin notification failed: TELEGRAM_ADMIN_CHAT_ID not configured');
+      return {
+        success: false,
+        channel: 'telegram',
+        sentAt: new Date().toISOString(),
+        error: 'Admin chat ID not configured',
+      };
+    }
+
+    try {
+      const bot = getTelegramBot();
+      // Send as plain text - emoji and formatting chars work without Markdown
+      const result = await bot.send(adminChatId, message);
+
+      logger.info('Telegram admin notification sent', {
+        chatId: adminChatId,
+        messageId: result.message_id,
+      });
+
+      return {
+        success: true,
+        channel: 'telegram',
+        sentAt: new Date().toISOString(),
+        messageId: result.message_id,
+      };
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      logger.error('Telegram admin notification failed', { error: errorMsg });
+
+      return {
+        success: false,
+        channel: 'telegram',
+        sentAt: new Date().toISOString(),
+        error: errorMsg,
+      };
+    }
+  }
+
+  // Normal case: recipient is a userId - look up their telegram_chat_id
+  const telegramLink = await getTelegramLink(recipient);
+
+  if (!telegramLink) {
+    logger.error('Telegram notification failed: User has no linked Telegram account', {
+      userId: recipient,
+    });
+
+    return {
+      success: false,
+      channel: 'telegram',
+      sentAt: new Date().toISOString(),
+      error: 'User has no linked Telegram account',
+    };
+  }
+
+  try {
+    const bot = getTelegramBot();
+    const chatId = telegramLink.telegramChatId.toString();
+
+    // Send as plain text - emoji and bullet points work without Markdown
+    const result = await bot.send(chatId, message);
+
+    logger.info('Telegram notification sent', {
+      userId: recipient,
+      chatId,
+      messageId: result.message_id,
+      digestType: metadata?.digestType,
+    });
+
+    return {
+      success: true,
+      channel: 'telegram',
+      sentAt: new Date().toISOString(),
+      messageId: result.message_id,
+    };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('Telegram notification failed', {
+      userId: recipient,
+      error: errorMsg,
+    });
+
+    return {
+      success: false,
+      channel: 'telegram',
+      sentAt: new Date().toISOString(),
+      error: errorMsg,
+    };
+  }
+}
