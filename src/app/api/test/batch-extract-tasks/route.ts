@@ -60,6 +60,9 @@ export async function POST(request: Request) {
 
     // 2. Initialize OAuth2 client with tokens from accounts table
     const tokens = await getGoogleTokens(dbUserId);
+    if (!tokens || !tokens.accessToken) {
+      throw new Error('No Google tokens found for user');
+    }
     const oauth2Client = new google.auth.OAuth2();
     oauth2Client.setCredentials({ access_token: tokens.accessToken });
 

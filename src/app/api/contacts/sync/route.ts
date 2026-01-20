@@ -96,7 +96,7 @@ async function startSync(userId: string, maxContacts: number): Promise<void> {
     // Get Google OAuth tokens from database
     const tokens = await getGoogleTokens(userId);
 
-    if (!tokens.accessToken) {
+    if (!tokens || !tokens.accessToken) {
       throw new Error('No Google access token found for user');
     }
 

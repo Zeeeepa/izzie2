@@ -28,7 +28,7 @@ async function testContactsSync(userId: string) {
     console.log('[Test] Fetching Google OAuth tokens...');
     const tokens = await getGoogleTokens(userId);
 
-    if (!tokens.accessToken) {
+    if (!tokens || !tokens.accessToken) {
       throw new Error('No Google access token found. User needs to authenticate with Google first.');
     }
 

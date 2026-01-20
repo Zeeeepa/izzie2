@@ -106,7 +106,15 @@ const DOCUMENT_TYPE_PATTERNS = {
 } as const;
 
 export class DocumentClassifier {
-  private client = getAIClient();
+  private _client: ReturnType<typeof getAIClient> | null = null;
+
+  // Lazy getter for AI client (for build compatibility)
+  private get client() {
+    if (!this._client) {
+      this._client = getAIClient();
+    }
+    return this._client;
+  }
 
   /**
    * Classify document using pattern matching and AI

@@ -18,8 +18,14 @@ import { eq, and } from 'drizzle-orm';
  */
 let _auth: ReturnType<typeof betterAuth> | null = null;
 
-function getAuth() {
+function getAuth(): ReturnType<typeof betterAuth> | null {
   if (!_auth) {
+    // Check if database is configured (prevents build-time errors)
+    if (!dbClient.isConfigured()) {
+      console.warn('[Auth] DATABASE_URL not configured - auth unavailable at build time');
+      return null;
+    }
+
     _auth = betterAuth({
       database: drizzleAdapter(dbClient.getDb(), {
         provider: 'pg',
@@ -93,7 +99,19 @@ function getAuth() {
 // Export as a getter for backward compatibility
 export const auth = new Proxy({} as ReturnType<typeof betterAuth>, {
   get(_, prop) {
-    return (getAuth() as Record<string, unknown>)[prop as string];
+    const authInstance = getAuth();
+    if (!authInstance) {
+      // Return a stub that throws helpful errors at runtime
+      if (prop === 'api') {
+        return new Proxy({}, {
+          get(_, apiProp) {
+            return () => Promise.resolve(null);
+          }
+        });
+      }
+      return undefined;
+    }
+    return (authInstance as Record<string, unknown>)[prop as string];
   },
 });
 
@@ -130,6 +148,10 @@ export async function requireAuth(request: Request): Promise<AuthSession> {
  * Used for accessing Google Calendar API
  */
 export async function getGoogleTokens(userId: string) {
+  if (!dbClient.isConfigured()) {
+    console.warn('[Auth] DATABASE_URL not configured - cannot get Google tokens');
+    return null;
+  }
   // Query the accounts table for Google OAuth tokens
   const db = dbClient.getDb();
   const [account] = await db
@@ -163,6 +185,10 @@ export async function updateGoogleTokens(
     expiry_date?: number | null;
   }
 ): Promise<void> {
+  if (!dbClient.isConfigured()) {
+    console.warn('[Auth] DATABASE_URL not configured - cannot update Google tokens');
+    return;
+  }
   const db = dbClient.getDb();
 
   // Build update object with only provided tokens

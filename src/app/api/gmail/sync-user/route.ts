@@ -40,6 +40,9 @@ async function getUserGmailClient(userId: string) {
   try {
     // Get user's Google OAuth tokens from database
     const tokens = await getGoogleTokens(userId);
+    if (!tokens) {
+      throw new Error('No Google tokens found for user');
+    }
 
     // Create OAuth2 client
     const oauth2Client = new google.auth.OAuth2(

@@ -25,8 +25,16 @@ const LOG_PREFIX = '[Extraction]';
 
 export class EntityExtractor {
   private config: ExtractionConfig;
-  private client = getAIClient();
+  private _client: ReturnType<typeof getAIClient> | null = null;
   private userIdentity?: UserIdentity;
+
+  // Lazy getter for AI client (for build compatibility)
+  private get client() {
+    if (!this._client) {
+      this._client = getAIClient();
+    }
+    return this._client;
+  }
 
   constructor(config?: Partial<ExtractionConfig>, userIdentity?: UserIdentity) {
     this.config = {

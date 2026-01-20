@@ -22,8 +22,24 @@ const LOG_PREFIX = '[DriveExtractor]';
 
 export class DriveEntityExtractor {
   private config: DriveExtractionConfig;
-  private client = getAIClient();
-  private classifier = getDocumentClassifier();
+  private _client: ReturnType<typeof getAIClient> | null = null;
+  private _classifier: ReturnType<typeof getDocumentClassifier> | null = null;
+
+  // Lazy getter for AI client (for build compatibility)
+  private get client() {
+    if (!this._client) {
+      this._client = getAIClient();
+    }
+    return this._client;
+  }
+
+  // Lazy getter for document classifier (for build compatibility)
+  private get classifier() {
+    if (!this._classifier) {
+      this._classifier = getDocumentClassifier();
+    }
+    return this._classifier;
+  }
 
   constructor(config?: Partial<DriveExtractionConfig>) {
     this.config = {

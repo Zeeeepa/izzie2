@@ -30,6 +30,9 @@ async function getCalendarClient(userId: string): Promise<{
   try {
     // Get user's Google OAuth tokens
     const tokens = await getGoogleTokens(userId);
+    if (!tokens) {
+      throw new Error('No Google tokens found for user');
+    }
 
     // Create OAuth2 client
     const oauth2Client = new google.auth.OAuth2(
