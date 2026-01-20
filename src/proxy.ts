@@ -1,6 +1,9 @@
 /**
- * Next.js Middleware
+ * Next.js Proxy (formerly Middleware)
  * Protects routes that require authentication
+ *
+ * Migrated from middleware.ts to proxy.ts for Next.js 16 compatibility
+ * Reference: https://nextjs.org/docs/messages/middleware-to-proxy
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -17,7 +20,7 @@ const PROTECTED_ROUTES = ['/dashboard', '/calendar', '/profile', '/admin'];
  */
 const PUBLIC_ROUTES = ['/', '/api/auth', '/sign-in', '/sign-up', '/login'];
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
   // Check if route is protected
@@ -51,7 +54,7 @@ export async function middleware(request: NextRequest) {
     // Authenticated - allow access
     return NextResponse.next();
   } catch (error) {
-    console.error('Auth middleware error:', error);
+    console.error('Auth proxy error:', error);
     // On error, redirect to login page
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('callbackURL', pathname);
@@ -60,7 +63,7 @@ export async function middleware(request: NextRequest) {
 }
 
 /**
- * Configure which routes to run middleware on
+ * Configure which routes to run proxy on
  */
 export const config = {
   matcher: [
