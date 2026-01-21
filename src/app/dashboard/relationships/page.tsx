@@ -7,6 +7,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import dynamic from 'next/dynamic';
+import { BUILD_INFO } from '@/lib/build-info';
 
 // Dynamically import ForceGraph2D to avoid SSR issues (A-Frame not defined error)
 // Use react-force-graph-2d directly instead of react-force-graph to avoid A-Frame dependency
@@ -671,6 +672,15 @@ export default function RelationshipsPage() {
             </div>
           </div>
         )}
+
+        <div style={{
+          marginTop: '1rem',
+          fontSize: '0.75rem',
+          color: '#9ca3af',
+          textAlign: 'center'
+        }}>
+          v{BUILD_INFO.version} ({BUILD_INFO.gitHash?.slice(0, 7)})
+        </div>
       </div>
 
       <style jsx global>{`
