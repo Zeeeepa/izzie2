@@ -19,8 +19,8 @@ interface Entity {
   assignee?: string;
   deadline?: string;
   priority?: string;
-  emailId: string;
-  emailContent: string;
+  emailId?: string;
+  emailContent?: string;
   emailSummary?: string;
   createdAt: Date;
   occurrences?: number;

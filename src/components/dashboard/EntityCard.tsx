@@ -18,7 +18,7 @@ interface EntityCardProps {
     deadline?: string;
     priority?: string;
     sourceId?: string;
-    emailContent: string;
+    emailContent?: string;
     emailSummary?: string;
     createdAt: Date;
     occurrences?: number;
@@ -202,32 +202,55 @@ export function EntityCard({ entity }: EntityCardProps) {
         </div>
       )}
 
-      {/* Source email info */}
-      <div
-        style={{
-          borderTop: '1px solid #e5e7eb',
-          paddingTop: '0.75rem',
-          marginTop: '0.75rem',
-        }}
-      >
-        <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginBottom: '0.25rem' }}>From Email</div>
-        {entity.emailSummary && (
-          <p style={{ fontSize: '0.875rem', color: '#374151', margin: '0 0 0.5rem 0', fontWeight: '500' }}>
-            {entity.emailSummary}
-          </p>
-        )}
-        <p style={{ fontSize: '0.875rem', color: '#6b7280', margin: 0, lineHeight: '1.5' }}>
-          {entity.emailContent}
-        </p>
-        <div style={{ marginTop: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
-            ID: {entity.sourceId?.substring(0, 8) || 'N/A'}...
-          </span>
+      {/* Source info - only show if there's email content or sourceId */}
+      {(entity.emailContent || entity.emailSummary || entity.sourceId) && (
+        <div
+          style={{
+            borderTop: '1px solid #e5e7eb',
+            paddingTop: '0.75rem',
+            marginTop: '0.75rem',
+          }}
+        >
+          <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginBottom: '0.25rem' }}>
+            {entity.emailContent || entity.emailSummary ? 'From Email' : 'Source'}
+          </div>
+          {entity.emailSummary && (
+            <p style={{ fontSize: '0.875rem', color: '#374151', margin: '0 0 0.5rem 0', fontWeight: '500' }}>
+              {entity.emailSummary}
+            </p>
+          )}
+          {entity.emailContent && (
+            <p style={{ fontSize: '0.875rem', color: '#6b7280', margin: 0, lineHeight: '1.5' }}>
+              {entity.emailContent}
+            </p>
+          )}
+          <div style={{ marginTop: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
+              ID: {entity.sourceId?.substring(0, 8) || 'N/A'}...
+            </span>
+            <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
+              {new Date(entity.createdAt).toLocaleDateString()}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Minimal footer when no email info - just show date */}
+      {!entity.emailContent && !entity.emailSummary && !entity.sourceId && (
+        <div
+          style={{
+            borderTop: '1px solid #e5e7eb',
+            paddingTop: '0.75rem',
+            marginTop: '0.75rem',
+            display: 'flex',
+            justifyContent: 'flex-end',
+          }}
+        >
           <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
             {new Date(entity.createdAt).toLocaleDateString()}
           </span>
         </div>
-      </div>
+      )}
     </div>
   );
 }
