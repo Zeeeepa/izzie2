@@ -34,6 +34,7 @@
     "release": "npm run version:patch && npm run changelog && npm run build:info",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx drizzle/migrate.ts",
+    "db:sync": "tsx drizzle/sync-tables.ts",
     "db:studio": "drizzle-kit studio",
     "db:push": "drizzle-kit push",
     "benchmark": "tsx src/benchmarks/run-benchmarks.ts",
