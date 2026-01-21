@@ -124,6 +124,15 @@ export default function RelationshipsPage() {
     deletedCount?: number;
     error?: string;
   } | null>(null);
+  const [isCatchingUp, setIsCatchingUp] = useState(false);
+  const [catchupResult, setCatchupResult] = useState<{
+    success: boolean;
+    relationships?: number;
+    processed?: number;
+    cost?: number;
+    error?: string;
+  } | null>(null);
+  const [catchupDateRange, setCatchupDateRange] = useState<'last7days' | 'last30days' | 'last90days' | 'all'>('last30days');
   const graphRef = useRef<any>(null);
   const [zoomLevel, setZoomLevel] = useState(1);
 
@@ -383,6 +392,45 @@ export default function RelationshipsPage() {
     }
   }, [fetchGraph, fetchStats]);
 
+  const runCatchup = useCallback(async () => {
+    setIsCatchingUp(true);
+    setCatchupResult(null);
+    try {
+      const response = await fetch('/api/extraction/relationships', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          dateRange: catchupDateRange,
+          limit: 100,
+        }),
+      });
+      const data = await response.json();
+      if (response.ok && data.success) {
+        setCatchupResult({
+          success: true,
+          relationships: data.relationships,
+          processed: data.processed,
+          cost: data.cost,
+        });
+        // Refresh the graph and stats
+        await Promise.all([fetchGraph(), fetchStats()]);
+      } else {
+        setCatchupResult({
+          success: false,
+          error: data.error || data.details || 'Failed to run relationship catch-up',
+        });
+      }
+    } catch (err) {
+      setCatchupResult({
+        success: false,
+        error: err instanceof Error ? err.message : 'Failed to run relationship catch-up',
+      });
+    } finally {
+      setIsCatchingUp(false);
+    }
+  }, [catchupDateRange, fetchGraph, fetchStats]);
+
   return (
     <div>
       <div style={{ backgroundColor: '#fff', borderBottom: '1px solid #e5e7eb' }}>
@@ -460,6 +508,121 @@ export default function RelationshipsPage() {
       </div>
 
       <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '2rem' }}>
+        {/* Catch-up Relationships Section */}
+        <div style={{
+          backgroundColor: '#fff',
+          border: '1px solid #e5e7eb',
+          borderRadius: '8px',
+          padding: '1rem 1.5rem',
+          marginBottom: '1.5rem',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
+            <div>
+              <h3 style={{ fontSize: '0.875rem', fontWeight: '600', color: '#111', marginBottom: '0.25rem' }}>
+                Catch-up Relationships
+              </h3>
+              <p style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                Extract relationships from emails that already have entities extracted
+              </p>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <select
+                value={catchupDateRange}
+                onChange={(e) => setCatchupDateRange(e.target.value as any)}
+                disabled={isCatchingUp}
+                style={{
+                  padding: '0.5rem 0.75rem',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '6px',
+                  fontSize: '0.875rem',
+                  color: '#374151',
+                  backgroundColor: isCatchingUp ? '#f3f4f6' : '#fff',
+                }}
+              >
+                <option value="last7days">Last 7 days</option>
+                <option value="last30days">Last 30 days</option>
+                <option value="last90days">Last 90 days</option>
+                <option value="all">All time</option>
+              </select>
+              <button
+                onClick={runCatchup}
+                disabled={isCatchingUp}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  padding: '0.5rem 1rem',
+                  backgroundColor: isCatchingUp ? '#9ca3af' : '#8b5cf6',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontSize: '0.875rem',
+                  fontWeight: '500',
+                  cursor: isCatchingUp ? 'not-allowed' : 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {isCatchingUp ? (
+                  <>
+                    <span style={{ display: 'inline-block', width: '14px', height: '14px', border: '2px solid #fff', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                    Extracting...
+                  </>
+                ) : (
+                  <>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83" />
+                    </svg>
+                    Run Catch-up
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Catch-up Result Message */}
+        {catchupResult && (
+          <div style={{
+            backgroundColor: catchupResult.success ? '#f0fdf4' : '#fee2e2',
+            border: `1px solid ${catchupResult.success ? '#22c55e' : '#f87171'}`,
+            borderRadius: '8px',
+            padding: '1rem',
+            marginBottom: '1.5rem',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}>
+            <div>
+              {catchupResult.success ? (
+                <>
+                  <p style={{ color: '#15803d', fontWeight: '600' }}>
+                    Catch-up complete!
+                  </p>
+                  <p style={{ color: '#166534', fontSize: '0.875rem', marginTop: '0.25rem' }}>
+                    Extracted {catchupResult.relationships} relationships from {catchupResult.processed} emails
+                    (cost: ${catchupResult.cost?.toFixed(4) || '0.0000'})
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p style={{ color: '#dc2626', fontWeight: '600' }}>
+                    Catch-up failed
+                  </p>
+                  <p style={{ color: '#7f1d1d', fontSize: '0.875rem', marginTop: '0.25rem' }}>
+                    {catchupResult.error}
+                  </p>
+                </>
+              )}
+            </div>
+            <button
+              onClick={() => setCatchupResult(null)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: catchupResult.success ? '#15803d' : '#dc2626', fontSize: '1.25rem' }}
+            >
+              x
+            </button>
+          </div>
+        )}
+
         {/* Confirmation Dialog */}
         {showClearConfirm && (
           <div style={{
