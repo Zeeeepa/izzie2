@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { inferRelationships } from '@/lib/relationships/inference';
-import { saveRelationships, getAllRelationships, getEntityRelationships, deleteRelationshipById } from '@/lib/weaviate/relationships';
+import { saveRelationships, getAllRelationships, getEntityRelationships, deleteRelationshipById, deleteAllRelationships } from '@/lib/weaviate/relationships';
 import type { Entity, EntityType } from '@/lib/extraction/types';
 
 const LOG_PREFIX = '[Relationships API]';
@@ -98,10 +98,23 @@ export async function DELETE(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
+    const all = searchParams.get('all');
 
+    // Delete all relationships for the user
+    if (all === 'true') {
+      console.log(`${LOG_PREFIX} Deleting all relationships for user ${userId}`);
+      const deletedCount = await deleteAllRelationships(userId);
+      return NextResponse.json({
+        success: true,
+        message: `Deleted ${deletedCount} relationships`,
+        deletedCount,
+      });
+    }
+
+    // Delete a single relationship by ID
     if (!id) {
       return NextResponse.json(
-        { error: 'Missing required query parameter: id' },
+        { error: 'Missing required query parameter: id or all=true' },
         { status: 400 }
       );
     }

@@ -448,6 +448,36 @@ export async function deleteRelationshipById(
 }
 
 /**
+ * Delete all relationships for a user
+ */
+export async function deleteAllRelationships(userId: string): Promise<number> {
+  const client = await getWeaviateClient();
+  const collection = client.collections.get(RELATIONSHIP_COLLECTION);
+
+  try {
+    const filters = collection.filter.byProperty('userId').equal(userId);
+
+    const result = await collection.query.fetchObjects({
+      filters,
+      limit: 10000,
+      returnProperties: ['userId'],
+    });
+
+    let deletedCount = 0;
+    for (const obj of result.objects) {
+      await collection.data.deleteById(obj.uuid);
+      deletedCount++;
+    }
+
+    console.log(`${LOG_PREFIX} Deleted ${deletedCount} relationships for user ${userId}`);
+    return deletedCount;
+  } catch (error) {
+    console.error(`${LOG_PREFIX} Failed to delete all relationships:`, error);
+    return 0;
+  }
+}
+
+/**
  * Delete relationships for a source
  */
 export async function deleteRelationshipsBySource(

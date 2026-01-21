@@ -102,6 +102,13 @@ export default function RelationshipsPage() {
     totalCost?: number;
     error?: string;
   } | null>(null);
+  const [isClearing, setIsClearing] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [clearResult, setClearResult] = useState<{
+    success: boolean;
+    deletedCount?: number;
+    error?: string;
+  } | null>(null);
   const graphRef = useRef<any>(null);
 
   const fetchGraph = useCallback(async () => {
@@ -198,16 +205,217 @@ export default function RelationshipsPage() {
     }
   }, [fetchGraph, fetchStats]);
 
+  const clearAllRelationships = useCallback(async () => {
+    setIsClearing(true);
+    setClearResult(null);
+    setShowClearConfirm(false);
+    try {
+      const response = await fetch('/api/relationships?all=true', {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      const data = await response.json();
+      if (response.ok && data.success) {
+        setClearResult({
+          success: true,
+          deletedCount: data.deletedCount,
+        });
+        await Promise.all([fetchGraph(), fetchStats()]);
+      } else {
+        setClearResult({
+          success: false,
+          error: data.error || 'Failed to clear relationships',
+        });
+      }
+    } catch (err) {
+      setClearResult({
+        success: false,
+        error: err instanceof Error ? err.message : 'Failed to clear relationships',
+      });
+    } finally {
+      setIsClearing(false);
+    }
+  }, [fetchGraph, fetchStats]);
+
   return (
     <div>
       <div style={{ backgroundColor: '#fff', borderBottom: '1px solid #e5e7eb' }}>
-        <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '1.5rem 2rem' }}>
-          <h1 style={{ fontSize: '1.875rem', fontWeight: '700', color: '#111' }}>Relationship Graph</h1>
-          <p style={{ fontSize: '0.875rem', color: '#6b7280', marginTop: '0.25rem' }}>Explore relationships between extracted entities</p>
+        <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '1.5rem 2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <h1 style={{ fontSize: '1.875rem', fontWeight: '700', color: '#111' }}>Relationship Graph</h1>
+            <p style={{ fontSize: '0.875rem', color: '#6b7280', marginTop: '0.25rem' }}>Explore relationships between extracted entities</p>
+          </div>
+          <div style={{ display: 'flex', gap: '0.75rem' }}>
+            <button
+              onClick={runInference}
+              disabled={isInferring}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                padding: '0.5rem 1rem',
+                backgroundColor: isInferring ? '#9ca3af' : '#3b82f6',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '6px',
+                fontSize: '0.875rem',
+                fontWeight: '500',
+                cursor: isInferring ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {isInferring ? (
+                <>
+                  <span style={{ display: 'inline-block', width: '14px', height: '14px', border: '2px solid #fff', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                  Analyzing...
+                </>
+              ) : (
+                <>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                  </svg>
+                  Refresh Relationships
+                </>
+              )}
+            </button>
+            <button
+              onClick={() => setShowClearConfirm(true)}
+              disabled={isClearing || !stats || stats.total === 0}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                padding: '0.5rem 1rem',
+                backgroundColor: '#fff',
+                color: isClearing || !stats || stats.total === 0 ? '#9ca3af' : '#dc2626',
+                border: `1px solid ${isClearing || !stats || stats.total === 0 ? '#d1d5db' : '#dc2626'}`,
+                borderRadius: '6px',
+                fontSize: '0.875rem',
+                fontWeight: '500',
+                cursor: isClearing || !stats || stats.total === 0 ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {isClearing ? (
+                <>
+                  <span style={{ display: 'inline-block', width: '14px', height: '14px', border: '2px solid #dc2626', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                  Clearing...
+                </>
+              ) : (
+                <>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                  </svg>
+                  Clear All
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </div>
 
       <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '2rem' }}>
+        {/* Confirmation Dialog */}
+        {showClearConfirm && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+          }}>
+            <div style={{
+              backgroundColor: '#fff',
+              borderRadius: '12px',
+              padding: '1.5rem',
+              maxWidth: '400px',
+              width: '90%',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+            }}>
+              <h3 style={{ fontSize: '1.125rem', fontWeight: '600', color: '#111', marginBottom: '0.5rem' }}>
+                Clear All Relationships?
+              </h3>
+              <p style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '1.5rem' }}>
+                This will permanently delete all {stats?.total || 0} relationships. This action cannot be undone.
+              </p>
+              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+                <button
+                  onClick={() => setShowClearConfirm(false)}
+                  style={{
+                    padding: '0.5rem 1rem',
+                    backgroundColor: '#fff',
+                    color: '#374151',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '6px',
+                    fontSize: '0.875rem',
+                    fontWeight: '500',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={clearAllRelationships}
+                  style={{
+                    padding: '0.5rem 1rem',
+                    backgroundColor: '#dc2626',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    fontSize: '0.875rem',
+                    fontWeight: '500',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Delete All
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Clear Result Message */}
+        {clearResult && (
+          <div style={{
+            backgroundColor: clearResult.success ? '#f0fdf4' : '#fee2e2',
+            border: `1px solid ${clearResult.success ? '#22c55e' : '#f87171'}`,
+            borderRadius: '8px',
+            padding: '1rem',
+            marginBottom: '1.5rem',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}>
+            <div>
+              {clearResult.success ? (
+                <p style={{ color: '#15803d', fontWeight: '600' }}>
+                  Deleted {clearResult.deletedCount} relationships
+                </p>
+              ) : (
+                <>
+                  <p style={{ color: '#dc2626', fontWeight: '600' }}>
+                    Failed to clear relationships
+                  </p>
+                  <p style={{ color: '#7f1d1d', fontSize: '0.875rem', marginTop: '0.25rem' }}>
+                    {clearResult.error}
+                  </p>
+                </>
+              )}
+            </div>
+            <button
+              onClick={() => setClearResult(null)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: clearResult.success ? '#15803d' : '#dc2626', fontSize: '1.25rem' }}
+            >
+              x
+            </button>
+          </div>
+        )}
+
+        {/* Inference Result Message */}
         {inferenceResult && (
           <div style={{
             backgroundColor: inferenceResult.success ? '#f0fdf4' : '#fee2e2',
@@ -223,7 +431,7 @@ export default function RelationshipsPage() {
               {inferenceResult.success ? (
                 <>
                   <p style={{ color: '#15803d', fontWeight: '600' }}>
-                    ✓ Inference complete!
+                    Inference complete!
                   </p>
                   <p style={{ color: '#166534', fontSize: '0.875rem', marginTop: '0.25rem' }}>
                     Found {inferenceResult.totalRelationships} relationships (cost: ${inferenceResult.totalCost?.toFixed(4) || '0.0000'})
@@ -232,7 +440,7 @@ export default function RelationshipsPage() {
               ) : (
                 <>
                   <p style={{ color: '#dc2626', fontWeight: '600' }}>
-                    ✗ Inference failed
+                    Inference failed
                   </p>
                   <p style={{ color: '#7f1d1d', fontSize: '0.875rem', marginTop: '0.25rem' }}>
                     {inferenceResult.error}
@@ -244,7 +452,7 @@ export default function RelationshipsPage() {
               onClick={() => setInferenceResult(null)}
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: inferenceResult.success ? '#15803d' : '#dc2626', fontSize: '1.25rem' }}
             >
-              ×
+              x
             </button>
           </div>
         )}
