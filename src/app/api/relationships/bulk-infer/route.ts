@@ -44,9 +44,24 @@ export async function POST(request: NextRequest) {
 
     // Fetch entities of specified types
     const allEntities: WeaviateEntity[] = [];
+    const entitiesPerType: Record<string, number> = {};
+
     for (const type of entityTypes) {
       try {
         const entities = await listEntitiesByType(userId, type, limit);
+        entitiesPerType[type] = entities.length;
+        console.log(`${LOG_PREFIX} [DIAG] Fetched ${entities.length} ${type} entities`);
+
+        // Log first entity of each type for debugging
+        if (entities.length > 0) {
+          const sample = entities[0];
+          console.log(`${LOG_PREFIX} [DIAG] Sample ${type} entity:`, {
+            value: sample.value,
+            sourceId: sample.sourceId,
+            hasContext: !!sample.context,
+          });
+        }
+
         allEntities.push(
           ...entities.map((e: any) => ({
             type: e.type || type,
@@ -65,6 +80,7 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`${LOG_PREFIX} Fetched ${allEntities.length} entities total`);
+    console.log(`${LOG_PREFIX} [DIAG] Entities per type:`, entitiesPerType);
 
     if (allEntities.length === 0) {
       return NextResponse.json({
@@ -86,17 +102,50 @@ export async function POST(request: NextRequest) {
       entityGroups.get(sourceId)!.push(entity);
     }
 
+    // Diagnostic: Analyze unique sourceIds
+    const uniqueSourceIds = new Set(allEntities.map((e) => e.sourceId || 'unknown'));
+    console.log(`${LOG_PREFIX} [DIAG] Unique sourceIds: ${uniqueSourceIds.size}`);
+
+    // Diagnostic: Group size distribution
+    const groupSizes: Record<string, number> = {};
+    let eligibleGroups = 0;
+    let skippedSingleEntity = 0;
+
+    for (const [sourceId, entities] of entityGroups) {
+      const size = entities.length;
+      const sizeKey = size >= 5 ? '5+' : String(size);
+      groupSizes[sizeKey] = (groupSizes[sizeKey] || 0) + 1;
+
+      if (size >= 2) {
+        eligibleGroups++;
+      } else {
+        skippedSingleEntity++;
+      }
+    }
+
     console.log(`${LOG_PREFIX} Grouped into ${entityGroups.size} sources`);
+    console.log(`${LOG_PREFIX} [DIAG] Group size distribution:`, groupSizes);
+    console.log(
+      `${LOG_PREFIX} [DIAG] Eligible groups (>=2 entities): ${eligibleGroups}, Skipped (<2 entities): ${skippedSingleEntity}`
+    );
+
+    // Diagnostic: Show sample of sourceIds
+    const sampleSourceIds = Array.from(entityGroups.keys()).slice(0, 5);
+    console.log(`${LOG_PREFIX} [DIAG] Sample sourceIds:`, sampleSourceIds);
 
     // Process each group (limit to first 20 sources to avoid timeout)
     const maxSources = Math.min(entityGroups.size, 20);
     let processedSources = 0;
+    let skippedGroups = 0;
 
     for (const [sourceId, entities] of entityGroups) {
       if (processedSources >= maxSources) break;
 
       // Skip groups with too few entities
-      if (entities.length < 2) continue;
+      if (entities.length < 2) {
+        skippedGroups++;
+        continue;
+      }
 
       try {
         // Build context from entity contexts
@@ -118,7 +167,15 @@ export async function POST(request: NextRequest) {
           source: e.source as Entity['source'],
         }));
 
+        console.log(
+          `${LOG_PREFIX} [DIAG] Processing group ${sourceId}: ${entities.length} entities, content length: ${content.length}`
+        );
+
         const result = await inferRelationships(inferenceEntities, content, sourceId, userId);
+
+        console.log(
+          `${LOG_PREFIX} [DIAG] Inference result for ${sourceId}: ${result.relationships.length} relationships found`
+        );
 
         if (result.relationships.length > 0) {
           await saveRelationships(result.relationships, userId);
@@ -137,6 +194,15 @@ export async function POST(request: NextRequest) {
     console.log(
       `${LOG_PREFIX} Completed: ${totalRelationships} relationships from ${processedSources} sources in ${processingTime}ms`
     );
+
+    // Diagnostic summary
+    console.log(`${LOG_PREFIX} [DIAG] === SUMMARY ===`);
+    console.log(`${LOG_PREFIX} [DIAG] Total entities fetched: ${allEntities.length}`);
+    console.log(`${LOG_PREFIX} [DIAG] Unique sources: ${entityGroups.size}`);
+    console.log(`${LOG_PREFIX} [DIAG] Eligible groups (>=2 entities): ${eligibleGroups}`);
+    console.log(`${LOG_PREFIX} [DIAG] Groups processed: ${processedSources}`);
+    console.log(`${LOG_PREFIX} [DIAG] Groups skipped (single entity): ${skippedGroups}`);
+    console.log(`${LOG_PREFIX} [DIAG] Relationships found: ${totalRelationships}`);
 
     return NextResponse.json({
       success: true,

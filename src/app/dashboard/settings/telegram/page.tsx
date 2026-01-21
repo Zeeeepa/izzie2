@@ -377,7 +377,21 @@ export default function TelegramSettingsPage() {
         <h3 className="text-sm font-medium text-foreground mb-2">How to link your Telegram</h3>
         <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside">
           <li>Click "Link Telegram" to generate a code</li>
-          <li>Open Telegram and search for our bot</li>
+          <li>
+            Open Telegram and start a chat with{' '}
+            {process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME ? (
+              <a
+                href={`https://t.me/${process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium text-primary hover:underline"
+              >
+                @{process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME}
+              </a>
+            ) : (
+              <span className="font-medium">our bot</span>
+            )}
+          </li>
           <li>Send the code to the bot</li>
           <li>Your account will be linked automatically</li>
         </ol>

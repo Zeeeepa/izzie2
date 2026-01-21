@@ -39,20 +39,29 @@ export async function GET() {
 
     if (!prefs) {
       return NextResponse.json({
-        ...defaults,
-        userId: session.user.id,
+        preferences: {
+          userId: session.user.id,
+          enabled: defaults.enabled,
+          morningTime: defaults.morningTime,
+          eveningTime: defaults.eveningTime,
+          timezone: defaults.timezone,
+          channels: defaults.channels,
+          minRelevanceScore: defaults.minimumRelevance,
+        },
         isDefault: true,
       });
     }
 
     return NextResponse.json({
-      userId: prefs.userId,
-      enabled: prefs.enabled,
-      morningTime: prefs.morningTime.slice(0, 5), // Remove seconds if present
-      eveningTime: prefs.eveningTime.slice(0, 5),
-      timezone: prefs.timezone,
-      channels: prefs.channels,
-      minimumRelevance: Math.round(parseFloat(prefs.minRelevanceScore) * 100),
+      preferences: {
+        userId: prefs.userId,
+        enabled: prefs.enabled,
+        morningTime: prefs.morningTime.slice(0, 5), // Remove seconds if present
+        eveningTime: prefs.eveningTime.slice(0, 5),
+        timezone: prefs.timezone,
+        channels: prefs.channels,
+        minRelevanceScore: Math.round(parseFloat(prefs.minRelevanceScore) * 100),
+      },
       isDefault: false,
     });
   } catch (error) {

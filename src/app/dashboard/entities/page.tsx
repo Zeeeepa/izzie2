@@ -32,6 +32,12 @@ interface EntityResponse {
   total: number;
 }
 
+interface StatsResponse {
+  stats: Record<string, number>;
+  total: number;
+  cached?: boolean;
+}
+
 const ENTITY_TYPES = [
   { value: '', label: 'All Types' },
   { value: 'person', label: 'People' },
@@ -62,6 +68,7 @@ export default function EntitiesPage() {
   const [entities, setEntities] = useState<Entity[]>([]);
   const [stats, setStats] = useState<Record<string, number>>({});
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingStats, setIsLoadingStats] = useState(true);
   const [selectedType, setSelectedType] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -75,7 +82,27 @@ export default function EntitiesPage() {
     }
   }, []);
 
-  // Fetch entities
+  // Fetch true entity stats from stats endpoint (not limited to 1000)
+  const fetchStats = async () => {
+    setIsLoadingStats(true);
+    try {
+      const response = await fetch('/api/entities/stats', {
+        credentials: 'include'
+      });
+      if (response.ok) {
+        const data: StatsResponse = await response.json();
+        setStats(data.stats);
+      } else {
+        console.error('Failed to fetch entity stats');
+      }
+    } catch (error) {
+      console.error('Failed to fetch entity stats:', error);
+    } finally {
+      setIsLoadingStats(false);
+    }
+  };
+
+  // Fetch entities for display (paginated, limit 1000)
   const fetchEntities = async (type: string = '') => {
     setIsLoading(true);
     setError(null);
@@ -90,7 +117,6 @@ export default function EntitiesPage() {
       if (response.ok) {
         const data: EntityResponse = await response.json();
         setEntities(data.entities);
-        setStats(data.stats);
       } else {
         const errorData = await response.json();
         console.error('Failed to fetch entities:', errorData);
@@ -104,7 +130,12 @@ export default function EntitiesPage() {
     }
   };
 
-  // Initial load
+  // Fetch stats on mount (once)
+  useEffect(() => {
+    fetchStats();
+  }, []);
+
+  // Fetch entities when type filter changes
   useEffect(() => {
     fetchEntities(selectedType);
   }, [selectedType]);
@@ -168,8 +199,8 @@ export default function EntitiesPage() {
 
       {/* Main Content */}
       <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '2rem' }}>
-        {/* Stats Summary - Clickable Cards */}
-        {!isLoading && Object.keys(stats).length > 0 && (
+        {/* Stats Summary - Clickable Cards (true counts from stats endpoint) */}
+        {!isLoadingStats && Object.keys(stats).length > 0 && (
           <div
             style={{
               display: 'grid',

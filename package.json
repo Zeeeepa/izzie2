@@ -39,7 +39,10 @@
     "benchmark": "tsx src/benchmarks/run-benchmarks.ts",
     "benchmark:vector": "tsx src/benchmarks/run-benchmarks.ts vector",
     "benchmark:graph": "tsx src/benchmarks/run-benchmarks.ts graph",
-    "benchmark:hybrid": "tsx src/benchmarks/run-benchmarks.ts hybrid"
+    "benchmark:hybrid": "tsx src/benchmarks/run-benchmarks.ts hybrid",
+    "env:backup": "tsx scripts/env-backup.ts",
+    "env:pull": "tsx scripts/env-pull.ts",
+    "env:validate": "tsx scripts/env-validate.ts"
   },
   "repository": {
     "type": "git",

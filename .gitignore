@@ -11,6 +11,7 @@
 # Environment variables (contains API keys and secrets)
 .env.local
 .env*.local
+.env-backups/
 
 # Credentials directory (service account keys)
 .credentials/
@@ -64,3 +65,4 @@ test-results/
 # Screenshots (large files, not needed in version control)
 screenshots/
 .claude-mpm/correlations/
+.env.vercel.production
