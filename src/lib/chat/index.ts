@@ -17,6 +17,7 @@ export {
   formatContextForPrompt,
   buildSystemPrompt,
   formatContextSummary,
+  type BuildSystemPromptOptions,
 } from './context-formatter';
 
 export {
@@ -25,3 +26,9 @@ export {
   type SelfAwarenessContext,
   type ConnectorStatus,
 } from './self-awareness';
+
+export {
+  getUserPreferences,
+  formatWritingStyleInstructions,
+  type UserWritingPreferences,
+} from './preferences';

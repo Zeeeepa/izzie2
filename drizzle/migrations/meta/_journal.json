@@ -78,6 +78,20 @@
       "when": 1737331200000,
       "tag": "0010_add_telegram_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1737417600000,
+      "tag": "0011_add_digest_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1737504000000,
+      "tag": "0012_add_user_preferences",
+      "breakpoints": true
     }
   ]
 }

@@ -5,10 +5,12 @@
  * Creates structured, readable context for AI personalization.
  */
 
-import type { ChatContext, PendingTask } from './context-retrieval';
+import type { ChatContext, PendingTask, RecentEmailSummary } from './context-retrieval';
 import type { Entity, EntityType } from '../extraction/types';
 import type { MemoryWithStrength, MemoryCategory } from '../memory/types';
 import type { CalendarEvent } from '../calendar/types';
+import type { UserWritingPreferences } from './preferences';
+import { formatWritingStyleInstructions } from './preferences';
 
 const LOG_PREFIX = '[ContextFormatter]';
 
@@ -227,6 +229,58 @@ function formatPendingTasks(tasks: PendingTask[]): string {
 }
 
 /**
+ * Format recent emails into readable section
+ */
+export function formatRecentEmails(emails: RecentEmailSummary[]): string {
+  if (!emails || emails.length === 0) {
+    return '';
+  }
+
+  // Always use America/New_York for consistent display
+  const timezone = 'America/New_York';
+
+  const items = emails.map((email) => {
+    const emailDate = new Date(email.date);
+
+    // Format date relative to now
+    const now = new Date();
+    const diffMs = now.getTime() - emailDate.getTime();
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffMins = Math.floor(diffMs / (1000 * 60));
+
+    let timeStr: string;
+    if (diffMins < 60) {
+      timeStr = `${diffMins}m ago`;
+    } else if (diffHours < 24) {
+      timeStr = `${diffHours}h ago`;
+    } else {
+      timeStr = emailDate.toLocaleDateString('en-US', {
+        timeZone: timezone,
+        month: 'short',
+        day: 'numeric',
+      });
+    }
+
+    // Build email line: From / Subject / Date / snippet
+    const parts = [`From: ${email.from}`];
+    parts.push(`Subject: ${email.subject}`);
+    parts.push(`(${timeStr})`);
+
+    // Add snippet if available (truncate to reasonable length)
+    if (email.snippet) {
+      const truncatedSnippet = email.snippet.length > 80
+        ? email.snippet.substring(0, 80) + '...'
+        : email.snippet;
+      parts.push(`- "${truncatedSnippet}"`);
+    }
+
+    return `  - ${parts.join(' ')}`;
+  });
+
+  return `### Recent Emails (Last 24 Hours)\n${items.join('\n')}`;
+}
+
+/**
  * Format memories by category into readable sections
  */
 function formatMemoriesByCategory(memories: MemoryWithStrength[]): string {
@@ -347,8 +401,17 @@ export function formatContextForPrompt(context: ChatContext): string {
     sections.push(tasksSection);
   }
 
+  // Add recent emails section
+  const emailsSection = formatRecentEmails(context.recentEmails);
+  if (emailsSection) {
+    if (entitiesSection || memoriesSection || calendarSection || tasksSection) {
+      sections.push(''); // Add spacing between sections
+    }
+    sections.push(emailsSection);
+  }
+
   // If no context available
-  if (!entitiesSection && !memoriesSection && !calendarSection && !tasksSection) {
+  if (!entitiesSection && !memoriesSection && !calendarSection && !tasksSection && !emailsSection) {
     sections.push('No relevant personal context found for this query.');
   }
 
@@ -360,20 +423,37 @@ export function formatContextForPrompt(context: ChatContext): string {
 }
 
 /**
+ * Options for building system prompt
+ */
+export interface BuildSystemPromptOptions {
+  preferences?: UserWritingPreferences;
+}
+
+/**
  * Build system prompt with context
  */
-export function buildSystemPrompt(context: ChatContext, userMessage: string): string {
+export function buildSystemPrompt(
+  context: ChatContext,
+  userMessage: string,
+  options?: BuildSystemPromptOptions
+): string {
   const contextSection = formatContextForPrompt(context);
+
+  // Build writing style section if preferences provided
+  const writingStyleSection = options?.preferences
+    ? `\n${formatWritingStyleInstructions(options.preferences)}\n`
+    : '';
 
   return `You are a helpful AI assistant with access to the user's personal context from their emails, calendar, tasks, and previous conversations.
 
 ${contextSection}
-
+${writingStyleSection}
 **Instructions:**
 - Use the context above to provide personalized, relevant responses
 - Reference specific people, companies, projects, and memories when helpful
 - For upcoming calendar events, help the user prepare or answer questions about their schedule
 - For pending tasks, proactively remind the user about overdue or high-priority items when relevant
+- For recent emails, reference them when the user asks about communications or when they're relevant to the conversation
 - Be conversational and natural - don't just list facts from context
 - If context is relevant, weave it into your response naturally
 - If context isn't relevant to the user's question, acknowledge that and provide a helpful general response
@@ -423,6 +503,10 @@ export function formatContextSummary(context: ChatContext): string {
 
   if (context.pendingTasks.length > 0) {
     parts.push(`Tasks: ${context.pendingTasks.length} pending`);
+  }
+
+  if (context.recentEmails.length > 0) {
+    parts.push(`Emails: ${context.recentEmails.length} recent`);
   }
 
   return parts.length > 0 ? parts.join(' | ') : 'No context';

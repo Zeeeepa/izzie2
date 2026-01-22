@@ -8,9 +8,11 @@
 import type { Entity, EntityType } from '../extraction/types';
 import type { MemoryWithStrength, MemoryCategory } from '../memory/types';
 import type { CalendarEvent } from '../calendar/types';
+import type { Email } from '../google/types';
 import { searchEntities } from '../weaviate/entities';
 import { searchMemories } from '../memory/retrieval';
 import { listEvents } from '../calendar';
+import { getRecentEmails } from './email-retrieval';
 import { dbClient } from '../db';
 import { memoryEntries } from '../db/schema';
 import { eq, and, sql } from 'drizzle-orm';
@@ -38,6 +40,17 @@ export interface PendingTask {
 }
 
 /**
+ * Simplified email for chat context (avoids exposing full email body)
+ */
+export interface RecentEmailSummary {
+  id: string;
+  from: string;
+  subject: string;
+  date: Date;
+  snippet?: string;
+}
+
+/**
  * Unified chat context
  */
 export interface ChatContext {
@@ -45,6 +58,7 @@ export interface ChatContext {
   memories: MemoryWithStrength[];
   upcomingEvents: CalendarEvent[];
   pendingTasks: PendingTask[];
+  recentEmails: RecentEmailSummary[];
   recentConversation?: ChatMessage[];
 }
 
@@ -256,8 +270,8 @@ export async function retrieveContext(
   const nextWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
   try {
-    // Retrieve entities, query-matched memories, high-importance preferences, calendar events, and pending tasks in parallel
-    const [entities, memories, preferenceMemories, calendarResult, pendingTasks] =
+    // Retrieve entities, query-matched memories, high-importance preferences, calendar events, pending tasks, and recent emails in parallel
+    const [entities, memories, preferenceMemories, calendarResult, pendingTasks, recentEmailsResult] =
       await Promise.all([
         searchEntities(searchQuery, userId, {
           limit: opts.maxEntities,
@@ -290,12 +304,18 @@ export async function retrieveContext(
         }),
         // Fetch pending tasks
         retrievePendingTasks(userId, 10),
+        // Fetch recent emails (last 24 hours, max 10)
+        getRecentEmails(userId, { maxResults: 10, hoursBack: 24 }).catch((error) => {
+          console.log(`${LOG_PREFIX} Could not fetch recent emails:`, error);
+          return [];
+        }),
       ]);
 
     const upcomingEvents = calendarResult.events || [];
+    const recentEmails = recentEmailsResult || [];
 
     console.log(
-      `${LOG_PREFIX} Retrieved ${entities.length} entities, ${memories.length} query-matched memories, ${preferenceMemories.length} high-importance preferences, ${upcomingEvents.length} upcoming events, and ${pendingTasks.length} pending tasks`
+      `${LOG_PREFIX} Retrieved ${entities.length} entities, ${memories.length} query-matched memories, ${preferenceMemories.length} high-importance preferences, ${upcomingEvents.length} upcoming events, ${pendingTasks.length} pending tasks, and ${recentEmails.length} recent emails`
     );
 
     // Merge and deduplicate memories
@@ -325,6 +345,7 @@ export async function retrieveContext(
       memories: mergedMemories.slice(0, opts.maxMemories),
       upcomingEvents,
       pendingTasks,
+      recentEmails,
       recentConversation: opts.includeRecentMessages ? recentMessages : undefined,
     };
   } catch (error) {
@@ -336,6 +357,7 @@ export async function retrieveContext(
       memories: [],
       upcomingEvents: [],
       pendingTasks: [],
+      recentEmails: [],
       recentConversation: opts.includeRecentMessages ? recentMessages : undefined,
     };
   }
@@ -371,6 +393,7 @@ Context Summary:
     .join(', ')})
 - Upcoming Events: ${context.upcomingEvents.length} events
 - Pending Tasks: ${context.pendingTasks.length} tasks
+- Recent Emails: ${context.recentEmails.length} emails
 - Conversation History: ${context.recentConversation?.length || 0} messages
 `.trim();
 }

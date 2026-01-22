@@ -1044,3 +1044,57 @@ export type NewDigestPreference = typeof digestPreferences.$inferInsert;
 
 export type DigestRecord = typeof digestRecords.$inferSelect;
 export type NewDigestRecord = typeof digestRecords.$inferInsert;
+
+/**
+ * User Preferences table - writing style customization
+ * Stores user preferences for AI writing style, tone, and custom instructions
+ */
+export const userPreferences = pgTable(
+  'user_preferences',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    userId: text('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull()
+      .unique(),
+
+    // Writing style preferences
+    writingStyle: text('writing_style').default('professional').notNull(), // 'casual' | 'formal' | 'professional'
+    tone: text('tone').default('friendly').notNull(), // 'friendly' | 'neutral' | 'assertive'
+
+    // Custom instructions for AI interactions
+    customInstructions: text('custom_instructions'),
+
+    // Timestamps
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    userIdIdx: index('user_preferences_user_id_idx').on(table.userId),
+  })
+);
+
+/**
+ * Type exports for user preferences
+ */
+export type UserPreference = typeof userPreferences.$inferSelect;
+export type NewUserPreference = typeof userPreferences.$inferInsert;
+
+/**
+ * Enum-like constants for writing style options
+ * Use these for type-safe references in application code
+ */
+export const WRITING_STYLES = {
+  CASUAL: 'casual',
+  FORMAL: 'formal',
+  PROFESSIONAL: 'professional',
+} as const;
+
+export const TONES = {
+  FRIENDLY: 'friendly',
+  NEUTRAL: 'neutral',
+  ASSERTIVE: 'assertive',
+} as const;
+
+export type WritingStyle = (typeof WRITING_STYLES)[keyof typeof WRITING_STYLES];
+export type Tone = (typeof TONES)[keyof typeof TONES];

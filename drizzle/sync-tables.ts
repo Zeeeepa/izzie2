@@ -346,7 +346,22 @@ async function syncTables() {
     `);
     await pool.query('CREATE INDEX IF NOT EXISTS mcp_tool_audit_log_user_id_idx ON mcp_tool_audit_log(user_id)');
 
-    // Step 10: Create agent framework tables
+    // Step 10: Create user_preferences table
+    console.log('📝 Creating user_preferences table...');
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_preferences (
+        id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        user_id text NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+        writing_style text DEFAULT 'professional' NOT NULL,
+        tone text DEFAULT 'friendly' NOT NULL,
+        custom_instructions text,
+        created_at timestamp DEFAULT now() NOT NULL,
+        updated_at timestamp DEFAULT now() NOT NULL
+      )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS user_preferences_user_id_idx ON user_preferences(user_id)');
+
+    // Step 11: Create agent framework tables
     console.log('📝 Creating agent framework tables...');
     await pool.query(`
       CREATE TABLE IF NOT EXISTS agent_tasks (
@@ -438,6 +453,7 @@ async function syncTables() {
       'mcp_servers',
       'mcp_tool_permissions',
       'mcp_tool_audit_log',
+      'user_preferences',
       'agent_tasks',
       'research_sources',
       'research_findings',

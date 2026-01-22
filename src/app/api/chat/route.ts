@@ -17,6 +17,7 @@ import { getAIClient } from '@/lib/ai/client';
 import { MODELS } from '@/lib/ai/models';
 import { retrieveContext } from '@/lib/chat/context-retrieval';
 import { formatContextForPrompt } from '@/lib/chat/context-formatter';
+import { getUserPreferences, formatWritingStyleInstructions } from '@/lib/chat/preferences';
 import { refreshMemoryAccess } from '@/lib/memory/storage';
 import {
   getSessionManager,
@@ -167,6 +168,10 @@ export async function POST(request: NextRequest) {
     const selfAwareness = await getSelfAwarenessContext(userId);
     const selfAwarenessPrompt = formatSelfAwarenessForPrompt(selfAwareness);
 
+    // Get user writing preferences
+    const userPrefs = await getUserPreferences(userId);
+    const writingStylePrompt = formatWritingStyleInstructions(userPrefs);
+
     // Get current date/time for the LLM to know what "today" is
     const now = new Date();
     const currentDateStr = now.toLocaleDateString('en-US', {
@@ -189,6 +194,8 @@ export async function POST(request: NextRequest) {
 **Current Date/Time**: Today is ${currentDateStr}, ${currentTimeStr} (Eastern Time).
 
 ${selfAwarenessPrompt}
+
+${writingStylePrompt}
 
 ${RESPONSE_FORMAT_INSTRUCTION}
 
