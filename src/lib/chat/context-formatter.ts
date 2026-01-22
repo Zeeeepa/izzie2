@@ -90,6 +90,12 @@ function formatCalendarEvents(events: CalendarEvent[]): string {
     return '';
   }
 
+  // DEBUG: Log raw calendar events input
+  console.log('[ContextFormatter] Raw calendar events count:', events.length);
+  events.slice(0, 5).forEach((e, i) => {
+    console.log(`[ContextFormatter] Event ${i}: "${e.summary}" at ${e.start.dateTime || e.start.date} (tz: ${e.start.timeZone})`);
+  });
+
   const items = events.map((event) => {
     // Parse start time
     const startDate = new Date(event.start.dateTime || event.start.date || '');
@@ -133,6 +139,9 @@ function formatCalendarEvents(events: CalendarEvent[]): string {
 
     return `  - ${parts.join(' ')}`;
   });
+
+  // DEBUG: Log formatted calendar events
+  console.log('[ContextFormatter] Calendar events:', JSON.stringify(items, null, 2));
 
   return `### Upcoming Calendar (Next 7 Days)\n${items.join('\n')}`;
 }
