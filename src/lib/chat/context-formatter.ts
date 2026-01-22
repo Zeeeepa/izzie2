@@ -93,7 +93,11 @@ function formatCalendarEvents(events: CalendarEvent[]): string {
   const items = events.map((event) => {
     // Parse start time
     const startDate = new Date(event.start.dateTime || event.start.date || '');
+    // Use the event's timezone for formatting, default to America/New_York
+    const timezone = event.start.timeZone || 'America/New_York';
+
     const dateStr = startDate.toLocaleDateString('en-US', {
+      timeZone: timezone,
       weekday: 'short',
       month: 'short',
       day: 'numeric',
@@ -102,6 +106,7 @@ function formatCalendarEvents(events: CalendarEvent[]): string {
     // Format time (all-day events vs timed events)
     const timeStr = event.start.dateTime
       ? startDate.toLocaleTimeString('en-US', {
+          timeZone: timezone,
           hour: 'numeric',
           minute: '2-digit',
           hour12: true,
