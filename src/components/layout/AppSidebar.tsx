@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Database, MessageSquare, LogOut, ChevronDown, Network, MessageCircle, Mail } from 'lucide-react';
+import { Home, Database, MessageSquare, LogOut, ChevronDown, Network, MessageCircle, Mail, Zap } from 'lucide-react';
 import {
   Sidebar,
   SidebarContent,
@@ -36,6 +36,11 @@ const navItems = [
     label: 'Dashboard',
     icon: Home,
     exact: true,
+  },
+  {
+    href: '/dashboard/extraction',
+    label: 'Extraction',
+    icon: Zap,
   },
   {
     href: '/dashboard/entities',
