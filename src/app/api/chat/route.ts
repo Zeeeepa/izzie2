@@ -167,8 +167,26 @@ export async function POST(request: NextRequest) {
     const selfAwareness = await getSelfAwarenessContext(userId);
     const selfAwarenessPrompt = formatSelfAwarenessForPrompt(selfAwareness);
 
+    // Get current date/time for the LLM to know what "today" is
+    const now = new Date();
+    const currentDateStr = now.toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      timeZone: 'America/New_York',
+    });
+    const currentTimeStr = now.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: 'America/New_York',
+    });
+
     // Build system prompt with response format instructions
     const systemPrompt = `You are Izzie, ${userName}'s personal AI assistant. You have access to ${userName}'s emails, calendar, and previous conversations.
+
+**Current Date/Time**: Today is ${currentDateStr}, ${currentTimeStr} (Eastern Time).
 
 ${selfAwarenessPrompt}
 

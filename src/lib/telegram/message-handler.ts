@@ -132,7 +132,25 @@ export async function processAndReply(
     const userName = await getUserName(userId);
     const entityContext = formatContextForPrompt(context);
 
+    // Get current date/time for the LLM to know what "today" is
+    const now = new Date();
+    const currentDateStr = now.toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      timeZone: 'America/New_York',
+    });
+    const currentTimeStr = now.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: 'America/New_York',
+    });
+
     const systemPrompt = `You are Izzie, ${userName}'s personal AI assistant. You have access to ${userName}'s emails, calendar, and previous conversations.
+
+**Current Date/Time**: Today is ${currentDateStr}, ${currentTimeStr} (Eastern Time).
 
 ${RESPONSE_FORMAT_INSTRUCTION}
 
