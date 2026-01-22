@@ -6,7 +6,26 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { getAllProgress, calculateProgress, getEffectiveStatus } from '@/lib/extraction/progress';
+import { getAllProgress, calculateProgress, getEffectiveStatus, type ExtractionStatus } from '@/lib/extraction/progress';
+
+/**
+ * Get display status for the UI
+ *
+ * An error status with no processed items means nothing was actually done -
+ * the extraction failed before starting (e.g., OAuth issues, network error).
+ * Display this as "idle" to the user since there's nothing to show.
+ */
+function getDisplayStatus(progress: any, effectiveStatus: ExtractionStatus): ExtractionStatus {
+  const processedItems = progress.processedItems ?? 0;
+
+  // If status is error but no work was done, show as idle
+  // This prevents "Error" showing on fresh page load for stale records
+  if (effectiveStatus === 'error' && processedItems === 0) {
+    return 'idle';
+  }
+
+  return effectiveStatus;
+}
 
 /**
  * Calculate processing rate (items per second) and ETA
@@ -62,16 +81,18 @@ export async function GET(request: NextRequest) {
     // Get all progress records for user
     const allProgress = await getAllProgress(session.user.id);
 
-    // Transform to include calculated progress percentage, rate, ETA, and effective status
+    // Transform to include calculated progress percentage, rate, ETA, and display status
     const progressWithMetrics = allProgress.map((progress) => {
       const percentage = calculateProgress(progress);
       const { processingRate, estimatedSecondsRemaining } = calculateRateAndEta(progress);
       const effectiveStatus = getEffectiveStatus(progress);
+      const displayStatus = getDisplayStatus(progress, effectiveStatus);
 
       return {
         ...progress,
-        status: effectiveStatus, // Use effective status (marks stale as error)
-        originalStatus: progress.status, // Keep original for debugging
+        status: displayStatus, // Use display status for UI (idle for errors with no work done)
+        effectiveStatus, // Keep effective status for debugging
+        originalStatus: progress.status, // Keep original DB status for debugging
         progressPercentage: percentage,
         processingRate,
         estimatedSecondsRemaining,
