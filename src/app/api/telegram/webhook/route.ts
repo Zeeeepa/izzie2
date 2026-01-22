@@ -9,10 +9,14 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import JSONbig from 'json-bigint';
 import type { TelegramUpdate } from '@/lib/telegram/types';
 import { getTelegramBot } from '@/lib/telegram/bot';
 import { verifyLinkCode, getUserByTelegramChatId } from '@/lib/telegram/linking';
 import { processAndReply } from '@/lib/telegram/message-handler';
+
+// Configure json-bigint to parse integers as native BigInt
+const JSONbigParser = JSONbig({ useNativeBigInt: true });
 
 const LOG_PREFIX = '[TelegramWebhook]';
 
@@ -112,8 +116,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ ok: true });
     }
 
-    // Parse update
-    const update: TelegramUpdate = await request.json();
+    // Parse update using json-bigint to properly handle large IDs
+    // Standard JSON.parse corrupts integers > MAX_SAFE_INTEGER before BigInt conversion
+    const rawBody = await request.text();
+    const update: TelegramUpdate = JSONbigParser.parse(rawBody);
     console.log(`${LOG_PREFIX} Received update ${update.update_id}`);
 
     // Only handle messages with text
@@ -123,7 +129,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ ok: true });
     }
 
-    const chatId = BigInt(message.chat.id);
+    // chat.id is already bigint from JSONbigParser.parse
+    const chatId = message.chat.id;
     const text = message.text.trim();
     const username = message.from?.username;
 

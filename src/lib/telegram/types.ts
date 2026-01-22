@@ -7,9 +7,11 @@
 
 /**
  * Telegram user object
+ *
+ * Note: id is bigint to handle large Telegram user IDs that exceed MAX_SAFE_INTEGER
  */
 export interface TelegramUser {
-  id: number;
+  id: bigint;
   is_bot: boolean;
   first_name: string;
   last_name?: string;
@@ -24,9 +26,11 @@ export type TelegramChatType = 'private' | 'group' | 'supergroup' | 'channel';
 
 /**
  * Telegram chat object
+ *
+ * Note: id is bigint to handle large Telegram chat IDs that exceed MAX_SAFE_INTEGER
  */
 export interface TelegramChat {
-  id: number;
+  id: bigint;
   type: TelegramChatType;
   title?: string;
   username?: string;
@@ -64,9 +68,11 @@ export interface TelegramMessageEntity {
 
 /**
  * Telegram message object
+ *
+ * Note: message_id is bigint to handle large Telegram message IDs that exceed MAX_SAFE_INTEGER
  */
 export interface TelegramMessage {
-  message_id: number;
+  message_id: bigint;
   message_thread_id?: number;
   from?: TelegramUser;
   sender_chat?: TelegramChat;
@@ -96,9 +102,11 @@ export interface TelegramCallbackQuery {
 
 /**
  * Telegram webhook update object
+ *
+ * Note: update_id is bigint to handle large Telegram update IDs that exceed MAX_SAFE_INTEGER
  */
 export interface TelegramUpdate {
-  update_id: number;
+  update_id: bigint;
   message?: TelegramMessage;
   edited_message?: TelegramMessage;
   channel_post?: TelegramMessage;
