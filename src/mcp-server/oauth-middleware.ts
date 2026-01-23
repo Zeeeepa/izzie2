@@ -1,8 +1,12 @@
 /**
  * OAuth Middleware for MCP HTTP Transport
  *
- * Validates Bearer tokens against better-auth sessions and extracts user context.
+ * Validates Bearer tokens against better-auth sessions or API keys and extracts user context.
  * Implements OAuthTokenVerifier interface from MCP SDK.
+ *
+ * Token Types:
+ * - Session tokens: From better-auth web sessions
+ * - API keys: Format izz_* for programmatic access (Claude Desktop, claude-mpm)
  */
 
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
@@ -10,6 +14,7 @@ import type { OAuthTokenVerifier } from '@modelcontextprotocol/sdk/server/auth/p
 import { dbClient } from '@/lib/db';
 import { sessions, users } from '@/lib/db/schema';
 import { eq, and, gt } from 'drizzle-orm';
+import { validateApiKey, isApiKey } from '@/lib/auth/api-keys';
 
 const LOG_PREFIX = '[MCP OAuth]';
 
@@ -94,15 +99,60 @@ export function getUserIdFromAuthInfo(authInfo: AuthInfo): string {
 }
 
 /**
+ * Verifies an API key and returns TokenValidationResult
+ *
+ * @param apiKey - The API key to verify (format: izz_*)
+ * @returns TokenValidationResult if valid, throws error if invalid
+ */
+async function verifyApiKeyToken(apiKey: string): Promise<TokenValidationResult> {
+  const result = await validateApiKey(apiKey);
+
+  if (!result) {
+    console.error(`${LOG_PREFIX} Invalid API key`);
+    throw new Error('Invalid or expired API key');
+  }
+
+  console.log(`${LOG_PREFIX} Validated API key for user: ${result.userId}`);
+
+  // Build AuthInfo for MCP
+  const authInfo: AuthInfo = {
+    token: apiKey,
+    clientId: 'izzie-mcp-apikey', // Differentiate from session-based auth
+    scopes: result.scopes,
+    extra: {
+      userId: result.userId,
+      keyId: result.keyId,
+      authMethod: 'api_key',
+    },
+  };
+
+  return {
+    userId: result.userId,
+    authInfo,
+  };
+}
+
+/**
  * OAuthTokenVerifier implementation for MCP SDK
- * Validates Bearer tokens against better-auth sessions
+ * Validates Bearer tokens against better-auth sessions or API keys
  */
 export class BetterAuthTokenVerifier implements OAuthTokenVerifier {
   /**
    * Verify an access token and return auth info
    * Called by MCP SDK's requireBearerAuth middleware
+   *
+   * Supports two token types:
+   * - API keys (format: izz_*) - for programmatic access
+   * - Session tokens - from better-auth web sessions
    */
   async verifyAccessToken(token: string): Promise<AuthInfo> {
+    // Check if it's an API key
+    if (isApiKey(token)) {
+      const result = await verifyApiKeyToken(token);
+      return result.authInfo;
+    }
+
+    // Otherwise validate as session token
     const result = await verifyBetterAuthSession(token);
     return result.authInfo;
   }
@@ -138,6 +188,12 @@ export async function validateBearerToken(
     throw new Error('Bearer token is empty');
   }
 
+  // Check if it's an API key
+  if (isApiKey(token)) {
+    return verifyApiKeyToken(token);
+  }
+
+  // Otherwise validate as session token
   return verifyBetterAuthSession(token);
 }
 

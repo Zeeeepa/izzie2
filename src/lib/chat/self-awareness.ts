@@ -6,6 +6,7 @@
  */
 
 import { chatTools } from './tools';
+import { BUILD_INFO } from '@/lib/build-info';
 
 export interface ConnectorStatus {
   name: string;
@@ -110,8 +111,8 @@ export async function getSelfAwarenessContext(userId: string): Promise<SelfAware
   return {
     identity: {
       name: 'Izzie',
-      version: '1.0.0',
-      description: 'A personal AI assistant with memory and context awareness',
+      version: BUILD_INFO.version,
+      description: `A personal AI assistant with memory and context awareness (build: ${BUILD_INFO.gitHash}, ${BUILD_INFO.gitBranch})`,
     },
     architecture: {
       contextWindow:

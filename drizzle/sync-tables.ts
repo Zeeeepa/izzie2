@@ -361,6 +361,26 @@ async function syncTables() {
     `);
     await pool.query('CREATE INDEX IF NOT EXISTS user_preferences_user_id_idx ON user_preferences(user_id)');
 
+    // Step 10b: Create api_keys table
+    console.log('📝 Creating api_keys table...');
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS api_keys (
+        id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        name text NOT NULL,
+        key_hash text NOT NULL,
+        key_prefix text NOT NULL,
+        scopes text[] DEFAULT ARRAY['mcp:read', 'mcp:write']::text[] NOT NULL,
+        last_used_at timestamp,
+        expires_at timestamp,
+        created_at timestamp DEFAULT now() NOT NULL,
+        revoked_at timestamp
+      )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS api_keys_user_id_idx ON api_keys(user_id)');
+    await pool.query('CREATE INDEX IF NOT EXISTS api_keys_key_prefix_idx ON api_keys(key_prefix)');
+    await pool.query('CREATE INDEX IF NOT EXISTS api_keys_key_hash_idx ON api_keys(key_hash)');
+
     // Step 11: Create agent framework tables
     console.log('📝 Creating agent framework tables...');
     await pool.query(`
@@ -454,6 +474,7 @@ async function syncTables() {
       'mcp_tool_permissions',
       'mcp_tool_audit_log',
       'user_preferences',
+      'api_keys',
       'agent_tasks',
       'research_sources',
       'research_findings',

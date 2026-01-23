@@ -1327,3 +1327,39 @@ export const AGENT_RUN_STATUS = {
 } as const;
 
 export type AgentRunStatus = (typeof AGENT_RUN_STATUS)[keyof typeof AGENT_RUN_STATUS];
+
+/**
+ * API Keys table for MCP server authentication
+ * Allows users to create long-lived API keys for connecting Claude Desktop or claude-mpm
+ */
+export const apiKeys = pgTable(
+  'api_keys',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    userId: text('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull(),
+    name: text('name').notNull(), // User-friendly name like "Claude Desktop"
+    keyHash: text('key_hash').notNull(), // SHA-256 hash of the key (never store raw)
+    keyPrefix: text('key_prefix').notNull(), // First 8 chars for identification "izz_abc1..."
+    scopes: text('scopes')
+      .array()
+      .notNull()
+      .default(sql`ARRAY['mcp:read', 'mcp:write']::text[]`),
+    lastUsedAt: timestamp('last_used_at'),
+    expiresAt: timestamp('expires_at'), // null = never expires
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    revokedAt: timestamp('revoked_at'), // null = active
+  },
+  (table) => ({
+    userIdIdx: index('api_keys_user_id_idx').on(table.userId),
+    keyPrefixIdx: index('api_keys_key_prefix_idx').on(table.keyPrefix),
+    keyHashIdx: index('api_keys_key_hash_idx').on(table.keyHash),
+  })
+);
+
+/**
+ * Type exports for API keys
+ */
+export type ApiKey = typeof apiKeys.$inferSelect;
+export type NewApiKey = typeof apiKeys.$inferInsert;
