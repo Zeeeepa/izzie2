@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Database, MessageSquare, LogOut, ChevronDown, Network, MessageCircle, Mail, Zap, Settings, BarChart3 } from 'lucide-react';
+import { Home, Database, MessageSquare, LogOut, ChevronDown, Network, MessageCircle, Mail, Zap, Settings, BarChart3, Users } from 'lucide-react';
 import {
   Sidebar,
   SidebarContent,
@@ -76,6 +76,11 @@ const navItems = [
     href: '/dashboard/settings/usage',
     label: 'Usage',
     icon: BarChart3,
+  },
+  {
+    href: '/dashboard/settings/accounts',
+    label: 'Accounts',
+    icon: Users,
   },
 ];
 

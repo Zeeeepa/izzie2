@@ -10,14 +10,20 @@ import type { TaskList, Task, TaskListBatch, TaskBatch } from './types';
 
 /**
  * Initialize OAuth2 client with user's tokens for Tasks API
+ * @param userId - The user ID
+ * @param accountId - Optional specific Google account ID. If not provided, uses primary account.
  */
-async function getTasksClient(userId: string): Promise<{
+async function getTasksClient(
+  userId: string,
+  accountId?: string
+): Promise<{
   auth: OAuth2Client;
   tasks: tasks_v1.Tasks;
+  accountId: string;
 }> {
   try {
-    // Get user's Google OAuth tokens
-    const tokens = await getGoogleTokens(userId);
+    // Get user's Google OAuth tokens for specific account (or primary)
+    const tokens = await getGoogleTokens(userId, accountId);
     if (!tokens) {
       throw new Error('No Google tokens found for user');
     }
@@ -49,7 +55,7 @@ async function getTasksClient(userId: string): Promise<{
     // Initialize Tasks API
     const tasks = google.tasks({ version: 'v1', auth: oauth2Client });
 
-    return { auth: oauth2Client, tasks };
+    return { auth: oauth2Client, tasks, accountId: tokens.accountId };
   } catch (error) {
     console.error('[Tasks] Failed to initialize client:', error);
     throw new Error(
@@ -97,15 +103,18 @@ function mapTask(task: tasks_v1.Schema$Task): Task {
 
 /**
  * List all task lists for a user
+ * @param userId - The user ID
+ * @param options - List options including optional accountId for multi-account support
  */
 export async function listTaskLists(
   userId: string,
   options?: {
     maxResults?: number;
     pageToken?: string;
+    accountId?: string;
   }
 ): Promise<TaskListBatch> {
-  const { tasks } = await getTasksClient(userId);
+  const { tasks } = await getTasksClient(userId, options?.accountId);
 
   const response = await tasks.tasklists.list({
     maxResults: options?.maxResults || 100,
@@ -120,9 +129,16 @@ export async function listTaskLists(
 
 /**
  * Get a specific task list
+ * @param userId - The user ID
+ * @param taskListId - The task list ID
+ * @param options - Optional settings including accountId for multi-account support
  */
-export async function getTaskList(userId: string, taskListId: string): Promise<TaskList> {
-  const { tasks } = await getTasksClient(userId);
+export async function getTaskList(
+  userId: string,
+  taskListId: string,
+  options?: { accountId?: string }
+): Promise<TaskList> {
+  const { tasks } = await getTasksClient(userId, options?.accountId);
 
   const response = await tasks.tasklists.get({
     tasklist: taskListId,
@@ -133,6 +149,9 @@ export async function getTaskList(userId: string, taskListId: string): Promise<T
 
 /**
  * List tasks from a task list
+ * @param userId - The user ID
+ * @param taskListId - The task list ID
+ * @param options - List options including optional accountId for multi-account support
  */
 export async function listTasks(
   userId: string,
@@ -148,9 +167,10 @@ export async function listTasks(
     completedMin?: string; // RFC 3339 timestamp
     completedMax?: string; // RFC 3339 timestamp
     updatedMin?: string; // RFC 3339 timestamp
+    accountId?: string; // Optional specific Google account ID for multi-account support
   }
 ): Promise<TaskBatch> {
-  const { tasks } = await getTasksClient(userId);
+  const { tasks } = await getTasksClient(userId, options?.accountId);
 
   const response = await tasks.tasks.list({
     tasklist: taskListId,
@@ -174,13 +194,18 @@ export async function listTasks(
 
 /**
  * Get a specific task
+ * @param userId - The user ID
+ * @param taskListId - The task list ID
+ * @param taskId - The task ID
+ * @param options - Optional settings including accountId for multi-account support
  */
 export async function getTask(
   userId: string,
   taskListId: string,
-  taskId: string
+  taskId: string,
+  options?: { accountId?: string }
 ): Promise<Task> {
-  const { tasks } = await getTasksClient(userId);
+  const { tasks } = await getTasksClient(userId, options?.accountId);
 
   const response = await tasks.tasks.get({
     tasklist: taskListId,
@@ -193,6 +218,8 @@ export async function getTask(
 /**
  * Fetch all tasks from all task lists
  * Useful for syncing and entity extraction
+ * @param userId - The user ID
+ * @param options - Fetch options including optional accountId for multi-account support
  */
 export async function fetchAllTasks(
   userId: string,
@@ -200,6 +227,7 @@ export async function fetchAllTasks(
     maxTasksPerList?: number;
     showCompleted?: boolean;
     showHidden?: boolean;
+    accountId?: string; // Optional specific Google account ID for multi-account support
   }
 ): Promise<
   Array<{
@@ -208,7 +236,7 @@ export async function fetchAllTasks(
     taskListTitle: string;
   }>
 > {
-  const { tasks } = await getTasksClient(userId);
+  const { tasks } = await getTasksClient(userId, options?.accountId);
 
   // First, get all task lists
   const taskListsResponse = await tasks.tasklists.list({
@@ -256,6 +284,10 @@ export async function fetchAllTasks(
 
 /**
  * Create a new task in a task list
+ * @param userId - The user ID
+ * @param taskListId - The task list ID
+ * @param title - Task title
+ * @param options - Task options including optional accountId for multi-account support
  */
 export async function createTask(
   userId: string,
@@ -265,9 +297,10 @@ export async function createTask(
     notes?: string;
     due?: string; // RFC 3339 timestamp (e.g., "2024-12-31T00:00:00Z")
     parent?: string; // Parent task ID for subtasks
+    accountId?: string; // Optional specific Google account ID for multi-account support
   }
 ): Promise<Task> {
-  const { tasks } = await getTasksClient(userId);
+  const { tasks } = await getTasksClient(userId, options?.accountId);
 
   const response = await tasks.tasks.insert({
     tasklist: taskListId,
@@ -285,6 +318,10 @@ export async function createTask(
 
 /**
  * Update an existing task
+ * @param userId - The user ID
+ * @param taskListId - The task list ID
+ * @param taskId - The task ID
+ * @param updates - Fields to update including optional accountId for multi-account support
  */
 export async function updateTask(
   userId: string,
@@ -295,9 +332,10 @@ export async function updateTask(
     notes?: string;
     due?: string;
     status?: 'needsAction' | 'completed';
+    accountId?: string; // Optional specific Google account ID for multi-account support
   }
 ): Promise<Task> {
-  const { tasks } = await getTasksClient(userId);
+  const { tasks } = await getTasksClient(userId, updates.accountId);
 
   // First get the existing task to merge updates
   const existingResponse = await tasks.tasks.get({
@@ -320,13 +358,18 @@ export async function updateTask(
 
 /**
  * Mark a task as completed
+ * @param userId - The user ID
+ * @param taskListId - The task list ID
+ * @param taskId - The task ID
+ * @param options - Optional settings including accountId for multi-account support
  */
 export async function completeTask(
   userId: string,
   taskListId: string,
-  taskId: string
+  taskId: string,
+  options?: { accountId?: string }
 ): Promise<Task> {
-  const { tasks } = await getTasksClient(userId);
+  const { tasks } = await getTasksClient(userId, options?.accountId);
 
   // Get existing task first
   const existingResponse = await tasks.tasks.get({
@@ -349,13 +392,18 @@ export async function completeTask(
 
 /**
  * Delete a task
+ * @param userId - The user ID
+ * @param taskListId - The task list ID
+ * @param taskId - The task ID
+ * @param options - Optional settings including accountId for multi-account support
  */
 export async function deleteTask(
   userId: string,
   taskListId: string,
-  taskId: string
+  taskId: string,
+  options?: { accountId?: string }
 ): Promise<void> {
-  const { tasks } = await getTasksClient(userId);
+  const { tasks } = await getTasksClient(userId, options?.accountId);
 
   await tasks.tasks.delete({
     tasklist: taskListId,
@@ -367,12 +415,16 @@ export async function deleteTask(
 
 /**
  * Create a new task list
+ * @param userId - The user ID
+ * @param title - Task list title
+ * @param options - Optional settings including accountId for multi-account support
  */
 export async function createTaskList(
   userId: string,
-  title: string
+  title: string,
+  options?: { accountId?: string }
 ): Promise<TaskList> {
-  const { tasks } = await getTasksClient(userId);
+  const { tasks } = await getTasksClient(userId, options?.accountId);
 
   const response = await tasks.tasklists.insert({
     requestBody: {
@@ -386,12 +438,16 @@ export async function createTaskList(
 
 /**
  * Delete a task list
+ * @param userId - The user ID
+ * @param taskListId - The task list ID
+ * @param options - Optional settings including accountId for multi-account support
  */
 export async function deleteTaskList(
   userId: string,
-  taskListId: string
+  taskListId: string,
+  options?: { accountId?: string }
 ): Promise<void> {
-  const { tasks } = await getTasksClient(userId);
+  const { tasks } = await getTasksClient(userId, options?.accountId);
 
   await tasks.tasklists.delete({
     tasklist: taskListId,
@@ -402,13 +458,18 @@ export async function deleteTaskList(
 
 /**
  * Update a task list (rename)
+ * @param userId - The user ID
+ * @param taskListId - The task list ID
+ * @param title - New title
+ * @param options - Optional settings including accountId for multi-account support
  */
 export async function updateTaskList(
   userId: string,
   taskListId: string,
-  title: string
+  title: string,
+  options?: { accountId?: string }
 ): Promise<TaskList> {
-  const { tasks } = await getTasksClient(userId);
+  const { tasks } = await getTasksClient(userId, options?.accountId);
 
   const response = await tasks.tasklists.update({
     tasklist: taskListId,

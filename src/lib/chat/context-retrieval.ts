@@ -13,6 +13,10 @@ import { searchEntities } from '../weaviate/entities';
 import { searchMemories } from '../memory/retrieval';
 import { listEvents } from '../calendar';
 import { getRecentEmails } from './email-retrieval';
+import {
+  getAllAccountCalendarEvents,
+  getAllAccountEmails,
+} from '../google/multi-account';
 import { dbClient } from '../db';
 import { memoryEntries } from '../db/schema';
 import { eq, and, sql } from 'drizzle-orm';
@@ -72,15 +76,20 @@ export interface ContextRetrievalOptions {
   entityTypes?: EntityType[];
   memoryCategories?: MemoryCategory[];
   includeRecentMessages?: boolean;
+  /** When true, fetches calendar events and emails from all connected Google accounts */
+  useMultiAccount?: boolean;
+  /** Specific account ID to use (overrides useMultiAccount when set) */
+  accountId?: string;
 }
 
-const DEFAULT_OPTIONS: Required<ContextRetrievalOptions> = {
+const DEFAULT_OPTIONS: Required<Omit<ContextRetrievalOptions, 'accountId'>> = {
   maxEntities: 10,
   maxMemories: 10,
   minMemoryStrength: 0.3,
   entityTypes: [],
   memoryCategories: [],
   includeRecentMessages: false,
+  useMultiAccount: false,
 };
 
 /**
@@ -270,6 +279,45 @@ export async function retrieveContext(
   const nextWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
   try {
+    // Determine whether to use multi-account or single account mode
+    const useMultiAccount = opts.useMultiAccount && !options?.accountId;
+
+    // Build calendar and email fetch promises based on mode
+    const calendarPromise = useMultiAccount
+      ? getAllAccountCalendarEvents(userId, {
+          timeMin: now.toISOString(),
+          timeMax: nextWeek.toISOString(),
+          maxResultsPerAccount: 20,
+        })
+          .then((result) => ({ events: result.events }))
+          .catch((error) => {
+            console.log(`${LOG_PREFIX} Could not fetch multi-account calendar events:`, error);
+            return { events: [] as CalendarEvent[] };
+          })
+      : listEvents(userId, {
+          timeMin: now.toISOString(),
+          timeMax: nextWeek.toISOString(),
+          maxResults: 20,
+          accountId: options?.accountId,
+        }).catch((error) => {
+          console.log(`${LOG_PREFIX} Could not fetch calendar events:`, error);
+          return { events: [] };
+        });
+
+    const emailPromise = useMultiAccount
+      ? getAllAccountEmails(userId, { maxResultsPerAccount: 10, hoursBack: 24 })
+          .then((result) => result.emails)
+          .catch((error) => {
+            console.log(`${LOG_PREFIX} Could not fetch multi-account emails:`, error);
+            return [] as RecentEmailSummary[];
+          })
+      : getRecentEmails(userId, { maxResults: 10, hoursBack: 24, accountId: options?.accountId }).catch(
+          (error) => {
+            console.log(`${LOG_PREFIX} Could not fetch recent emails:`, error);
+            return [];
+          }
+        );
+
     // Retrieve entities, query-matched memories, high-importance preferences, calendar events, pending tasks, and recent emails in parallel
     const [entities, memories, preferenceMemories, calendarResult, pendingTasks, recentEmailsResult] =
       await Promise.all([
@@ -293,22 +341,12 @@ export async function retrieveContext(
           minImportance: 0.8, // Only high-importance preferences
           limit: 5,
         }),
-        // Fetch upcoming calendar events
-        listEvents(userId, {
-          timeMin: now.toISOString(),
-          timeMax: nextWeek.toISOString(),
-          maxResults: 20,
-        }).catch((error) => {
-          console.log(`${LOG_PREFIX} Could not fetch calendar events:`, error);
-          return { events: [] };
-        }),
+        // Fetch upcoming calendar events (single or multi-account based on options)
+        calendarPromise,
         // Fetch pending tasks
         retrievePendingTasks(userId, 10),
-        // Fetch recent emails (last 24 hours, max 10)
-        getRecentEmails(userId, { maxResults: 10, hoursBack: 24 }).catch((error) => {
-          console.log(`${LOG_PREFIX} Could not fetch recent emails:`, error);
-          return [];
-        }),
+        // Fetch recent emails (single or multi-account based on options)
+        emailPromise,
       ]);
 
     const upcomingEvents = calendarResult.events || [];

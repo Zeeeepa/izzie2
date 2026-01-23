@@ -204,6 +204,7 @@ export interface CreateEventParams {
   transparency?: 'opaque' | 'transparent';
   visibility?: 'default' | 'public' | 'private' | 'confidential';
   colorId?: string;
+  accountId?: string; // Optional specific Google account ID for multi-account support
 }
 
 /**
@@ -213,6 +214,7 @@ export interface UpdateEventParams extends Partial<CreateEventParams> {
   eventId: string;
   calendarId?: string;
   sendUpdates?: 'all' | 'externalOnly' | 'none';
+  accountId?: string; // Optional specific Google account ID for multi-account support
 }
 
 /**
@@ -230,6 +232,7 @@ export interface ListEventsParams {
   showDeleted?: boolean;
   showHiddenInvitations?: boolean;
   timeZone?: string;
+  accountId?: string; // Optional specific Google account ID for multi-account support
 }
 
 /**

@@ -14,13 +14,19 @@ const LOG_PREFIX = '[EmailRetrieval]';
 interface GetRecentEmailsOptions {
   maxResults?: number;
   hoursBack?: number;
+  accountId?: string; // Optional specific Google account ID for multi-account support
 }
 
 /**
  * Initialize OAuth2 client with user's tokens for Gmail access
+ * @param userId - The user ID
+ * @param accountId - Optional specific Google account ID. If not provided, uses primary account.
  */
-async function getGmailClient(userId: string): Promise<GmailService> {
-  const tokens = await getGoogleTokens(userId);
+async function getGmailClient(
+  userId: string,
+  accountId?: string
+): Promise<{ service: GmailService; accountId: string }> {
+  const tokens = await getGoogleTokens(userId, accountId);
   if (!tokens) {
     throw new Error('No Google tokens found for user');
   }
@@ -45,7 +51,7 @@ async function getGmailClient(userId: string): Promise<GmailService> {
     await updateGoogleTokens(userId, newTokens);
   });
 
-  return new GmailService(oauth2Client);
+  return { service: new GmailService(oauth2Client), accountId: tokens.accountId };
 }
 
 /**
@@ -58,10 +64,10 @@ export async function getRecentEmails(
   userId: string,
   options: GetRecentEmailsOptions = {}
 ): Promise<RecentEmailSummary[]> {
-  const { maxResults = 10, hoursBack = 24 } = options;
+  const { maxResults = 10, hoursBack = 24, accountId } = options;
 
   try {
-    const gmailService = await getGmailClient(userId);
+    const { service: gmailService } = await getGmailClient(userId, accountId);
 
     // Calculate the "since" date
     const since = new Date();

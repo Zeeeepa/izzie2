@@ -1190,3 +1190,46 @@ export const TONES = {
 
 export type WritingStyle = (typeof WRITING_STYLES)[keyof typeof WRITING_STYLES];
 export type Tone = (typeof TONES)[keyof typeof TONES];
+
+/**
+ * Account Metadata table - extends Better Auth accounts with multi-account support
+ * Stores additional metadata for OAuth accounts without modifying the Better Auth schema
+ * Supports multiple Google accounts per user with primary account designation
+ */
+export const accountMetadata = pgTable(
+  'account_metadata',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    accountId: text('account_id')
+      .references(() => accounts.id, { onDelete: 'cascade' })
+      .notNull(),
+    userId: text('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull(),
+
+    // User-friendly labeling
+    label: text('label').default('primary'), // 'personal', 'work', or custom label
+
+    // Primary account designation (only one per user should be true)
+    isPrimary: boolean('is_primary').default(false),
+
+    // Cached account email for display (avoids extra API calls)
+    accountEmail: text('account_email'),
+
+    // Timestamps
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    accountIdIdx: index('account_metadata_account_id_idx').on(table.accountId),
+    userIdIdx: index('account_metadata_user_id_idx').on(table.userId),
+    // Ensure one metadata record per account
+    accountIdUnique: index('account_metadata_account_id_unique').on(table.accountId),
+  })
+);
+
+/**
+ * Type exports for account metadata
+ */
+export type AccountMetadata = typeof accountMetadata.$inferSelect;
+export type NewAccountMetadata = typeof accountMetadata.$inferInsert;

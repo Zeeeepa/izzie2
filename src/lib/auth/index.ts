@@ -6,8 +6,8 @@
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { dbClient } from '@/lib/db';
-import { users, sessions, accounts, verifications } from '@/lib/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { users, sessions, accounts, verifications, accountMetadata } from '@/lib/db/schema';
+import { eq, and, desc } from 'drizzle-orm';
 
 /**
  * Better Auth instance (lazy-initialized for build compatibility)
@@ -170,30 +170,85 @@ export async function requireAuth(request: Request): Promise<AuthSession> {
 /**
  * Helper to get Google OAuth tokens for a user
  * Used for accessing Google Calendar API
+ *
+ * @param userId - The user ID to get tokens for
+ * @param accountId - Optional specific account ID. If not provided, returns primary or first account.
+ * @returns Token information or null if database not configured
  */
-export async function getGoogleTokens(userId: string) {
+export async function getGoogleTokens(
+  userId: string,
+  accountId?: string
+): Promise<{
+  accessToken: string | null;
+  refreshToken: string | null;
+  accessTokenExpiresAt: Date | null;
+  refreshTokenExpiresAt: Date | null;
+  scope: string | null;
+  accountId: string;
+} | null> {
   if (!dbClient.isConfigured()) {
     console.warn('[Auth] DATABASE_URL not configured - cannot get Google tokens');
     return null;
   }
-  // Query the accounts table for Google OAuth tokens
+
   const db = dbClient.getDb();
-  const [account] = await db
-    .select()
+
+  // If specific account requested, get that one
+  if (accountId) {
+    const [account] = await db
+      .select()
+      .from(accounts)
+      .where(
+        and(
+          eq(accounts.userId, userId),
+          eq(accounts.providerId, 'google'),
+          eq(accounts.id, accountId)
+        )
+      )
+      .limit(1);
+
+    if (!account) {
+      throw new Error('Google account not found');
+    }
+
+    return {
+      accessToken: account.accessToken,
+      refreshToken: account.refreshToken,
+      accessTokenExpiresAt: account.accessTokenExpiresAt,
+      refreshTokenExpiresAt: account.refreshTokenExpiresAt,
+      scope: account.scope,
+      accountId: account.id,
+    };
+  }
+
+  // No accountId specified - try to get primary account first
+  const [primaryAccount] = await db
+    .select({
+      id: accounts.id,
+      accessToken: accounts.accessToken,
+      refreshToken: accounts.refreshToken,
+      accessTokenExpiresAt: accounts.accessTokenExpiresAt,
+      refreshTokenExpiresAt: accounts.refreshTokenExpiresAt,
+      scope: accounts.scope,
+      isPrimary: accountMetadata.isPrimary,
+    })
     .from(accounts)
+    .leftJoin(accountMetadata, eq(accounts.id, accountMetadata.accountId))
     .where(and(eq(accounts.userId, userId), eq(accounts.providerId, 'google')))
+    .orderBy(desc(accountMetadata.isPrimary))
     .limit(1);
 
-  if (!account) {
+  if (!primaryAccount) {
     throw new Error('No Google account linked to this user');
   }
 
   return {
-    accessToken: account.accessToken,
-    refreshToken: account.refreshToken,
-    accessTokenExpiresAt: account.accessTokenExpiresAt,
-    refreshTokenExpiresAt: account.refreshTokenExpiresAt,
-    scope: account.scope,
+    accessToken: primaryAccount.accessToken,
+    refreshToken: primaryAccount.refreshToken,
+    accessTokenExpiresAt: primaryAccount.accessTokenExpiresAt,
+    refreshTokenExpiresAt: primaryAccount.refreshTokenExpiresAt,
+    scope: primaryAccount.scope,
+    accountId: primaryAccount.id,
   };
 }
 
@@ -240,4 +295,281 @@ export async function updateGoogleTokens(
     .where(and(eq(accounts.userId, userId), eq(accounts.providerId, 'google')));
 
   console.log('[Auth] Updated Google OAuth tokens for user:', userId);
+}
+
+/**
+ * Get all Google accounts for a user
+ * Returns accounts with their metadata (label, isPrimary, accountEmail)
+ */
+export async function getAllGoogleAccounts(userId: string) {
+  if (!dbClient.isConfigured()) {
+    console.warn('[Auth] DATABASE_URL not configured - cannot get Google accounts');
+    return [];
+  }
+
+  const db = dbClient.getDb();
+
+  const userAccounts = await db
+    .select({
+      id: accounts.id,
+      providerId: accounts.providerId,
+      accountId: accounts.accountId,
+      accessToken: accounts.accessToken,
+      refreshToken: accounts.refreshToken,
+      accessTokenExpiresAt: accounts.accessTokenExpiresAt,
+      scope: accounts.scope,
+      createdAt: accounts.createdAt,
+      // Metadata fields (may be null if no metadata record exists)
+      label: accountMetadata.label,
+      isPrimary: accountMetadata.isPrimary,
+      accountEmail: accountMetadata.accountEmail,
+    })
+    .from(accounts)
+    .leftJoin(accountMetadata, eq(accounts.id, accountMetadata.accountId))
+    .where(and(eq(accounts.userId, userId), eq(accounts.providerId, 'google')))
+    .orderBy(desc(accountMetadata.isPrimary), desc(accounts.createdAt));
+
+  return userAccounts;
+}
+
+/**
+ * Get account metadata for a user's accounts
+ */
+export async function getAccountMetadata(userId: string) {
+  if (!dbClient.isConfigured()) {
+    console.warn('[Auth] DATABASE_URL not configured - cannot get account metadata');
+    return [];
+  }
+
+  const db = dbClient.getDb();
+
+  const metadata = await db
+    .select()
+    .from(accountMetadata)
+    .where(eq(accountMetadata.userId, userId));
+
+  return metadata;
+}
+
+/**
+ * Set an account as primary for a user
+ * Unsets all other accounts as non-primary first
+ */
+export async function setPrimaryAccount(
+  userId: string,
+  accountId: string
+): Promise<void> {
+  if (!dbClient.isConfigured()) {
+    console.warn('[Auth] DATABASE_URL not configured - cannot set primary account');
+    return;
+  }
+
+  const db = dbClient.getDb();
+
+  // First, unset all other accounts as primary for this user
+  await db
+    .update(accountMetadata)
+    .set({ isPrimary: false, updatedAt: new Date() })
+    .where(eq(accountMetadata.userId, userId));
+
+  // Then set the specified account as primary
+  // Check if metadata record exists
+  const [existing] = await db
+    .select({ id: accountMetadata.id })
+    .from(accountMetadata)
+    .where(
+      and(
+        eq(accountMetadata.userId, userId),
+        eq(accountMetadata.accountId, accountId)
+      )
+    )
+    .limit(1);
+
+  if (existing) {
+    await db
+      .update(accountMetadata)
+      .set({ isPrimary: true, updatedAt: new Date() })
+      .where(
+        and(
+          eq(accountMetadata.userId, userId),
+          eq(accountMetadata.accountId, accountId)
+        )
+      );
+  } else {
+    // Create metadata record if it doesn't exist
+    await db.insert(accountMetadata).values({
+      accountId,
+      userId,
+      isPrimary: true,
+      label: 'primary',
+    });
+  }
+
+  console.log('[Auth] Set primary account for user:', userId, 'account:', accountId);
+}
+
+/**
+ * Get primary Google account for a user (or first one if none marked primary)
+ */
+export async function getPrimaryGoogleAccount(userId: string) {
+  if (!dbClient.isConfigured()) {
+    console.warn('[Auth] DATABASE_URL not configured - cannot get primary Google account');
+    return null;
+  }
+
+  const db = dbClient.getDb();
+
+  // Try to get primary account via metadata
+  const [primary] = await db
+    .select({
+      id: accounts.id,
+      accessToken: accounts.accessToken,
+      refreshToken: accounts.refreshToken,
+      accessTokenExpiresAt: accounts.accessTokenExpiresAt,
+      scope: accounts.scope,
+      accountEmail: accountMetadata.accountEmail,
+      label: accountMetadata.label,
+      isPrimary: accountMetadata.isPrimary,
+    })
+    .from(accounts)
+    .leftJoin(accountMetadata, eq(accounts.id, accountMetadata.accountId))
+    .where(
+      and(
+        eq(accounts.userId, userId),
+        eq(accounts.providerId, 'google'),
+        eq(accountMetadata.isPrimary, true)
+      )
+    )
+    .limit(1);
+
+  if (primary) return primary;
+
+  // Fall back to first Google account
+  const [first] = await db
+    .select({
+      id: accounts.id,
+      accessToken: accounts.accessToken,
+      refreshToken: accounts.refreshToken,
+      accessTokenExpiresAt: accounts.accessTokenExpiresAt,
+      scope: accounts.scope,
+      accountEmail: accountMetadata.accountEmail,
+      label: accountMetadata.label,
+      isPrimary: accountMetadata.isPrimary,
+    })
+    .from(accounts)
+    .leftJoin(accountMetadata, eq(accounts.id, accountMetadata.accountId))
+    .where(and(eq(accounts.userId, userId), eq(accounts.providerId, 'google')))
+    .limit(1);
+
+  return first || null;
+}
+
+/**
+ * Update account metadata (label, email)
+ */
+export async function updateAccountMetadata(
+  userId: string,
+  accountId: string,
+  updates: { label?: string; accountEmail?: string }
+): Promise<void> {
+  if (!dbClient.isConfigured()) {
+    console.warn('[Auth] DATABASE_URL not configured - cannot update account metadata');
+    return;
+  }
+
+  const db = dbClient.getDb();
+
+  // Check if metadata record exists
+  const [existing] = await db
+    .select({ id: accountMetadata.id })
+    .from(accountMetadata)
+    .where(
+      and(
+        eq(accountMetadata.userId, userId),
+        eq(accountMetadata.accountId, accountId)
+      )
+    )
+    .limit(1);
+
+  if (existing) {
+    await db
+      .update(accountMetadata)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(accountMetadata.accountId, accountId));
+  } else {
+    // Create metadata record if it doesn't exist
+    await db.insert(accountMetadata).values({
+      accountId,
+      userId,
+      ...updates,
+    });
+  }
+
+  console.log('[Auth] Updated account metadata for account:', accountId);
+}
+
+/**
+ * Ensure account metadata exists for all Google accounts
+ * Creates metadata records for any accounts missing them
+ */
+export async function ensureAccountMetadata(userId: string): Promise<void> {
+  if (!dbClient.isConfigured()) {
+    console.warn('[Auth] DATABASE_URL not configured - cannot ensure account metadata');
+    return;
+  }
+
+  const db = dbClient.getDb();
+
+  // Get all Google accounts for user
+  const googleAccounts = await db
+    .select({ id: accounts.id })
+    .from(accounts)
+    .where(and(eq(accounts.userId, userId), eq(accounts.providerId, 'google')));
+
+  // Get existing metadata
+  const existingMetadata = await db
+    .select({ accountId: accountMetadata.accountId })
+    .from(accountMetadata)
+    .where(eq(accountMetadata.userId, userId));
+
+  const existingAccountIds = new Set(existingMetadata.map((m) => m.accountId));
+
+  // Create metadata for accounts that don't have it
+  const accountsNeedingMetadata = googleAccounts.filter(
+    (account) => !existingAccountIds.has(account.id)
+  );
+
+  if (accountsNeedingMetadata.length === 0) {
+    return;
+  }
+
+  // Check if user already has a primary account
+  const [hasPrimary] = await db
+    .select({ id: accountMetadata.id })
+    .from(accountMetadata)
+    .where(
+      and(eq(accountMetadata.userId, userId), eq(accountMetadata.isPrimary, true))
+    )
+    .limit(1);
+
+  // Insert metadata for new accounts
+  // First one becomes primary if no primary exists
+  for (let i = 0; i < accountsNeedingMetadata.length; i++) {
+    const account = accountsNeedingMetadata[i];
+    const isFirstAndNoPrimary = i === 0 && !hasPrimary;
+
+    await db.insert(accountMetadata).values({
+      accountId: account.id,
+      userId,
+      isPrimary: isFirstAndNoPrimary,
+      label: isFirstAndNoPrimary ? 'primary' : 'account',
+    });
+  }
+
+  console.log(
+    '[Auth] Created metadata for',
+    accountsNeedingMetadata.length,
+    'accounts for user:',
+    userId
+  );
 }

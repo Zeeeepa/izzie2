@@ -22,14 +22,20 @@ import type {
 
 /**
  * Initialize OAuth2 client with user's tokens
+ * @param userId - The user ID
+ * @param accountId - Optional specific Google account ID. If not provided, uses primary account.
  */
-async function getCalendarClient(userId: string): Promise<{
+async function getCalendarClient(
+  userId: string,
+  accountId?: string
+): Promise<{
   auth: OAuth2Client;
   calendar: calendar_v3.Calendar;
+  accountId: string;
 }> {
   try {
-    // Get user's Google OAuth tokens
-    const tokens = await getGoogleTokens(userId);
+    // Get user's Google OAuth tokens for specific account (or primary)
+    const tokens = await getGoogleTokens(userId, accountId);
     if (!tokens) {
       throw new Error('No Google tokens found for user');
     }
@@ -59,7 +65,7 @@ async function getCalendarClient(userId: string): Promise<{
     // Initialize Calendar API
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
 
-    return { auth: oauth2Client, calendar };
+    return { auth: oauth2Client, calendar, accountId: tokens.accountId };
   } catch (error) {
     console.error('[Calendar] Failed to initialize client:', error);
     throw new Error(
@@ -187,6 +193,8 @@ function mapEvent(event: calendar_v3.Schema$Event, calendarId: string): Calendar
 
 /**
  * List user's calendars
+ * @param userId - The user ID
+ * @param options - List options including optional accountId for multi-account support
  */
 export async function listCalendars(
   userId: string,
@@ -195,9 +203,10 @@ export async function listCalendars(
     pageToken?: string;
     showDeleted?: boolean;
     showHidden?: boolean;
+    accountId?: string;
   }
 ): Promise<CalendarListResponse> {
-  const { calendar } = await getCalendarClient(userId);
+  const { calendar } = await getCalendarClient(userId, options?.accountId);
 
   const response = await calendar.calendarList.list({
     maxResults: options?.maxResults || 100,
@@ -215,9 +224,16 @@ export async function listCalendars(
 
 /**
  * Get a specific calendar
+ * @param userId - The user ID
+ * @param calendarId - The calendar ID
+ * @param options - Optional settings including accountId for multi-account support
  */
-export async function getCalendar(userId: string, calendarId: string): Promise<Calendar> {
-  const { calendar } = await getCalendarClient(userId);
+export async function getCalendar(
+  userId: string,
+  calendarId: string,
+  options?: { accountId?: string }
+): Promise<Calendar> {
+  const { calendar } = await getCalendarClient(userId, options?.accountId);
 
   const response = await calendar.calendarList.get({
     calendarId,
@@ -228,12 +244,14 @@ export async function getCalendar(userId: string, calendarId: string): Promise<C
 
 /**
  * List events from a calendar
+ * @param userId - The user ID
+ * @param params - Event listing parameters including optional accountId for multi-account support
  */
 export async function listEvents(
   userId: string,
   params?: ListEventsParams
 ): Promise<EventListResponse> {
-  const { calendar } = await getCalendarClient(userId);
+  const { calendar } = await getCalendarClient(userId, params?.accountId);
 
   const calendarId = params?.calendarId || 'primary';
 
@@ -264,13 +282,18 @@ export async function listEvents(
 
 /**
  * Get a specific event
+ * @param userId - The user ID
+ * @param eventId - The event ID
+ * @param calendarId - The calendar ID (defaults to 'primary')
+ * @param options - Optional settings including accountId for multi-account support
  */
 export async function getEvent(
   userId: string,
   eventId: string,
-  calendarId: string = 'primary'
+  calendarId: string = 'primary',
+  options?: { accountId?: string }
 ): Promise<CalendarEvent> {
-  const { calendar } = await getCalendarClient(userId);
+  const { calendar } = await getCalendarClient(userId, options?.accountId);
 
   const response = await calendar.events.get({
     calendarId,
@@ -282,12 +305,14 @@ export async function getEvent(
 
 /**
  * Create a new event
+ * @param userId - The user ID
+ * @param params - Event creation parameters including optional accountId for multi-account support
  */
 export async function createEvent(
   userId: string,
   params: CreateEventParams
 ): Promise<CalendarEvent> {
-  const { calendar } = await getCalendarClient(userId);
+  const { calendar } = await getCalendarClient(userId, params.accountId);
 
   const calendarId = params.calendarId || 'primary';
 
@@ -315,12 +340,14 @@ export async function createEvent(
 
 /**
  * Update an existing event
+ * @param userId - The user ID
+ * @param params - Event update parameters including optional accountId for multi-account support
  */
 export async function updateEvent(
   userId: string,
   params: UpdateEventParams
 ): Promise<CalendarEvent> {
-  const { calendar } = await getCalendarClient(userId);
+  const { calendar } = await getCalendarClient(userId, params.accountId);
 
   const calendarId = params.calendarId || 'primary';
 
@@ -350,14 +377,20 @@ export async function updateEvent(
 
 /**
  * Delete an event
+ * @param userId - The user ID
+ * @param eventId - The event ID
+ * @param calendarId - The calendar ID (defaults to 'primary')
+ * @param sendUpdates - Notification setting for attendees
+ * @param options - Optional settings including accountId for multi-account support
  */
 export async function deleteEvent(
   userId: string,
   eventId: string,
   calendarId: string = 'primary',
-  sendUpdates: 'all' | 'externalOnly' | 'none' = 'none'
+  sendUpdates: 'all' | 'externalOnly' | 'none' = 'none',
+  options?: { accountId?: string }
 ): Promise<void> {
-  const { calendar } = await getCalendarClient(userId);
+  const { calendar } = await getCalendarClient(userId, options?.accountId);
 
   await calendar.events.delete({
     calendarId,
@@ -368,13 +401,18 @@ export async function deleteEvent(
 
 /**
  * Quick add event using natural language
+ * @param userId - The user ID
+ * @param text - Natural language text describing the event
+ * @param calendarId - The calendar ID (defaults to 'primary')
+ * @param options - Optional settings including accountId for multi-account support
  */
 export async function quickAddEvent(
   userId: string,
   text: string,
-  calendarId: string = 'primary'
+  calendarId: string = 'primary',
+  options?: { accountId?: string }
 ): Promise<CalendarEvent> {
-  const { calendar } = await getCalendarClient(userId);
+  const { calendar } = await getCalendarClient(userId, options?.accountId);
 
   const response = await calendar.events.quickAdd({
     calendarId,
@@ -386,12 +424,16 @@ export async function quickAddEvent(
 
 /**
  * Check free/busy status
+ * @param userId - The user ID
+ * @param request - Free/busy query parameters
+ * @param options - Optional settings including accountId for multi-account support
  */
 export async function getFreeBusy(
   userId: string,
-  request: FreeBusyRequest
+  request: FreeBusyRequest,
+  options?: { accountId?: string }
 ): Promise<FreeBusyResponse> {
-  const { calendar } = await getCalendarClient(userId);
+  const { calendar } = await getCalendarClient(userId, options?.accountId);
 
   const response = await calendar.freebusy.query({
     requestBody: request,
@@ -440,17 +482,23 @@ export {
 
 /**
  * Respond to a calendar event invitation (accept/decline/tentative)
+ * @param userId - The user ID
+ * @param eventId - The event ID
+ * @param response - The response status
+ * @param calendarId - The calendar ID (defaults to 'primary')
+ * @param options - Optional settings including accountId for multi-account support
  */
 export async function respondToEvent(
   userId: string,
   eventId: string,
   response: 'accepted' | 'declined' | 'tentative',
-  calendarId: string = 'primary'
+  calendarId: string = 'primary',
+  options?: { accountId?: string }
 ): Promise<CalendarEvent | null> {
   const LOG_PREFIX = '[Calendar]';
 
   try {
-    const { calendar } = await getCalendarClient(userId);
+    const { calendar } = await getCalendarClient(userId, options?.accountId);
 
     // Get the event first to find user's attendee record
     const event = await calendar.events.get({
