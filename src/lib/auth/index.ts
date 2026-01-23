@@ -66,6 +66,12 @@ function getAuth(): ReturnType<typeof betterAuth> | null {
           accessType: 'offline',
           prompt: 'consent',
         },
+        github: {
+          clientId: process.env.GITHUB_CLIENT_ID || '',
+          clientSecret: process.env.GITHUB_CLIENT_SECRET || '',
+          // Request repo and user scopes for GitHub API access
+          scope: ['read:user', 'user:email', 'repo'],
+        },
       },
 
       // Session configuration
@@ -249,6 +255,48 @@ export async function getGoogleTokens(
     refreshTokenExpiresAt: primaryAccount.refreshTokenExpiresAt,
     scope: primaryAccount.scope,
     accountId: primaryAccount.id,
+  };
+}
+
+/**
+ * Helper to get GitHub OAuth tokens for a user
+ * Used for accessing GitHub API via @octokit/rest
+ *
+ * @param userId - The user ID to get tokens for
+ * @returns Token information or null if database not configured
+ */
+export async function getGitHubTokens(
+  userId: string
+): Promise<{
+  accessToken: string | null;
+  refreshToken: string | null;
+  accessTokenExpiresAt: Date | null;
+  scope: string | null;
+  accountId: string;
+} | null> {
+  if (!dbClient.isConfigured()) {
+    console.warn('[Auth] DATABASE_URL not configured - cannot get GitHub tokens');
+    return null;
+  }
+
+  const db = dbClient.getDb();
+
+  const [account] = await db
+    .select()
+    .from(accounts)
+    .where(and(eq(accounts.userId, userId), eq(accounts.providerId, 'github')))
+    .limit(1);
+
+  if (!account) {
+    throw new Error('No GitHub account linked to this user');
+  }
+
+  return {
+    accessToken: account.accessToken,
+    refreshToken: account.refreshToken,
+    accessTokenExpiresAt: account.accessTokenExpiresAt,
+    scope: account.scope,
+    accountId: account.id,
   };
 }
 

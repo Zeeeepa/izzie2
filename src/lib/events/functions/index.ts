@@ -30,6 +30,15 @@ import { updateGraph } from './update-graph';
 import { researchTask } from './research-task';
 import { generateDigestFunction } from './generate-digest';
 
+// Agent functions (5 Proactive Long-Running Background Agents)
+import {
+  entityDiscovererFunction,
+  relationshipDiscovererFunction,
+  emailCleanupFunction,
+  mlRuleInferrerFunction,
+  writingStyleAnalyzerFunction,
+} from '@/lib/agents/implementations';
+
 export const functions = [
   classifyEvent,
   processEvent,
@@ -45,4 +54,10 @@ export const functions = [
   updateGraph,
   researchTask,
   generateDigestFunction,
+  // Agent functions
+  entityDiscovererFunction,
+  relationshipDiscovererFunction,
+  emailCleanupFunction,
+  mlRuleInferrerFunction,
+  writingStyleAnalyzerFunction,
 ];

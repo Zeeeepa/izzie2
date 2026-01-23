@@ -22,6 +22,12 @@ import {
   bulkArchiveTool,
   createDraftTool,
 } from './email';
+import {
+  listGithubIssuesTool,
+  createGithubIssueTool,
+  updateGithubIssueTool,
+  addGithubCommentTool,
+} from './github';
 
 /**
  * All available chat tools
@@ -45,6 +51,11 @@ export const chatTools = {
   send_email: sendEmailTool,
   bulk_archive: bulkArchiveTool,
   create_draft: createDraftTool,
+  // GitHub management tools
+  list_github_issues: listGithubIssuesTool,
+  create_github_issue: createGithubIssueTool,
+  update_github_issue: updateGithubIssueTool,
+  add_github_comment: addGithubCommentTool,
 };
 
 /**

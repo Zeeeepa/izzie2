@@ -33,6 +33,17 @@ export function signInWithGoogle() {
 }
 
 /**
+ * Helper to sign in with GitHub
+ * Redirects to GitHub OAuth consent screen
+ */
+export function signInWithGitHub() {
+  return signIn.social({
+    provider: 'github',
+    callbackURL: '/', // Redirect to home after sign-in
+  });
+}
+
+/**
  * Helper to sign out
  * Clears session and redirects to home
  */

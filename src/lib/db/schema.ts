@@ -20,6 +20,7 @@ import {
   varchar,
   bigint,
   index,
+  uniqueIndex,
   customType,
   date,
   real,
@@ -1233,3 +1234,96 @@ export const accountMetadata = pgTable(
  */
 export type AccountMetadata = typeof accountMetadata.$inferSelect;
 export type NewAccountMetadata = typeof accountMetadata.$inferInsert;
+
+/**
+ * Agent Framework tables for long-running background agents
+ * Part of the Standardized Long-Running Agent Framework (#92)
+ */
+
+/**
+ * Agent Runs table - tracks agent execution with progress
+ * Provides full lifecycle tracking for background agent tasks
+ */
+export const agentRuns = pgTable(
+  'agent_runs',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    agentName: text('agent_name').notNull(),
+    userId: text('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull(),
+
+    // Status tracking
+    status: text('status').default('pending').notNull(), // 'pending' | 'running' | 'completed' | 'failed'
+    progress: integer('progress').default(0).notNull(),
+    itemsProcessed: integer('items_processed').default(0).notNull(),
+    itemsTotal: integer('items_total'),
+
+    // Results
+    output: jsonb('output').$type<Record<string, unknown>>(),
+    errorMessage: text('error_message'),
+
+    // Timestamps
+    startedAt: timestamp('started_at'),
+    completedAt: timestamp('completed_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    userStatusIdx: index('agent_runs_user_status_idx').on(table.userId, table.status),
+    agentNameIdx: index('agent_runs_agent_name_idx').on(table.agentName),
+    createdAtIdx: index('agent_runs_created_at_idx').on(table.createdAt),
+  })
+);
+
+/**
+ * Agent Cursors table - tracks incremental processing state
+ * Enables resumable processing with cursor-based position tracking
+ */
+export const agentCursors = pgTable(
+  'agent_cursors',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    agentName: text('agent_name').notNull(),
+    userId: text('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull(),
+    source: text('source'), // 'email' | 'calendar' | 'tasks' | 'entities' | etc.
+
+    // Cursor position tracking
+    lastProcessedId: text('last_processed_id'),
+    lastProcessedDate: timestamp('last_processed_date'),
+    checkpoint: jsonb('checkpoint').$type<Record<string, unknown>>(),
+
+    // Timestamps
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    userAgentSourceUnique: uniqueIndex('agent_cursors_user_agent_source_unique').on(
+      table.userId,
+      table.agentName,
+      table.source
+    ),
+    agentNameIdx: index('agent_cursors_agent_name_idx').on(table.agentName),
+  })
+);
+
+/**
+ * Type exports for agent framework tables
+ */
+export type AgentRun = typeof agentRuns.$inferSelect;
+export type NewAgentRun = typeof agentRuns.$inferInsert;
+
+export type AgentCursor = typeof agentCursors.$inferSelect;
+export type NewAgentCursor = typeof agentCursors.$inferInsert;
+
+/**
+ * Agent run status constants
+ */
+export const AGENT_RUN_STATUS = {
+  PENDING: 'pending',
+  RUNNING: 'running',
+  COMPLETED: 'completed',
+  FAILED: 'failed',
+} as const;
+
+export type AgentRunStatus = (typeof AGENT_RUN_STATUS)[keyof typeof AGENT_RUN_STATUS];
