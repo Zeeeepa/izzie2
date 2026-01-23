@@ -1119,6 +1119,60 @@ export type UsageTrackingRecord = typeof usageTracking.$inferSelect;
 export type NewUsageTrackingRecord = typeof usageTracking.$inferInsert;
 
 /**
+ * Writing Styles table - learned writing patterns per user/recipient
+ * Stores analyzed writing style data from sent emails
+ */
+export const writingStyles = pgTable(
+  'writing_styles',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    userId: text('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull(),
+
+    // Pattern identifier: '__overall__' for general style, or email/domain pattern
+    recipientPattern: text('recipient_pattern').notNull().default('__overall__'),
+
+    // Formality analysis
+    formality: text('formality').notNull().default('mixed'), // 'formal' | 'casual' | 'mixed'
+
+    // Length metrics
+    averageSentenceLength: integer('average_sentence_length').notNull().default(15),
+    averageEmailLength: integer('average_email_length').notNull().default(100), // words
+
+    // Common phrases (stored as JSON arrays)
+    commonGreetings: jsonb('common_greetings').$type<string[]>().default([]),
+    commonSignOffs: jsonb('common_sign_offs').$type<string[]>().default([]),
+
+    // Timing patterns
+    responseTimeHours: integer('response_time_hours').notNull().default(24),
+    activeHours: jsonb('active_hours').$type<{ start: number; end: number }>().default({ start: 9, end: 17 }),
+
+    // Analysis metadata
+    emailsAnalyzed: integer('emails_analyzed').notNull().default(0),
+    analyzedAt: timestamp('analyzed_at').defaultNow().notNull(),
+
+    // Timestamps
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    userIdIdx: index('writing_styles_user_id_idx').on(table.userId),
+    recipientPatternIdx: index('writing_styles_recipient_pattern_idx').on(table.recipientPattern),
+    userRecipientUnique: index('writing_styles_user_recipient_unique').on(
+      table.userId,
+      table.recipientPattern
+    ),
+  })
+);
+
+/**
+ * Type exports for writing styles
+ */
+export type WritingStyleRecord = typeof writingStyles.$inferSelect;
+export type NewWritingStyle = typeof writingStyles.$inferInsert;
+
+/**
  * Enum-like constants for writing style options
  * Use these for type-safe references in application code
  */
