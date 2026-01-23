@@ -9,6 +9,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
+import { rateLimit, getClientIP, getRetryAfterSeconds } from '@/lib/rate-limit';
 import { listEntitiesByType } from '@/lib/weaviate/entities';
 import type { EntityType } from '@/lib/extraction/types';
 
@@ -45,6 +46,33 @@ export async function GET(request: NextRequest) {
   try {
     // Require authentication (but don't filter by userId for single-user app)
     const session = await requireAuth(request);
+    const userId = session.user.id;
+
+    // Rate limiting (use user ID for authenticated, IP for anonymous fallback)
+    const identifier = userId || getClientIP(request);
+    const isAuthenticated = !!userId;
+    const rateLimitResult = await rateLimit(identifier, isAuthenticated);
+    if (!rateLimitResult.success) {
+      const retryAfter = rateLimitResult.reset
+        ? getRetryAfterSeconds(rateLimitResult.reset)
+        : 60;
+      return NextResponse.json(
+        {
+          error: 'Rate limit exceeded',
+          message: 'Too many requests. Please try again later.',
+          remaining: rateLimitResult.remaining,
+          retryAfter,
+        },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': String(retryAfter),
+            'X-RateLimit-Limit': String(rateLimitResult.limit),
+            'X-RateLimit-Remaining': String(rateLimitResult.remaining),
+          },
+        }
+      );
+    }
 
     // Parse query params
     const { searchParams } = new URL(request.url);
@@ -52,7 +80,7 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(parseInt(searchParams.get('limit') || '500', 10), 1000);
 
     console.log(`${LOG_PREFIX} Fetching entities type=${typeParam || 'all'} (single-user app, no userId filter)`);
-    console.log(`${LOG_PREFIX} Session:`, JSON.stringify(session, null, 2));
+    console.log(`${LOG_PREFIX} Session: userId=${session.user.id}, email=${session.user.email?.substring(0, 3)}***`);
 
     const entities: EntityData[] = [];
     const stats: Record<string, number> = {};

@@ -18,6 +18,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
+import { rateLimit, getRetryAfterSeconds } from '@/lib/rate-limit';
 import { memoryService } from '@/lib/memory';
 import { z } from 'zod';
 
@@ -50,6 +51,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const userId = authSession.user.id;
+
+    // Rate limiting (use user ID - this route requires authentication)
+    const rateLimitResult = await rateLimit(userId, true);
+    if (!rateLimitResult.success) {
+      const retryAfter = rateLimitResult.reset
+        ? getRetryAfterSeconds(rateLimitResult.reset)
+        : 60;
+      return NextResponse.json(
+        {
+          error: 'Rate limit exceeded',
+          message: 'Too many requests. Please try again later.',
+          remaining: rateLimitResult.remaining,
+          retryAfter,
+        },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': String(retryAfter),
+            'X-RateLimit-Limit': String(rateLimitResult.limit),
+            'X-RateLimit-Remaining': String(rateLimitResult.remaining),
+          },
+        }
+      );
+    }
+
     const body = await request.json();
 
     // Validate request
@@ -64,8 +91,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Override userId with authenticated user's ID (don't trust client-provided userId)
-    const userId = authSession.user.id;
+    // Use userId from authenticated session (don't trust client-provided userId)
     const { content, metadata, conversationId, importance, summary } = parsed.data;
 
     // Store memory

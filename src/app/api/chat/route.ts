@@ -13,6 +13,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
+import { rateLimit, getClientIP, getRetryAfterSeconds } from '@/lib/rate-limit';
 import { getAIClient } from '@/lib/ai/client';
 import { MODELS, estimateTokens } from '@/lib/ai/models';
 import { retrieveContext } from '@/lib/chat/context-retrieval';
@@ -131,6 +132,30 @@ export async function POST(request: NextRequest) {
     const authSession = await requireAuth(request);
     const userId = authSession.user.id;
     const userName = authSession.user.name || 'there';
+
+    // Rate limiting (use user ID for authenticated requests)
+    const rateLimitResult = await rateLimit(userId, true);
+    if (!rateLimitResult.success) {
+      const retryAfter = rateLimitResult.reset
+        ? getRetryAfterSeconds(rateLimitResult.reset)
+        : 60;
+      return NextResponse.json(
+        {
+          error: 'Rate limit exceeded',
+          message: 'Too many requests. Please try again later.',
+          remaining: rateLimitResult.remaining,
+          retryAfter,
+        },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': String(retryAfter),
+            'X-RateLimit-Limit': String(rateLimitResult.limit),
+            'X-RateLimit-Remaining': String(rateLimitResult.remaining),
+          },
+        }
+      );
+    }
 
     // Parse request body
     const body: ChatRequest = await request.json();
