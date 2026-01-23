@@ -125,8 +125,9 @@ let botInstance: TelegramBot | null = null;
 /**
  * Get or create Telegram bot singleton instance
  * Uses TELEGRAM_BOT_TOKEN environment variable
+ * Returns null if token is not configured (graceful degradation)
  */
-export function getTelegramBot(): TelegramBot {
+export function getTelegramBot(): TelegramBot | null {
   if (botInstance) {
     return botInstance;
   }
@@ -134,7 +135,8 @@ export function getTelegramBot(): TelegramBot {
   const token = process.env.TELEGRAM_BOT_TOKEN;
 
   if (!token) {
-    throw new Error(`${LOG_PREFIX} Missing TELEGRAM_BOT_TOKEN environment variable`);
+    console.warn(`${LOG_PREFIX} TELEGRAM_BOT_TOKEN not configured - bot features disabled`);
+    return null;
   }
 
   botInstance = new TelegramBot(token);

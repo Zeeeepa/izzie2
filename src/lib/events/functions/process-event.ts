@@ -247,6 +247,15 @@ async function sendTelegramNotification(
 
     try {
       const bot = getTelegramBot();
+      if (!bot) {
+        logger.error('Telegram admin notification failed: Bot not configured');
+        return {
+          success: false,
+          channel: 'telegram',
+          sentAt: new Date().toISOString(),
+          error: 'Telegram bot not configured',
+        };
+      }
       // Send as plain text - emoji and formatting chars work without Markdown
       const result = await bot.send(adminChatId, message);
 
@@ -292,6 +301,17 @@ async function sendTelegramNotification(
 
   try {
     const bot = getTelegramBot();
+    if (!bot) {
+      logger.error('Telegram notification failed: Bot not configured', {
+        userId: recipient,
+      });
+      return {
+        success: false,
+        channel: 'telegram',
+        sentAt: new Date().toISOString(),
+        error: 'Telegram bot not configured',
+      };
+    }
     const chatId = telegramLink.telegramChatId.toString();
 
     // Send as plain text - emoji and bullet points work without Markdown

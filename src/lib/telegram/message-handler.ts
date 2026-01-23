@@ -96,6 +96,11 @@ export async function processAndReply(
 ): Promise<void> {
   const bot = getTelegramBot();
 
+  if (!bot) {
+    console.error(`${LOG_PREFIX} Cannot process message - Telegram bot not configured`);
+    return;
+  }
+
   try {
     console.log(`${LOG_PREFIX} Processing message from user ${userId}, chat ${telegramChatId}`);
 

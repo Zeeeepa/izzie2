@@ -34,6 +34,10 @@ export async function notifyAdmin(
 
   try {
     const bot = getTelegramBot();
+    if (!bot) {
+      console.log(`${LOG_PREFIX} Bot not configured, skipping admin notification`);
+      return;
+    }
     await bot.send(adminChatId, messages[event] || `Event: ${event}\n${JSON.stringify(details)}`);
   } catch (error) {
     console.error(`${LOG_PREFIX} Failed to send admin notification:`, error);

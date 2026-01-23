@@ -5,7 +5,7 @@
 
 import { eq } from 'drizzle-orm';
 import { dbClient, telegramLinks } from '@/lib/db';
-import { getTelegramBot } from '@/lib/telegram/bot';
+import { getTelegramBot, type TelegramBot } from '@/lib/telegram/bot';
 import type { ResearchOutput } from '@/agents/research/types';
 
 const LOG_PREFIX = '[NotifierAgent]';
@@ -79,7 +79,18 @@ export interface NotificationResult {
  * Sends proactive notifications to users via Telegram
  */
 export class NotifierAgent {
-  private bot = getTelegramBot();
+  private _bot: TelegramBot | null = null;
+
+  /**
+   * Get bot instance lazily - only initializes when first accessed at runtime
+   * Returns null if TELEGRAM_BOT_TOKEN is not configured
+   */
+  private get bot(): TelegramBot | null {
+    if (this._bot === null) {
+      this._bot = getTelegramBot();
+    }
+    return this._bot;
+  }
 
   /**
    * Get user's Telegram chat_id from telegram_links table
@@ -125,9 +136,19 @@ export class NotifierAgent {
       };
     }
 
+    const bot = this.bot;
+    if (!bot) {
+      console.warn(`${LOG_PREFIX} Bot not available, skipping notification`);
+      return {
+        success: false,
+        skipped: true,
+        reason: 'Telegram bot not configured',
+      };
+    }
+
     try {
       const formattedMessage = this.formatNotification(type, title, message);
-      const result = await this.bot.send(chatId.toString(), formattedMessage, 'HTML');
+      const result = await bot.send(chatId.toString(), formattedMessage, 'HTML');
 
       console.log(`${LOG_PREFIX} Notification sent to user ${userId} (type: ${type})`);
 
@@ -163,9 +184,19 @@ export class NotifierAgent {
       };
     }
 
+    const bot = this.bot;
+    if (!bot) {
+      console.warn(`${LOG_PREFIX} Bot not available, skipping research notification`);
+      return {
+        success: false,
+        skipped: true,
+        reason: 'Telegram bot not configured',
+      };
+    }
+
     try {
       const message = this.formatResearchCompleteMessage(topic, result, reportLink);
-      const telegramResult = await this.bot.send(chatId.toString(), message, 'HTML');
+      const telegramResult = await bot.send(chatId.toString(), message, 'HTML');
 
       console.log(`${LOG_PREFIX} Research complete notification sent to user ${userId} (task: ${taskId})`);
 
@@ -200,9 +231,19 @@ export class NotifierAgent {
       };
     }
 
+    const bot = this.bot;
+    if (!bot) {
+      console.warn(`${LOG_PREFIX} Bot not available, skipping research failed notification`);
+      return {
+        success: false,
+        skipped: true,
+        reason: 'Telegram bot not configured',
+      };
+    }
+
     try {
       const message = this.formatResearchFailedMessage(topic, error);
-      const telegramResult = await this.bot.send(chatId.toString(), message, 'HTML');
+      const telegramResult = await bot.send(chatId.toString(), message, 'HTML');
 
       console.log(`${LOG_PREFIX} Research failed notification sent to user ${userId} (task: ${taskId})`);
 
@@ -237,9 +278,19 @@ export class NotifierAgent {
       };
     }
 
+    const bot = this.bot;
+    if (!bot) {
+      console.warn(`${LOG_PREFIX} Bot not available, skipping reminder notification`);
+      return {
+        success: false,
+        skipped: true,
+        reason: 'Telegram bot not configured',
+      };
+    }
+
     try {
       const formattedMessage = this.formatReminderMessage(title, message, dueAt);
-      const telegramResult = await this.bot.send(chatId.toString(), formattedMessage, 'HTML');
+      const telegramResult = await bot.send(chatId.toString(), formattedMessage, 'HTML');
 
       console.log(`${LOG_PREFIX} Reminder notification sent to user ${userId}`);
 

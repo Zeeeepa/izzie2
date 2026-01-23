@@ -123,14 +123,23 @@ export async function POST(request: NextRequest) {
           // Import getTelegramBot to use singleton with env token
           const { getTelegramBot } = await import('@/lib/telegram/bot');
           const bot = getTelegramBot();
-          const message = formatDigestMessage(digest);
 
-          await bot.sendMessage({
-            chat_id: telegramLink.telegramChatId.toString(),
-            text: message,
-          });
+          if (!bot) {
+            deliveryResults.push({
+              channel: 'telegram',
+              success: false,
+              error: 'Telegram bot not configured (TELEGRAM_BOT_TOKEN missing)',
+            });
+          } else {
+            const message = formatDigestMessage(digest);
 
-          deliveryResults.push({ channel: 'telegram', success: true });
+            await bot.sendMessage({
+              chat_id: telegramLink.telegramChatId.toString(),
+              text: message,
+            });
+
+            deliveryResults.push({ channel: 'telegram', success: true });
+          }
         } catch (err) {
           deliveryResults.push({
             channel: 'telegram',

@@ -87,6 +87,7 @@ function isPlainStart(text: string): boolean {
 
 /**
  * Safely send a message via bot, catching and logging any errors
+ * Returns false if bot is null (not configured) or if send fails
  */
 async function safeBotSend(
   bot: ReturnType<typeof getTelegramBot>,
@@ -94,6 +95,10 @@ async function safeBotSend(
   message: string,
   context: string
 ): Promise<boolean> {
+  if (!bot) {
+    console.error(`${LOG_PREFIX} Cannot send message [${context}] - bot not configured`);
+    return false;
+  }
   try {
     await bot.send(chatId, message);
     return true;
