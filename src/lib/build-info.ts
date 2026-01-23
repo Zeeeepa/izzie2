@@ -5,11 +5,11 @@
 
 export const BUILD_INFO = {
   version: '1.0.2',
-  gitHash: '317b4a4',
+  gitHash: '605acd9',
   gitBranch: 'preview',
-  buildTime: '2026-01-23T05:27:25Z',
+  buildTime: '2026-01-23T05:42:33Z',
   nodeVersion: 'v25.2.1',
-  isDirty: false,
+  isDirty: true,
 } as const;
 
 export type BuildInfo = typeof BUILD_INFO;

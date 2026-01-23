@@ -5,9 +5,39 @@
 
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
+import { createAuthMiddleware, APIError } from 'better-auth/api';
 import { dbClient } from '@/lib/db';
 import { users, sessions, accounts, verifications, accountMetadata } from '@/lib/db/schema';
 import { eq, and, desc } from 'drizzle-orm';
+
+/**
+ * Email whitelist for restricting sign-ups
+ * Set ALLOWED_EMAILS env var with comma-separated emails to restrict access
+ * If not set, all emails are allowed (development mode)
+ */
+function getAllowedEmails(): Set<string> | null {
+  const allowedEmailsEnv = process.env.ALLOWED_EMAILS;
+  if (!allowedEmailsEnv || allowedEmailsEnv.trim() === '') {
+    return null; // No restriction - allow all emails
+  }
+  return new Set(
+    allowedEmailsEnv
+      .split(',')
+      .map((email) => email.trim().toLowerCase())
+      .filter((email) => email.length > 0)
+  );
+}
+
+/**
+ * Check if an email is allowed to sign up/sign in
+ */
+function isEmailAllowed(email: string): boolean {
+  const allowedEmails = getAllowedEmails();
+  if (allowedEmails === null) {
+    return true; // No restriction configured
+  }
+  return allowedEmails.has(email.toLowerCase());
+}
 
 /**
  * Better Auth instance (lazy-initialized for build compatibility)
@@ -101,6 +131,86 @@ function getAuth(): ReturnType<typeof betterAuth> | null {
 
       // Secret for signing tokens
       secret: process.env.BETTER_AUTH_SECRET || '',
+
+      // Database hooks for email whitelist validation during user creation (OAuth)
+      databaseHooks: {
+        user: {
+          create: {
+            before: async (user) => {
+              // Check email whitelist before creating user
+              // This catches both OAuth and email/password new user sign-ups
+              if (user.email && !isEmailAllowed(user.email)) {
+                console.warn(`[Auth] Rejected user creation for non-whitelisted email: ${user.email}`);
+                throw new APIError('FORBIDDEN', {
+                  message: 'This email is not authorized to access this application. Please contact the administrator.',
+                });
+              }
+              return { data: user };
+            },
+          },
+        },
+      },
+
+      // Request hooks for email whitelist validation
+      hooks: {
+        // Before hook for email/password auth
+        before: createAuthMiddleware(async (ctx) => {
+          // Check email whitelist for email/password sign-in
+          const emailAuthPaths = ['/sign-up/email', '/sign-in/email'];
+
+          if (!emailAuthPaths.some((path) => ctx.path.includes(path))) {
+            return; // Not an email auth path, allow through
+          }
+
+          // Get email from request body
+          const email = ctx.body?.email as string | undefined;
+
+          // Validate email if found
+          if (email && !isEmailAllowed(email)) {
+            console.warn(`[Auth] Rejected sign-in attempt for non-whitelisted email: ${email}`);
+            throw new APIError('FORBIDDEN', {
+              message: 'This email is not authorized to access this application. Please contact the administrator.',
+            });
+          }
+        }),
+        // After hook for OAuth sign-in (catches existing users signing in via OAuth)
+        after: createAuthMiddleware(async (ctx) => {
+          // Check if this is a callback path (OAuth sign-in completion)
+          if (!ctx.path.includes('/callback/')) {
+            return;
+          }
+
+          // Check if a new session was created
+          const newSession = ctx.context?.newSession as
+            | { user?: { email?: string }; session?: { id?: string } }
+            | undefined;
+
+          if (newSession?.user?.email && !isEmailAllowed(newSession.user.email)) {
+            console.warn(
+              `[Auth] Rejected OAuth sign-in for non-whitelisted email: ${newSession.user.email}`
+            );
+
+            // Delete the session that was just created
+            if (newSession.session?.id) {
+              try {
+                const db = dbClient.getDb();
+                await db
+                  .delete(sessions)
+                  .where(eq(sessions.id, newSession.session.id));
+                console.log('[Auth] Deleted unauthorized session:', newSession.session.id);
+              } catch (error) {
+                console.error('[Auth] Failed to delete unauthorized session:', error);
+              }
+            }
+
+            // Note: The user may already be redirected at this point
+            // The session deletion ensures they can't access protected resources
+            throw new APIError('FORBIDDEN', {
+              message: 'This email is not authorized to access this application. Please contact the administrator.',
+            });
+          }
+        }),
+      },
     });
   }
   return _auth;
