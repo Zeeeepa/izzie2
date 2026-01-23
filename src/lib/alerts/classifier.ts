@@ -3,8 +3,7 @@
  * Determines alert priority based on content signals
  */
 
-import type { Email } from '@/lib/google/types';
-import type { CalendarEvent } from '@/lib/calendar/types';
+import type { Email, CalendarEvent } from '@/lib/google/types';
 import {
   AlertLevel,
   ClassifiedAlert,
@@ -173,12 +172,10 @@ export function classifyCalendarEvent(
 
   const now = new Date();
   const eventStart = parseEventTime(event.start);
-  const hoursUntilStart = eventStart
-    ? (eventStart.getTime() - now.getTime()) / (1000 * 60 * 60)
-    : null;
+  const hoursUntilStart = (eventStart.getTime() - now.getTime()) / (1000 * 60 * 60);
 
   // Time-based classification
-  if (hoursUntilStart !== null && hoursUntilStart > 0) {
+  if (hoursUntilStart > 0) {
     if (hoursUntilStart <= 1) {
       signals.push(`Starting in ${Math.round(hoursUntilStart * 60)} minutes`);
       level = AlertLevel.P0_URGENT;
@@ -217,10 +214,10 @@ export function classifyCalendarEvent(
     source: 'calendar',
     sourceId: event.id,
     signals,
-    timestamp: eventStart || now,
+    timestamp: eventStart,
     metadata: {
-      eventStart: eventStart ?? undefined,
-      eventEnd: parseEventTime(event.end) ?? undefined,
+      eventStart,
+      eventEnd: parseEventTime(event.end),
       location: event.location,
       meetingLink: event.hangoutLink || getConferenceLink(event),
     },
@@ -246,14 +243,8 @@ function boostLevel(current: AlertLevel): AlertLevel {
 /**
  * Parse event time to Date
  */
-function parseEventTime(time: CalendarEvent['start']): Date | null {
-  if (time.dateTime) {
-    return new Date(time.dateTime);
-  }
-  if (time.date) {
-    return new Date(time.date);
-  }
-  return null;
+function parseEventTime(time: CalendarEvent['start']): Date {
+  return new Date(time.dateTime);
 }
 
 /**

@@ -198,6 +198,20 @@ export interface CalendarEvent {
   recurringEventId?: string;
   status?: 'confirmed' | 'tentative' | 'cancelled';
   htmlLink?: string;
+  hangoutLink?: string;
+  conferenceData?: {
+    conferenceId?: string;
+    conferenceSolution?: {
+      name?: string;
+      iconUri?: string;
+    };
+    entryPoints?: Array<{
+      entryPointType: 'video' | 'phone' | 'sip' | 'more';
+      uri: string;
+      label?: string;
+      password?: string;
+    }>;
+  };
 }
 
 export interface CalendarEventBatch {

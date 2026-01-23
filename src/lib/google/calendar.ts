@@ -71,6 +71,24 @@ export class CalendarService {
         recurringEventId: item.recurringEventId || undefined,
         status: item.status as 'confirmed' | 'tentative' | 'cancelled' | undefined,
         htmlLink: item.htmlLink || undefined,
+        hangoutLink: item.hangoutLink || undefined,
+        conferenceData: item.conferenceData
+          ? {
+              conferenceId: item.conferenceData.conferenceId || undefined,
+              conferenceSolution: item.conferenceData.conferenceSolution
+                ? {
+                    name: item.conferenceData.conferenceSolution.name || undefined,
+                    iconUri: item.conferenceData.conferenceSolution.iconUri || undefined,
+                  }
+                : undefined,
+              entryPoints: item.conferenceData.entryPoints?.map((ep) => ({
+                entryPointType: ep.entryPointType as 'video' | 'phone' | 'sip' | 'more',
+                uri: ep.uri || '',
+                label: ep.label || undefined,
+                password: ep.password || undefined,
+              })),
+            }
+          : undefined,
       }));
 
       return {
