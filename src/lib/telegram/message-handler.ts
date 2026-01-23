@@ -17,8 +17,9 @@ import { retrieveContext } from '@/lib/chat/context-retrieval';
 import { formatContextForPrompt } from '@/lib/chat/context-formatter';
 import { getUserPreferences, formatWritingStyleInstructions } from '@/lib/chat/preferences';
 import { getSelfAwarenessContext, formatSelfAwarenessForPrompt } from '@/lib/chat/self-awareness';
+import { validateResponse } from '@/lib/chat/response-validator';
 import { getAIClient } from '@/lib/ai/client';
-import { MODELS, estimateTokens } from '@/lib/ai/models';
+import { MODELS, estimateTokens, MODEL_ROLES, ESCALATION_CONFIG } from '@/lib/ai/models';
 import { getTelegramBot } from './bot';
 import { logAudit } from './audit';
 import { trackUsage } from '@/lib/usage';
@@ -196,11 +197,56 @@ ${RESPONSE_FORMAT_INSTRUCTION}
 
     // 6. Call AI client (non-streaming)
     const aiClient = getAIClient();
-    const aiResponse = await aiClient.chat(messages, {
-      model: MODELS.GENERAL,
-      temperature: 0.7,
+    let currentModel = MODELS.GENERAL;
+    let currentTemperature = 0.7;
+    let escalationMetadata: any = null;
+
+    // First attempt with GENERAL model
+    let aiResponse = await aiClient.chat(messages, {
+      model: currentModel,
+      temperature: currentTemperature,
       maxTokens: 2000,
     });
+
+    // Validate response quality and detect cognitive failures
+    const quality = validateResponse(aiResponse.content);
+
+    if (quality.shouldEscalate && ESCALATION_CONFIG.LOG_ESCALATIONS) {
+      console.log(
+        `${LOG_PREFIX} Escalation triggered - Score: ${quality.score.toFixed(2)}, Reason: ${quality.reason}`
+      );
+    }
+
+    // If escalation is needed, retry with higher-tier model (Telegram is simpler, no streaming)
+    if (quality.shouldEscalate) {
+      const fallbackModel = MODEL_ROLES.GENERAL.fallback;
+
+      if (fallbackModel) {
+        const originalModel = currentModel;
+        currentModel = fallbackModel as typeof currentModel; // Escalate to ORCHESTRATOR (Opus)
+        currentTemperature = Math.max(0.5, currentTemperature - 0.2); // Lower temperature for more focused response
+
+        escalationMetadata = {
+          originalModel: originalModel,
+          escalatedModel: currentModel,
+          escalationReason: quality.reason,
+          qualityScore: quality.score,
+          signals: quality.signals.map((s) => s.type),
+          assessmentConfidence: quality.assessmentConfidence,
+        };
+
+        console.log(
+          `${LOG_PREFIX} Escalating from ${originalModel} to ${currentModel} (temp: ${currentTemperature})`
+        );
+
+        // Retry with escalated model
+        aiResponse = await aiClient.chat(messages, {
+          model: currentModel,
+          temperature: currentTemperature,
+          maxTokens: 2000,
+        });
+      }
+    }
 
     // 7. Parse structured response
     let structuredResponse: StructuredLLMResponse;
@@ -264,7 +310,12 @@ ${RESPONSE_FORMAT_INSTRUCTION}
     const promptTokens = aiResponse.usage?.promptTokens ?? estimateTokens(messages.map((m) => m.content).join(' '));
     const completionTokens = aiResponse.usage?.completionTokens ?? estimateTokens(aiResponse.content);
 
-    trackUsage(userId, MODELS.GENERAL, promptTokens, completionTokens, {
+    // Log escalation tracking
+    if (escalationMetadata && ESCALATION_CONFIG.TRACK_ESCALATION_METRICS) {
+      console.log(`${LOG_PREFIX} Escalation metrics: ${JSON.stringify(escalationMetadata)}`);
+    }
+
+    trackUsage(userId, currentModel, promptTokens, completionTokens, {
       conversationId: chatSession.id,
       source: 'telegram',
     }).catch((err) => {
