@@ -45,7 +45,8 @@
     "env:pull": "tsx scripts/env-pull.ts",
     "env:validate": "tsx scripts/env-validate.ts",
     "check:relationships": "tsx scripts/check-relationships.ts",
-    "check:user-graph": "tsx scripts/check-user-graph.ts"
+    "check:user-graph": "tsx scripts/check-user-graph.ts",
+    "mcp-server": "tsx src/mcp-server/index.ts"
   },
   "repository": {
     "type": "git",

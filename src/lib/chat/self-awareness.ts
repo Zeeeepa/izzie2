@@ -5,6 +5,8 @@
  * capabilities, and connected data sources.
  */
 
+import { chatTools } from './tools';
+
 export interface ConnectorStatus {
   name: string;
   type: 'email' | 'calendar' | 'storage' | 'database';
@@ -27,6 +29,75 @@ export interface SelfAwarenessContext {
   };
   connectors: ConnectorStatus[];
   capabilities: string[];
+}
+
+/**
+ * Tool category definitions for grouping capabilities
+ */
+const TOOL_CATEGORIES: Record<string, { prefix: string; keywords: string[] }> = {
+  tasks: {
+    prefix: 'Task Management',
+    keywords: ['task', 'task_list'],
+  },
+  email: {
+    prefix: 'Email',
+    keywords: ['email', 'archive', 'label', 'draft', 'send'],
+  },
+  github: {
+    prefix: 'GitHub',
+    keywords: ['github', 'issue', 'comment'],
+  },
+  research: {
+    prefix: 'Research',
+    keywords: ['research'],
+  },
+};
+
+/**
+ * Categorize a tool name based on keywords
+ */
+function categorizeToolName(toolName: string): string {
+  for (const [category, config] of Object.entries(TOOL_CATEGORIES)) {
+    if (config.keywords.some((keyword) => toolName.includes(keyword))) {
+      return category;
+    }
+  }
+  return 'other';
+}
+
+/**
+ * Generate capability descriptions from registered tools
+ * Groups tools by category for cleaner output
+ */
+function generateToolCapabilities(): string[] {
+  const grouped: Record<string, string[]> = {};
+
+  for (const [name, tool] of Object.entries(chatTools)) {
+    const category = categorizeToolName(name);
+    if (!grouped[category]) {
+      grouped[category] = [];
+    }
+    // Extract first sentence of description for concise capability
+    const firstSentence = tool.description.split('.')[0];
+    grouped[category].push(firstSentence);
+  }
+
+  const capabilities: string[] = [];
+
+  // Generate grouped capability strings
+  for (const [category, descriptions] of Object.entries(grouped)) {
+    const config = TOOL_CATEGORIES[category];
+    const prefix = config?.prefix || 'Other';
+
+    // Combine similar tools into one capability statement
+    if (descriptions.length > 1) {
+      capabilities.push(`${prefix}: ${descriptions.join('; ')}`);
+    } else {
+      capabilities.push(`${prefix}: ${descriptions[0]}`);
+    }
+  }
+
+  return capabilities;
 }
 
 /**
@@ -100,12 +171,15 @@ export async function getSelfAwarenessContext(userId: string): Promise<SelfAware
       },
     ],
     capabilities: [
+      // Memory and context capabilities
       'Remember facts, preferences, and context from your emails and documents',
       'Track people, companies, and projects you interact with',
       'Maintain conversation context across long sessions',
       'Track your current task and help you stay focused',
       'Search semantically across all your connected data',
       'Learn your preferences and communication patterns over time',
+      // Dynamically generated tool capabilities
+      ...generateToolCapabilities(),
     ],
   };
 }
