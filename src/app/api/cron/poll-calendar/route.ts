@@ -15,14 +15,9 @@ import { getGoogleTokens, updateGoogleTokens } from '@/lib/auth';
 import { CalendarService } from '@/lib/google/calendar';
 import { getTelegramLink } from '@/lib/telegram/linking';
 import { TelegramBot } from '@/lib/telegram/bot';
-import {
-  classifyCalendarEvent,
-  routeAlert,
-  AlertLevel,
-  DEFAULT_CONFIG,
-  type ClassificationConfig,
-} from '@/lib/alerts';
+import { classifyCalendarEvent, routeAlert, AlertLevel } from '@/lib/alerts';
 import { getLastPollTime, updateLastPollTime } from '@/lib/alerts/poll-state';
+import { getAlertPreferences } from '@/lib/alerts/preferences';
 
 const LOG_PREFIX = '[PollCalendar]';
 
@@ -135,11 +130,8 @@ async function pollUserCalendar(
 
     console.log(`${LOG_PREFIX} Found ${result.events.length} upcoming events for user ${userId}`);
 
-    // Build classification config
-    const config: ClassificationConfig = {
-      ...DEFAULT_CONFIG,
-      vipSenders: [], // TODO: Load from preferences
-    };
+    // Build classification config from user preferences
+    const config = await getAlertPreferences(userId);
 
     // Create Telegram send function
     const sendTelegram = async (message: string): Promise<boolean> => {

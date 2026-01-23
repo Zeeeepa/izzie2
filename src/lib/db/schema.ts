@@ -1049,6 +1049,74 @@ export type DigestRecord = typeof digestRecords.$inferSelect;
 export type NewDigestRecord = typeof digestRecords.$inferInsert;
 
 /**
+ * Alert Preferences table - real-time alert configuration
+ * Stores user preferences for urgent email alerts including VIP senders,
+ * quiet hours, notification channels, and per-priority toggles
+ */
+export const alertPreferences = pgTable(
+  'alert_preferences',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    userId: text('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull()
+      .unique(),
+
+    // VIP Senders - email addresses that boost priority
+    vipSenders: text('vip_senders')
+      .array()
+      .default(sql`ARRAY[]::text[]`)
+      .notNull(),
+
+    // Custom urgent keywords (extends defaults)
+    customUrgentKeywords: text('custom_urgent_keywords')
+      .array()
+      .default(sql`ARRAY[]::text[]`)
+      .notNull(),
+
+    // Quiet Hours configuration
+    quietHoursEnabled: boolean('quiet_hours_enabled')
+      .default(true)
+      .notNull(),
+    quietHoursStart: text('quiet_hours_start')
+      .default('22:00')
+      .notNull(),
+    quietHoursEnd: text('quiet_hours_end')
+      .default('07:00')
+      .notNull(),
+    quietHoursTimezone: text('quiet_hours_timezone')
+      .default('America/New_York')
+      .notNull(),
+
+    // Notification toggles
+    telegramEnabled: boolean('telegram_enabled')
+      .default(true)
+      .notNull(),
+    emailEnabled: boolean('email_enabled')
+      .default(false)
+      .notNull(),
+
+    // Per-priority toggles
+    notifyOnP0: boolean('notify_on_p0').default(true).notNull(),
+    notifyOnP1: boolean('notify_on_p1').default(true).notNull(),
+    notifyOnP2: boolean('notify_on_p2').default(false).notNull(),
+
+    // Timestamps
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    userIdIdx: index('alert_preferences_user_id_idx').on(table.userId),
+  })
+);
+
+/**
+ * Type exports for alert preferences
+ */
+export type AlertPreference = typeof alertPreferences.$inferSelect;
+export type NewAlertPreference = typeof alertPreferences.$inferInsert;
+
+/**
  * User Preferences table - writing style customization
  * Stores user preferences for AI writing style, tone, and custom instructions
  */

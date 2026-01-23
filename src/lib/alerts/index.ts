@@ -56,3 +56,12 @@ export {
   updateLastPollTime,
   initPollStateTable,
 } from './poll-state';
+
+// Preferences
+export {
+  getAlertPreferences,
+  getAlertPreferencesRaw,
+  upsertAlertPreferences,
+  addVipSender,
+  removeVipSender,
+} from './preferences';

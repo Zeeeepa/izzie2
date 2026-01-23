@@ -15,14 +15,9 @@ import { getGoogleTokens, updateGoogleTokens } from '@/lib/auth';
 import { GmailService } from '@/lib/google/gmail';
 import { getTelegramLink } from '@/lib/telegram/linking';
 import { TelegramBot } from '@/lib/telegram/bot';
-import {
-  classifyEmail,
-  routeAlert,
-  AlertLevel,
-  DEFAULT_CONFIG,
-  type ClassificationConfig,
-} from '@/lib/alerts';
+import { classifyEmail, routeAlert, AlertLevel } from '@/lib/alerts';
 import { getLastPollTime, updateLastPollTime } from '@/lib/alerts/poll-state';
+import { getAlertPreferences } from '@/lib/alerts/preferences';
 
 const LOG_PREFIX = '[PollEmail]';
 
@@ -114,13 +109,8 @@ async function pollUserEmails(
 
     console.log(`${LOG_PREFIX} Found ${result.emails.length} new emails for user ${userId}`);
 
-    // Build classification config
-    // TODO: Load VIP senders from user preferences
-    const config: ClassificationConfig = {
-      ...DEFAULT_CONFIG,
-      userEmail: tokens.accessToken ? undefined : undefined, // TODO: Get user email
-      vipSenders: [], // TODO: Load from preferences
-    };
+    // Build classification config from user preferences
+    const config = await getAlertPreferences(userId);
 
     // Create Telegram send function
     const sendTelegram = async (message: string): Promise<boolean> => {
