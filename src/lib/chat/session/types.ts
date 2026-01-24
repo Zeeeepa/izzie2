@@ -89,7 +89,19 @@ export const EVICTION_PERCENTAGE = 0.7; // Keep 70% overlap when compressing
  * Response format instruction for LLM
  */
 export const RESPONSE_FORMAT_INSTRUCTION = `
-You MUST respond with valid JSON in this exact format:
+## Response Format
+
+**CRITICAL - Two-Phase Response Flow:**
+
+**Phase 1 - Tool Execution (if needed):**
+If the user's request requires an action (creating tasks, sending emails, listing items, archiving, etc.):
+- IMMEDIATELY invoke the appropriate function through the function calling interface
+- Do NOT output any text response during this phase
+- Do NOT write XML tags, function names, or describe what you're doing
+- Just make the function call silently
+
+**Phase 2 - Final Response (ONLY after tools complete or if no tools needed):**
+After all tool operations are complete (or if no tools were needed), respond with valid JSON:
 {
   "response": "Your conversational response to the user",
   "currentTask": {
