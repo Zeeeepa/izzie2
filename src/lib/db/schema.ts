@@ -1431,3 +1431,59 @@ export const apiKeys = pgTable(
  */
 export type ApiKey = typeof apiKeys.$inferSelect;
 export type NewApiKey = typeof apiKeys.$inferInsert;
+
+/**
+ * MCP Tool Embeddings table - vector embeddings for semantic tool discovery
+ * Stores tool metadata and embeddings for similarity search
+ * Part of Search-Based MCP Tool Discovery (Phase 1)
+ */
+export const mcpToolEmbeddings = pgTable(
+  'mcp_tool_embeddings',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    userId: text('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull(),
+    serverId: text('server_id')
+      .references(() => mcpServers.id, { onDelete: 'cascade' })
+      .notNull(),
+
+    // Tool identification
+    toolName: text('tool_name').notNull(),
+    description: text('description'),
+
+    // Rich description for better embeddings
+    enrichedDescription: text('enriched_description').notNull(),
+
+    // Vector embedding (1536 dimensions for text-embedding-3-small)
+    embedding: vector('embedding'),
+
+    // Cache invalidation - hash of inputSchema to detect changes
+    inputSchemaHash: text('input_schema_hash').notNull(),
+    embeddingModel: text('embedding_model').notNull().default('text-embedding-3-small'),
+
+    // Status
+    enabled: boolean('enabled').notNull().default(true),
+
+    // Timestamps
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    userIdIdx: index('mcp_tool_embeddings_user_id_idx').on(table.userId),
+    serverIdIdx: index('mcp_tool_embeddings_server_id_idx').on(table.serverId),
+    enabledIdx: index('mcp_tool_embeddings_enabled_idx').on(table.enabled),
+    // Unique constraint: one embedding per user/server/tool combination
+    userServerToolUnique: uniqueIndex('mcp_tool_embeddings_user_server_tool_unique').on(
+      table.userId,
+      table.serverId,
+      table.toolName
+    ),
+  })
+);
+
+/**
+ * Type exports for MCP tool embeddings
+ */
+export type McpToolEmbedding = typeof mcpToolEmbeddings.$inferSelect;
+export type NewMcpToolEmbedding = typeof mcpToolEmbeddings.$inferInsert;

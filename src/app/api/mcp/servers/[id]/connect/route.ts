@@ -8,6 +8,7 @@ import { requireAuth } from '@/lib/auth';
 import { dbClient } from '@/lib/db/client';
 import { sql } from 'drizzle-orm';
 import { getMCPClientManager } from '@/lib/mcp';
+import { syncToolEmbeddings } from '@/lib/mcp/tool-discovery';
 import type { MCPServerConfig, MCPTransport } from '@/lib/mcp/types';
 
 const LOG_PREFIX = '[MCP Connect API]';
@@ -87,11 +88,29 @@ export async function POST(request: NextRequest, context: RouteContext) {
       `${LOG_PREFIX} Connected to ${config.name}: ${status.tools.length} tools, ${status.resources.length} resources`
     );
 
+    // Sync tool embeddings if connection was successful
+    let embeddingsSynced = false;
+    if (status.connected && status.tools.length > 0) {
+      try {
+        const syncStats = await syncToolEmbeddings(userId, id, status.tools);
+        console.log(
+          `${LOG_PREFIX} Synced embeddings for ${config.name}: ` +
+            `${syncStats.created} created, ${syncStats.updated} updated, ` +
+            `${syncStats.deleted} deleted`
+        );
+        embeddingsSynced = true;
+      } catch (syncError) {
+        console.error(`${LOG_PREFIX} Failed to sync embeddings:`, syncError);
+        // Don't fail the connection if embedding sync fails
+      }
+    }
+
     return NextResponse.json({
       connected: status.connected,
       tools: status.tools,
       resources: status.resources,
       error: status.error,
+      embeddingsSynced,
     });
   } catch (error) {
     console.error(`${LOG_PREFIX} Connection error:`, error);

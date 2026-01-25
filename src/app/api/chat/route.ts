@@ -35,6 +35,7 @@ import {
   formatSelfAwarenessForPrompt,
 } from '@/lib/chat/self-awareness';
 import { getMCPClientManager } from '@/lib/mcp';
+import { getToolsForContext } from '@/lib/mcp/tool-discovery';
 import type { MCPTool } from '@/lib/mcp/types';
 import type { Tool, ToolCall } from '@/types';
 import { getChatToolDefinitions, executeChatTool } from '@/lib/chat/tools';
@@ -274,8 +275,21 @@ ${RESPONSE_FORMAT_INSTRUCTION}
     const aiClient = getAIClient();
 
     // Get available tools (both MCP and native chat tools)
-    const mcpManager = getMCPClientManager();
-    const mcpTools = mcpManager.getAllTools();
+    // MCP tools: either search-based (new) or all at once (legacy)
+    let mcpTools: MCPTool[] = [];
+    const mcpSearchEnabled = process.env.MCP_SEARCH_ENABLED === 'true';
+
+    if (mcpSearchEnabled && userId) {
+      // Search-based discovery - select relevant tools per message
+      const userMessage = messages[messages.length - 1]?.content || '';
+      mcpTools = await getToolsForContext(userId, userMessage);
+      console.log(`${LOG_PREFIX} Discovered ${mcpTools.length} relevant MCP tools via search`);
+    } else {
+      // Legacy: all tools at once
+      const mcpManager = getMCPClientManager();
+      mcpTools = mcpManager.getAllTools();
+    }
+
     const mcpToolDefs = mcpTools.length > 0 ? convertMCPToolsToOpenAI(mcpTools) : [];
     const chatToolDefs = getChatToolDefinitions();
     const tools = [...mcpToolDefs, ...chatToolDefs];

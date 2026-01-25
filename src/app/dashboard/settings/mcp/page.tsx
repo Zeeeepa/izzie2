@@ -80,6 +80,17 @@ export default function MCPSettingsPage() {
     enabled: true,
   });
 
+  // Embedding sync state
+  const [embeddingSyncing, setEmbeddingSyncing] = useState(false);
+  const [lastSyncResult, setLastSyncResult] = useState<{
+    created: number;
+    updated: number;
+    deleted: number;
+    unchanged: number;
+    servers: number;
+    timestamp: Date;
+  } | null>(null);
+
   // Fetch servers
   const fetchServers = useCallback(async () => {
     try {
@@ -341,6 +352,31 @@ export default function MCPSettingsPage() {
     }
   };
 
+  // Sync tool embeddings
+  const syncEmbeddings = async () => {
+    setEmbeddingSyncing(true);
+    try {
+      const response = await fetch('/api/mcp/embeddings/sync', {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to sync embeddings');
+      }
+
+      const data = await response.json();
+      setLastSyncResult({
+        ...data,
+        timestamp: new Date(),
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to sync embeddings');
+    } finally {
+      setEmbeddingSyncing(false);
+    }
+  };
+
   // Open modal for editing
   const openEditModal = (server: MCPServer) => {
     setEditingServer(server);
@@ -401,21 +437,46 @@ export default function MCPSettingsPage() {
         <p style={{ color: '#6b7280', marginBottom: '1rem' }}>
           Connect to external tools and services using the Model Context Protocol
         </p>
-        <button
-          onClick={() => setShowAddModal(true)}
-          style={{
-            padding: '0.5rem 1rem',
-            backgroundColor: '#3b82f6',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '6px',
-            fontSize: '0.875rem',
-            fontWeight: '500',
-            cursor: 'pointer',
-          }}
-        >
-          + Add Server
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <button
+            onClick={() => setShowAddModal(true)}
+            style={{
+              padding: '0.5rem 1rem',
+              backgroundColor: '#3b82f6',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '6px',
+              fontSize: '0.875rem',
+              fontWeight: '500',
+              cursor: 'pointer',
+            }}
+          >
+            + Add Server
+          </button>
+          <button
+            onClick={syncEmbeddings}
+            disabled={embeddingSyncing}
+            style={{
+              padding: '0.5rem 1rem',
+              backgroundColor: embeddingSyncing ? '#9ca3af' : '#10b981',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '6px',
+              fontSize: '0.875rem',
+              fontWeight: '500',
+              cursor: embeddingSyncing ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {embeddingSyncing ? 'Syncing...' : 'Sync Tool Embeddings'}
+          </button>
+          {lastSyncResult && (
+            <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+              Last sync: {lastSyncResult.servers} servers, {lastSyncResult.created + lastSyncResult.updated} updated
+              {' at '}
+              {lastSyncResult.timestamp.toLocaleTimeString()}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Error message */}
