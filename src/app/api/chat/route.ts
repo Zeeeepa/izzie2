@@ -9,6 +9,10 @@
  * - Memory retrieval with temporal decay
  * - Streams AI responses in real-time
  * - Incremental history compression
+ *
+ * Test Auth Bypass:
+ * For testing, set X-Test-Secret header to TEST_API_SECRET env var value
+ * and X-Test-User-Id header to the user ID to use for the request.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -129,10 +133,25 @@ async function executeTool(
  */
 export async function POST(request: NextRequest) {
   try {
-    // Require authentication
-    const authSession = await requireAuth(request);
-    const userId = authSession.user.id;
-    const userName = authSession.user.name || 'there';
+    // Test auth bypass: Check X-Test-Secret header against TEST_API_SECRET env var
+    const testSecret = request.headers.get('X-Test-Secret');
+    const expectedTestSecret = process.env.TEST_API_SECRET;
+    const testUserId = request.headers.get('X-Test-User-Id');
+
+    let userId: string;
+    let userName: string;
+
+    if (testSecret && expectedTestSecret && testSecret === expectedTestSecret && testUserId) {
+      // Valid test auth - use provided user ID
+      userId = testUserId;
+      userName = 'Test User';
+      console.log(`${LOG_PREFIX} Test auth bypass: using user ${userId}`);
+    } else {
+      // Require normal authentication
+      const authSession = await requireAuth(request);
+      userId = authSession.user.id;
+      userName = authSession.user.name || 'there';
+    }
 
     // Rate limiting (use user ID for authenticated requests)
     const rateLimitResult = await rateLimit(userId, true);
