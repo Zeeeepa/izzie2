@@ -10,7 +10,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
 import { dbClient } from '@/lib/db';
-import { users } from '@/lib/db/schema';
+import { users, sentReminders } from '@/lib/db/schema';
+import { and, eq, lt } from 'drizzle-orm';
 import { getGoogleTokens, updateGoogleTokens } from '@/lib/auth';
 import { CalendarService } from '@/lib/google/calendar';
 import { getTelegramLink } from '@/lib/telegram/linking';
@@ -67,17 +68,60 @@ function isEventStartingSoon(
 }
 
 /**
- * Track which events we've already sent reminders for
- * Key: eventId:thresholdMinutes
+ * Check if a reminder has already been sent for this event/threshold
  */
-const sentReminders: Set<string> = new Set();
+async function hasReminderBeenSent(
+  db: ReturnType<typeof dbClient.getDb>,
+  userId: string,
+  eventId: string,
+  threshold: number
+): Promise<boolean> {
+  const existing = await db
+    .select({ id: sentReminders.id })
+    .from(sentReminders)
+    .where(
+      and(
+        eq(sentReminders.userId, userId),
+        eq(sentReminders.eventId, eventId),
+        eq(sentReminders.reminderThreshold, threshold)
+      )
+    )
+    .limit(1);
+  return existing.length > 0;
+}
+
+/**
+ * Record that a reminder has been sent
+ */
+async function recordReminderSent(
+  db: ReturnType<typeof dbClient.getDb>,
+  userId: string,
+  eventId: string,
+  threshold: number
+): Promise<void> {
+  await db
+    .insert(sentReminders)
+    .values({ userId, eventId, reminderThreshold: threshold })
+    .onConflictDoNothing();
+}
+
+/**
+ * Clean up old reminder records (older than 24 hours)
+ */
+async function cleanupOldReminders(db: ReturnType<typeof dbClient.getDb>): Promise<void> {
+  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  await db
+    .delete(sentReminders)
+    .where(lt(sentReminders.sentAt, twentyFourHoursAgo));
+}
 
 /**
  * Poll calendar for a single user
  */
 async function pollUserCalendar(
   userId: string,
-  telegramBot: TelegramBot
+  telegramBot: TelegramBot,
+  db: ReturnType<typeof dbClient.getDb>
 ): Promise<{ processed: number; alerts: number; errors: string[] }> {
   const errors: string[] = [];
   let processed = 0;
@@ -151,10 +195,9 @@ async function pollUserCalendar(
 
         // Check each reminder threshold
         for (const threshold of REMINDER_THRESHOLDS) {
-          const reminderKey = `${event.id}:${threshold}`;
-
-          // Skip if we've already sent this reminder
-          if (sentReminders.has(reminderKey)) {
+          // Skip if we've already sent this reminder (check database)
+          const alreadySent = await hasReminderBeenSent(db, userId, event.id, threshold);
+          if (alreadySent) {
             continue;
           }
 
@@ -168,7 +211,8 @@ async function pollUserCalendar(
               const deliveryResult = await routeAlert(alert, config, sendTelegram);
               if (deliveryResult.success && deliveryResult.deliveredAt) {
                 alertsSent++;
-                sentReminders.add(reminderKey);
+                // Record in database to prevent duplicates
+                await recordReminderSent(db, userId, event.id, threshold);
 
                 console.log(
                   `${LOG_PREFIX} Sent ${threshold}min reminder for "${event.summary}" (${alert.level})`
@@ -186,20 +230,6 @@ async function pollUserCalendar(
 
     // Update last poll time
     await updateLastPollTime(userId, 'calendar');
-
-    // Clean up old reminder keys (older than 2 hours)
-    // This prevents memory leak from accumulating reminder keys
-    const twoHoursAgo = now.getTime() - 2 * 60 * 60 * 1000;
-    for (const key of sentReminders) {
-      const eventId = key.split(':')[0];
-      const event = result.events.find((e) => e.id === eventId);
-      if (event) {
-        const startTime = new Date(event.start.dateTime).getTime();
-        if (startTime < twoHoursAgo) {
-          sentReminders.delete(key);
-        }
-      }
-    }
 
     return { processed, alerts: alertsSent, errors };
   } catch (error) {
@@ -243,6 +273,9 @@ export async function GET(request: NextRequest) {
 
     console.log(`${LOG_PREFIX} Starting poll for ${allUsers.length} users`);
 
+    // Clean up old reminder records (older than 24 hours)
+    await cleanupOldReminders(db);
+
     const results: Array<{
       userId: string;
       processed: number;
@@ -252,7 +285,7 @@ export async function GET(request: NextRequest) {
 
     // Process users sequentially to avoid rate limits
     for (const user of allUsers) {
-      const result = await pollUserCalendar(user.id, telegramBot);
+      const result = await pollUserCalendar(user.id, telegramBot, db);
       results.push({ userId: user.id, ...result });
     }
 

@@ -1487,3 +1487,34 @@ export const mcpToolEmbeddings = pgTable(
  */
 export type McpToolEmbedding = typeof mcpToolEmbeddings.$inferSelect;
 export type NewMcpToolEmbedding = typeof mcpToolEmbeddings.$inferInsert;
+
+/**
+ * Sent Reminders table - tracks calendar reminders already sent
+ * Prevents duplicate alerts in serverless environment where in-memory state doesn't persist
+ */
+export const sentReminders = pgTable(
+  'sent_reminders',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    userId: text('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull(),
+    eventId: text('event_id').notNull(),
+    reminderThreshold: integer('reminder_threshold').notNull(), // 60, 15, etc.
+    sentAt: timestamp('sent_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    uniqueReminder: uniqueIndex('sent_reminders_unique').on(
+      table.userId,
+      table.eventId,
+      table.reminderThreshold
+    ),
+    sentAtIdx: index('sent_reminders_sent_at_idx').on(table.sentAt),
+  })
+);
+
+/**
+ * Type exports for sent reminders
+ */
+export type SentReminder = typeof sentReminders.$inferSelect;
+export type NewSentReminder = typeof sentReminders.$inferInsert;
