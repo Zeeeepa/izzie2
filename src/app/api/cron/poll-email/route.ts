@@ -10,7 +10,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
 import { dbClient } from '@/lib/db';
-import { users } from '@/lib/db/schema';
+import { users, sentReminders } from '@/lib/db/schema';
+import { and, eq, lt } from 'drizzle-orm';
 import { getGoogleTokens, updateGoogleTokens } from '@/lib/auth';
 import { GmailService } from '@/lib/google/gmail';
 import { getTelegramLink } from '@/lib/telegram/linking';
@@ -29,6 +30,61 @@ const MAX_EMAILS_PER_POLL = 50;
 
 // Vercel cron configuration
 export const maxDuration = 60; // 60 seconds max
+
+// Email alert threshold (0 = immediate, meaning we only send once per email)
+const EMAIL_ALERT_THRESHOLD = 0;
+
+/**
+ * Check if an alert has already been sent for this email
+ */
+async function hasAlertBeenSent(
+  db: ReturnType<typeof dbClient.getDb>,
+  userId: string,
+  emailId: string
+): Promise<boolean> {
+  const existing = await db
+    .select({ id: sentReminders.id })
+    .from(sentReminders)
+    .where(
+      and(
+        eq(sentReminders.userId, userId),
+        eq(sentReminders.eventId, emailId),
+        eq(sentReminders.reminderThreshold, EMAIL_ALERT_THRESHOLD)
+      )
+    )
+    .limit(1);
+  return existing.length > 0;
+}
+
+/**
+ * Record that an alert has been sent for this email
+ */
+async function recordAlertSent(
+  db: ReturnType<typeof dbClient.getDb>,
+  userId: string,
+  emailId: string
+): Promise<void> {
+  await db
+    .insert(sentReminders)
+    .values({ userId, eventId: emailId, reminderThreshold: EMAIL_ALERT_THRESHOLD })
+    .onConflictDoNothing();
+}
+
+/**
+ * Clean up old email alert records (older than 7 days)
+ * Using 7 days for emails since they may be processed over longer periods
+ */
+async function cleanupOldEmailAlerts(db: ReturnType<typeof dbClient.getDb>): Promise<void> {
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  await db
+    .delete(sentReminders)
+    .where(
+      and(
+        eq(sentReminders.reminderThreshold, EMAIL_ALERT_THRESHOLD),
+        lt(sentReminders.sentAt, sevenDaysAgo)
+      )
+    );
+}
 
 /**
  * Create OAuth2 client with tokens
@@ -55,25 +111,27 @@ function createOAuth2Client(
  */
 async function pollUserEmails(
   userId: string,
-  telegramBot: TelegramBot
-): Promise<{ processed: number; alerts: number; errors: string[] }> {
+  telegramBot: TelegramBot,
+  db: ReturnType<typeof dbClient.getDb>
+): Promise<{ processed: number; alerts: number; errors: string[]; skipped: number }> {
   const errors: string[] = [];
   let processed = 0;
   let alertsSent = 0;
+  let skipped = 0;
 
   try {
     // Get user's Google tokens
     const tokens = await getGoogleTokens(userId);
     if (!tokens?.accessToken) {
       console.log(`${LOG_PREFIX} No Google tokens for user ${userId}`);
-      return { processed: 0, alerts: 0, errors: ['No Google tokens'] };
+      return { processed: 0, alerts: 0, errors: ['No Google tokens'], skipped: 0 };
     }
 
     // Get user's Telegram link
     const telegramLink = await getTelegramLink(userId);
     if (!telegramLink) {
       console.log(`${LOG_PREFIX} No Telegram link for user ${userId}`);
-      return { processed: 0, alerts: 0, errors: ['No Telegram link'] };
+      return { processed: 0, alerts: 0, errors: ['No Telegram link'], skipped: 0 };
     }
 
     // Get last poll time
@@ -126,15 +184,29 @@ async function pollUserEmails(
     // Process each email
     for (const email of result.emails) {
       try {
+        processed++;
+
+        // Check if we've already sent an alert for this email (deduplication)
+        const alreadySent = await hasAlertBeenSent(db, userId, email.id);
+        if (alreadySent) {
+          skipped++;
+          continue;
+        }
+
         // Classify the email
         const alert = classifyEmail(email, config);
-        processed++;
 
         // Only route non-silent alerts
         if (alert.level !== AlertLevel.P3_SILENT) {
           const deliveryResult = await routeAlert(alert, config, sendTelegram);
           if (deliveryResult.success && deliveryResult.deliveredAt) {
             alertsSent++;
+            // Record in database to prevent duplicates
+            await recordAlertSent(db, userId, email.id);
+
+            console.log(
+              `${LOG_PREFIX} Sent alert for "${email.subject?.slice(0, 30)}..." (${alert.level})`
+            );
           }
         }
 
@@ -151,12 +223,12 @@ async function pollUserEmails(
     // Update last poll time
     await updateLastPollTime(userId, 'email');
 
-    return { processed, alerts: alertsSent, errors };
+    return { processed, alerts: alertsSent, errors, skipped };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Unknown error';
     errors.push(errorMsg);
     console.error(`${LOG_PREFIX} Error polling user ${userId}:`, error);
-    return { processed, alerts: alertsSent, errors };
+    return { processed, alerts: alertsSent, errors, skipped };
   }
 }
 
@@ -194,26 +266,31 @@ export async function GET(request: NextRequest) {
 
     console.log(`${LOG_PREFIX} Starting poll for ${allUsers.length} users`);
 
+    // Clean up old email alert records (older than 7 days)
+    await cleanupOldEmailAlerts(db);
+
     const results: Array<{
       userId: string;
       processed: number;
       alerts: number;
       errors: string[];
+      skipped: number;
     }> = [];
 
     // Process users sequentially to avoid rate limits
     for (const user of allUsers) {
-      const result = await pollUserEmails(user.id, telegramBot);
+      const result = await pollUserEmails(user.id, telegramBot, db);
       results.push({ userId: user.id, ...result });
     }
 
     const totalProcessed = results.reduce((sum, r) => sum + r.processed, 0);
     const totalAlerts = results.reduce((sum, r) => sum + r.alerts, 0);
     const totalErrors = results.reduce((sum, r) => sum + r.errors.length, 0);
+    const totalSkipped = results.reduce((sum, r) => sum + r.skipped, 0);
     const duration = Date.now() - startTime;
 
     console.log(
-      `${LOG_PREFIX} Poll complete: ${totalProcessed} emails, ${totalAlerts} alerts, ${totalErrors} errors in ${duration}ms`
+      `${LOG_PREFIX} Poll complete: ${totalProcessed} emails, ${totalAlerts} alerts, ${totalSkipped} skipped, ${totalErrors} errors in ${duration}ms`
     );
 
     return NextResponse.json({
@@ -222,6 +299,7 @@ export async function GET(request: NextRequest) {
         users: allUsers.length,
         emailsProcessed: totalProcessed,
         alertsSent: totalAlerts,
+        skipped: totalSkipped,
         errors: totalErrors,
         durationMs: duration,
       },
