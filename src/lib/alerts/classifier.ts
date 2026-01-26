@@ -24,6 +24,23 @@ const AUTOMATED_PATTERNS = [
   /^postmaster@/i,
 ];
 
+/**
+ * Patterns for bulk/marketing sender domains
+ * These senders should never trigger urgent classification
+ */
+const BULK_SENDER_PATTERNS = [
+  /@.*mailchimp\./i,
+  /@.*sendgrid\./i,
+  /@.*constantcontact\./i,
+  /@.*mailgun\./i,
+  /@.*campaign-archive\./i,
+  /@.*email\./i, // Generic email subdomain (email.company.com)
+  /@.*marketing\./i,
+  /@.*newsletter\./i,
+  /@.*updates?\./i,
+  /@.*promo\./i,
+];
+
 const NEWSLETTER_PATTERNS = [
   /unsubscribe/i,
   /list-unsubscribe/i,
@@ -47,6 +64,13 @@ const RECEIPT_PATTERNS = [
  */
 function isAutomatedSender(email: string): boolean {
   return AUTOMATED_PATTERNS.some((pattern) => pattern.test(email));
+}
+
+/**
+ * Check if email is from a bulk/marketing sender domain
+ */
+function isBulkSender(email: string): boolean {
+  return BULK_SENDER_PATTERNS.some((pattern) => pattern.test(email));
 }
 
 /**
@@ -113,6 +137,9 @@ export function classifyEmail(
   // Check for automated/low-priority first (P3)
   if (isAutomatedSender(email.from.email)) {
     signals.push('Automated sender');
+    level = AlertLevel.P3_SILENT;
+  } else if (isBulkSender(email.from.email)) {
+    signals.push('Bulk/marketing sender');
     level = AlertLevel.P3_SILENT;
   } else if (isNewsletter(email)) {
     signals.push('Newsletter detected');

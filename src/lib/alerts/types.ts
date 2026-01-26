@@ -78,10 +78,10 @@ export const DEFAULT_CONFIG: ClassificationConfig = {
   urgentKeywords: [
     'urgent',
     'asap',
+    'immediately',
     'deadline',
     'emergency',
     'critical',
-    'important',
     'action required',
     'time sensitive',
   ],
