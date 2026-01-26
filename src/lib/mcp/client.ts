@@ -18,6 +18,40 @@ import type {
 
 const LOG_PREFIX = '[MCP Client]';
 
+// Default timeout for MCP tool execution (30 seconds)
+const TOOL_EXECUTION_TIMEOUT_MS = 30000;
+
+/**
+ * Execute a promise with a timeout
+ * @param promise - The promise to execute
+ * @param timeoutMs - Timeout in milliseconds
+ * @param operationName - Name of the operation for error messages
+ * @returns The promise result
+ * @throws Error if timeout is exceeded
+ */
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  operationName: string
+): Promise<T> {
+  let timeoutId: NodeJS.Timeout;
+
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(`${operationName} timed out after ${timeoutMs / 1000} seconds`));
+    }, timeoutMs);
+  });
+
+  try {
+    const result = await Promise.race([promise, timeoutPromise]);
+    clearTimeout(timeoutId!);
+    return result;
+  } catch (error) {
+    clearTimeout(timeoutId!);
+    throw error;
+  }
+}
+
 export class MCPClientManager {
   private clients: Map<string, Client> = new Map();
   private serverStatuses: Map<string, MCPServerStatus> = new Map();
@@ -143,7 +177,7 @@ export class MCPClientManager {
   }
 
   /**
-   * Execute a tool on an MCP server
+   * Execute a tool on an MCP server with timeout protection
    */
   async executeTool(
     serverId: string,
@@ -157,10 +191,16 @@ export class MCPClientManager {
 
     console.log(`${LOG_PREFIX} Executing tool ${toolName} on server ${serverId}`);
 
-    const result = await client.callTool({
+    const toolCall = client.callTool({
       name: toolName,
       arguments: args,
     });
+
+    const result = await withTimeout(
+      toolCall,
+      TOOL_EXECUTION_TIMEOUT_MS,
+      `Tool execution (${toolName})`
+    );
 
     return result;
   }
