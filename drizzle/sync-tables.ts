@@ -451,6 +451,29 @@ async function syncTables() {
     `);
     await pool.query('CREATE INDEX IF NOT EXISTS research_findings_task_id_idx ON research_findings(task_id)');
 
+    // Step 12: Create usage_tracking table
+    console.log('📝 Creating usage_tracking table...');
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS usage_tracking (
+        id text PRIMARY KEY NOT NULL,
+        user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        conversation_id text,
+        date date NOT NULL,
+        model text NOT NULL,
+        prompt_tokens integer NOT NULL DEFAULT 0,
+        completion_tokens integer NOT NULL DEFAULT 0,
+        total_tokens integer NOT NULL DEFAULT 0,
+        cost_usd real NOT NULL DEFAULT 0,
+        source text,
+        created_at timestamp DEFAULT now()
+      )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS usage_tracking_user_id_idx ON usage_tracking(user_id)');
+    await pool.query('CREATE INDEX IF NOT EXISTS usage_tracking_date_idx ON usage_tracking(date)');
+    await pool.query('CREATE INDEX IF NOT EXISTS usage_tracking_model_idx ON usage_tracking(model)');
+    await pool.query('CREATE INDEX IF NOT EXISTS usage_tracking_source_idx ON usage_tracking(source)');
+    await pool.query('CREATE INDEX IF NOT EXISTS usage_tracking_user_date_idx ON usage_tracking(user_id, date)');
+
     console.log('✅ All tables synced successfully!');
 
     // Verify
@@ -478,6 +501,7 @@ async function syncTables() {
       'agent_tasks',
       'research_sources',
       'research_findings',
+      'usage_tracking',
     ];
 
     const tables = await pool.query(
