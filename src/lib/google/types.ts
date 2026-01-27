@@ -23,6 +23,7 @@ export interface Email {
   hasAttachments: boolean;
   snippet?: string; // Short preview text
   internalDate: number; // Unix timestamp in milliseconds
+  headers?: Record<string, string>; // Raw headers for classification (e.g., List-Unsubscribe)
 }
 
 export interface EmailBatch {

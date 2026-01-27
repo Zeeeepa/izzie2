@@ -628,6 +628,13 @@ export class GmailService {
     const subject = this.getHeader(headers, 'Subject') || '(No Subject)';
     const date = new Date(parseInt(message.internalDate || '0', 10));
 
+    // Extract headers useful for classification
+    const classificationHeaders: Record<string, string> = {};
+    const listUnsubscribe = this.getHeader(headers, 'List-Unsubscribe');
+    if (listUnsubscribe) {
+      classificationHeaders['list-unsubscribe'] = listUnsubscribe;
+    }
+
     // Parse body
     const { body, htmlBody } = this.parseEmailBody(message.payload);
 
@@ -653,6 +660,7 @@ export class GmailService {
       hasAttachments,
       snippet: message.snippet || undefined,
       internalDate: parseInt(message.internalDate || '0', 10),
+      headers: Object.keys(classificationHeaders).length > 0 ? classificationHeaders : undefined,
     };
   }
 

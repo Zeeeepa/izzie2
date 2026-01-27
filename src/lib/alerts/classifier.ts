@@ -39,6 +39,13 @@ const BULK_SENDER_PATTERNS = [
   /@.*newsletter\./i,
   /@.*updates?\./i,
   /@.*promo\./i,
+  /@.*substack\./i,
+  /@.*beehiiv\./i,
+  /@.*convertkit\./i,
+  /@.*buttondown\./i,
+  /newsletter@/i,
+  /digest@/i,
+  /@.*therundown/i, // The Rundown AI newsletter
 ];
 
 const NEWSLETTER_PATTERNS = [
@@ -47,6 +54,26 @@ const NEWSLETTER_PATTERNS = [
   /email preferences/i,
   /manage.*subscription/i,
   /opt.?out/i,
+];
+
+/**
+ * Patterns for newsletter subject lines
+ */
+const NEWSLETTER_SUBJECT_PATTERNS = [
+  /\b(weekly|daily|monthly)\s+(digest|roundup|update|newsletter)/i,
+  /\b(issue|edition)\s*#?\d+/i,
+  /\[\s*(newsletter|update|digest)\s*\]/i,
+];
+
+/**
+ * Patterns for newsletter sender names
+ */
+const NEWSLETTER_SENDER_NAME_PATTERNS = [
+  /newsletter/i,
+  /digest/i,
+  /weekly/i,
+  /daily\s+(brief|update|news)/i,
+  /the\s+rundown/i, // The Rundown AI
 ];
 
 const RECEIPT_PATTERNS = [
@@ -74,9 +101,47 @@ function isBulkSender(email: string): boolean {
 }
 
 /**
+ * Check if sender name matches newsletter patterns
+ */
+function hasNewsletterSenderName(email: Email): boolean {
+  const senderName = email.from.name || '';
+  return NEWSLETTER_SENDER_NAME_PATTERNS.some((pattern) => pattern.test(senderName));
+}
+
+/**
+ * Check if subject matches newsletter patterns
+ */
+function hasNewsletterSubject(email: Email): boolean {
+  return NEWSLETTER_SUBJECT_PATTERNS.some((pattern) => pattern.test(email.subject));
+}
+
+/**
+ * Check if email has List-Unsubscribe header (most reliable newsletter indicator)
+ */
+function hasListUnsubscribeHeader(email: Email): boolean {
+  return Boolean(email.headers?.['list-unsubscribe']);
+}
+
+/**
  * Check if email appears to be a newsletter
  */
 function isNewsletter(email: Email): boolean {
+  // Most reliable: List-Unsubscribe header
+  if (hasListUnsubscribeHeader(email)) {
+    return true;
+  }
+
+  // Check sender name for newsletter patterns
+  if (hasNewsletterSenderName(email)) {
+    return true;
+  }
+
+  // Check subject for newsletter patterns
+  if (hasNewsletterSubject(email)) {
+    return true;
+  }
+
+  // Check body content for unsubscribe patterns
   const content = `${email.subject} ${email.body}`.toLowerCase();
   return NEWSLETTER_PATTERNS.some((pattern) => pattern.test(content));
 }
