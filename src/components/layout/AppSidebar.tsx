@@ -1,14 +1,33 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Database, MessageSquare, LogOut, ChevronDown, Network, MessageCircle, Mail, Zap, Settings, BarChart3, Users, Cable } from 'lucide-react';
+import {
+  Home,
+  Database,
+  MessageSquare,
+  LogOut,
+  ChevronDown,
+  ChevronRight,
+  Network,
+  MessageCircle,
+  Mail,
+  Zap,
+  Settings,
+  BarChart3,
+  Users,
+  Cable,
+  RefreshCw,
+  Contact,
+} from 'lucide-react';
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
@@ -30,7 +49,8 @@ interface AppSidebarProps {
   };
 }
 
-const navItems = [
+// Main navigation items
+const mainNavItems = [
   {
     href: '/dashboard',
     label: 'Dashboard',
@@ -57,6 +77,10 @@ const navItems = [
     label: 'Relationships',
     icon: Network,
   },
+];
+
+// Settings sub-navigation items
+const settingsNavItems = [
   {
     href: '/dashboard/settings/telegram',
     label: 'Telegram',
@@ -89,8 +113,19 @@ const navItems = [
   },
 ];
 
+// Sync sub-navigation items
+const syncNavItems = [
+  {
+    href: '/dashboard/sync/contacts',
+    label: 'Contacts',
+    icon: Contact,
+  },
+];
+
 export function AppSidebar({ user }: AppSidebarProps) {
   const pathname = usePathname();
+  const [settingsOpen, setSettingsOpen] = useState(() => pathname.startsWith('/dashboard/settings'));
+  const [syncOpen, setSyncOpen] = useState(() => pathname.startsWith('/dashboard/sync'));
 
   const isActive = (href: string, exact?: boolean) => {
     if (exact) {
@@ -98,6 +133,9 @@ export function AppSidebar({ user }: AppSidebarProps) {
     }
     return pathname.startsWith(href);
   };
+
+  const isSettingsActive = settingsNavItems.some((item) => pathname.startsWith(item.href));
+  const isSyncActive = syncNavItems.some((item) => pathname.startsWith(item.href));
 
   const getUserInitials = () => {
     if (user.name) {
@@ -135,10 +173,11 @@ export function AppSidebar({ user }: AppSidebarProps) {
       </SidebarHeader>
 
       <SidebarContent>
+        {/* Main Navigation */}
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              {navItems.map((item) => {
+              {mainNavItems.map((item) => {
                 const Icon = item.icon;
                 const active = isActive(item.href, item.exact);
 
@@ -155,6 +194,80 @@ export function AppSidebar({ user }: AppSidebarProps) {
               })}
             </SidebarMenu>
           </SidebarGroupContent>
+        </SidebarGroup>
+
+        {/* Settings Group */}
+        <SidebarGroup>
+          <SidebarGroupLabel
+            className="cursor-pointer select-none"
+            onClick={() => setSettingsOpen(!settingsOpen)}
+          >
+            <Settings className="h-4 w-4 mr-2" />
+            <span className="flex-1">Settings</span>
+            {settingsOpen ? (
+              <ChevronDown className="h-4 w-4" />
+            ) : (
+              <ChevronRight className="h-4 w-4" />
+            )}
+          </SidebarGroupLabel>
+          {settingsOpen && (
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {settingsNavItems.map((item) => {
+                  const Icon = item.icon;
+                  const active = isActive(item.href);
+
+                  return (
+                    <SidebarMenuItem key={item.href}>
+                      <SidebarMenuButton asChild isActive={active}>
+                        <Link href={item.href} className="pl-6">
+                          <Icon className="h-4 w-4 stroke-[1.5]" />
+                          <span>{item.label}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          )}
+        </SidebarGroup>
+
+        {/* Sync Group */}
+        <SidebarGroup>
+          <SidebarGroupLabel
+            className="cursor-pointer select-none"
+            onClick={() => setSyncOpen(!syncOpen)}
+          >
+            <RefreshCw className="h-4 w-4 mr-2" />
+            <span className="flex-1">Sync</span>
+            {syncOpen ? (
+              <ChevronDown className="h-4 w-4" />
+            ) : (
+              <ChevronRight className="h-4 w-4" />
+            )}
+          </SidebarGroupLabel>
+          {syncOpen && (
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {syncNavItems.map((item) => {
+                  const Icon = item.icon;
+                  const active = isActive(item.href);
+
+                  return (
+                    <SidebarMenuItem key={item.href}>
+                      <SidebarMenuButton asChild isActive={active}>
+                        <Link href={item.href} className="pl-6">
+                          <Icon className="h-4 w-4 stroke-[1.5]" />
+                          <span>{item.label}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          )}
         </SidebarGroup>
       </SidebarContent>
 

@@ -92,6 +92,69 @@
       "when": 1737504000000,
       "tag": "0012_add_user_preferences",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1737590400000,
+      "tag": "0013_add_account_metadata",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1737676800000,
+      "tag": "0014_add_agent_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1737763200000,
+      "tag": "0015_add_alert_preferences",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1737849600000,
+      "tag": "0016_add_notification_history",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1737936000000,
+      "tag": "0017_add_notification_queue",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1738022400000,
+      "tag": "0018_add_organization_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1738108800000,
+      "tag": "0019_add_mcp_tool_embeddings",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1738195200000,
+      "tag": "0020_add_sent_reminders",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1738281600000,
+      "tag": "0021_add_usage_tracking",
+      "breakpoints": true
     }
   ]
 }
