@@ -42,7 +42,9 @@ export default function ContactsSyncPage() {
   // Fetch initial status
   const fetchStatus = useCallback(async () => {
     try {
-      const res = await fetch('/api/contacts/sync');
+      const res = await fetch('/api/contacts/sync', {
+        credentials: 'include',
+      });
       const data: SyncResponse = await res.json();
       setStatus(data.status);
     } catch (err) {
@@ -78,6 +80,7 @@ export default function ContactsSyncPage() {
       const res = await fetch('/api/contacts/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ maxContacts: 1000 }),
       });
 
