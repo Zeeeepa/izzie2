@@ -21,6 +21,10 @@ import {
   sendEmailTool,
   bulkArchiveTool,
   createDraftTool,
+  moveEmailTool,
+  createEmailFilterTool,
+  listEmailFiltersTool,
+  deleteEmailFilterTool,
 } from './email';
 import {
   listGithubIssuesTool,
@@ -51,6 +55,10 @@ export const chatTools = {
   send_email: sendEmailTool,
   bulk_archive: bulkArchiveTool,
   create_draft: createDraftTool,
+  move_email: moveEmailTool,
+  create_email_filter: createEmailFilterTool,
+  list_email_filters: listEmailFiltersTool,
+  delete_email_filter: deleteEmailFilterTool,
   // GitHub management tools
   list_github_issues: listGithubIssuesTool,
   create_github_issue: createGithubIssueTool,

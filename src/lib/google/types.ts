@@ -71,6 +71,33 @@ export interface RateLimitInfo {
 }
 
 /**
+ * Gmail Filter Types
+ */
+export interface GmailFilterCriteria {
+  from?: string;
+  to?: string;
+  subject?: string;
+  query?: string;
+  negatedQuery?: string;
+  hasAttachment?: boolean;
+  excludeChats?: boolean;
+  size?: number;
+  sizeComparison?: 'larger' | 'smaller';
+}
+
+export interface GmailFilterAction {
+  addLabelIds?: string[];
+  removeLabelIds?: string[];
+  forward?: string;
+}
+
+export interface GmailFilter {
+  id: string;
+  criteria: GmailFilterCriteria;
+  action: GmailFilterAction;
+}
+
+/**
  * Google Drive API Type Definitions
  */
 

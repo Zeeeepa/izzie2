@@ -523,3 +523,343 @@ export const createDraftTool = {
     }
   },
 };
+
+/**
+ * Move Email Tool
+ * Moves an email to a specific label/folder
+ */
+export const moveEmailToolSchema = z.object({
+  searchQuery: z
+    .string()
+    .describe('Gmail search query to find the email to move'),
+  targetLabel: z
+    .string()
+    .describe('Name of the label/folder to move the email to (e.g., "Work", "Important")'),
+  keepInInbox: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe('If true, keeps the email in inbox (adds label only). If false, removes from inbox.'),
+});
+
+export type MoveEmailParams = z.infer<typeof moveEmailToolSchema>;
+
+export const moveEmailTool = {
+  name: 'move_email',
+  description:
+    'Move an email to a specific label/folder. By default removes from inbox. Use Gmail search syntax to find the email.',
+  parameters: moveEmailToolSchema,
+
+  async execute(
+    params: MoveEmailParams,
+    userId: string
+  ): Promise<{ message: string }> {
+    try {
+      const validated = moveEmailToolSchema.parse(params);
+      const gmailService = await getGmailClient(userId);
+
+      // First verify the label exists
+      const label = await gmailService.findLabelByName(validated.targetLabel);
+      if (!label) {
+        const labels = await gmailService.getLabels();
+        const userLabels = labels
+          .filter((l) => l.type === 'user')
+          .map((l) => l.name)
+          .join(', ');
+        return {
+          message: `Label "${validated.targetLabel}" not found. Available labels: ${userLabels || 'None'}`,
+        };
+      }
+
+      // Search for matching emails
+      const emails = await gmailService.searchEmails(validated.searchQuery, 5);
+
+      if (emails.length === 0) {
+        return {
+          message: `No emails found matching "${validated.searchQuery}".`,
+        };
+      }
+
+      if (emails.length === 1) {
+        const email = emails[0];
+        await gmailService.moveEmail(email.id, validated.targetLabel, !validated.keepInInbox);
+        const action = validated.keepInInbox ? 'Added label' : 'Moved';
+        return {
+          message: `${action} "${email.subject}" to ${label.name}`,
+        };
+      }
+
+      // Multiple matches
+      const emailList = emails
+        .map(
+          (e, i) =>
+            `${i + 1}. "${e.subject}" from ${e.from.name || e.from.email}`
+        )
+        .join('\n');
+
+      return {
+        message: `Found ${emails.length} emails matching your search:\n\n${emailList}\n\nPlease be more specific about which email to move.`,
+      };
+    } catch (error) {
+      console.error(`${LOG_PREFIX} Move email failed:`, error);
+      throw new Error(
+        `Failed to move email: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  },
+};
+
+/**
+ * Create Email Filter Tool
+ * Creates a Gmail filter to automatically process incoming emails
+ */
+export const createEmailFilterToolSchema = z.object({
+  from: z.string().optional().describe('Filter emails from this sender address'),
+  to: z.string().optional().describe('Filter emails sent to this address'),
+  subject: z.string().optional().describe('Filter emails with this subject (exact match)'),
+  query: z.string().optional().describe('Additional Gmail search query for complex filtering'),
+  hasAttachment: z.boolean().optional().describe('Only match emails with attachments'),
+  applyLabel: z.string().optional().describe('Label to apply to matching emails'),
+  archive: z.boolean().optional().default(false).describe('Archive matching emails (remove from inbox)'),
+  markRead: z.boolean().optional().default(false).describe('Mark matching emails as read'),
+  star: z.boolean().optional().default(false).describe('Star matching emails'),
+  forward: z.string().optional().describe('Forward matching emails to this address'),
+});
+
+export type CreateEmailFilterParams = z.infer<typeof createEmailFilterToolSchema>;
+
+export const createEmailFilterTool = {
+  name: 'create_email_filter',
+  description:
+    'Create a Gmail filter to automatically process incoming emails. Filters can apply labels, archive, mark as read, star, or forward emails based on sender, recipient, subject, or other criteria.',
+  parameters: createEmailFilterToolSchema,
+
+  async execute(
+    params: CreateEmailFilterParams,
+    userId: string
+  ): Promise<{ message: string }> {
+    try {
+      const validated = createEmailFilterToolSchema.parse(params);
+      const gmailService = await getGmailClient(userId);
+
+      // At least one criteria must be specified
+      if (!validated.from && !validated.to && !validated.subject && !validated.query && !validated.hasAttachment) {
+        return {
+          message: 'Please specify at least one filter criteria: from, to, subject, query, or hasAttachment.',
+        };
+      }
+
+      // At least one action must be specified
+      if (!validated.applyLabel && !validated.archive && !validated.markRead && !validated.star && !validated.forward) {
+        return {
+          message: 'Please specify at least one filter action: applyLabel, archive, markRead, star, or forward.',
+        };
+      }
+
+      // Build criteria
+      const criteria: Record<string, unknown> = {};
+      if (validated.from) criteria.from = validated.from;
+      if (validated.to) criteria.to = validated.to;
+      if (validated.subject) criteria.subject = validated.subject;
+      if (validated.query) criteria.query = validated.query;
+      if (validated.hasAttachment) criteria.hasAttachment = validated.hasAttachment;
+
+      // Build action
+      const addLabelIds: string[] = [];
+      const removeLabelIds: string[] = [];
+
+      // Resolve label name to ID if specified
+      if (validated.applyLabel) {
+        const label = await gmailService.findLabelByName(validated.applyLabel);
+        if (!label) {
+          const labels = await gmailService.getLabels();
+          const userLabels = labels
+            .filter((l) => l.type === 'user')
+            .map((l) => l.name)
+            .join(', ');
+          return {
+            message: `Label "${validated.applyLabel}" not found. Available labels: ${userLabels || 'None'}`,
+          };
+        }
+        addLabelIds.push(label.id);
+      }
+
+      if (validated.archive) {
+        removeLabelIds.push('INBOX');
+      }
+
+      if (validated.markRead) {
+        removeLabelIds.push('UNREAD');
+      }
+
+      if (validated.star) {
+        addLabelIds.push('STARRED');
+      }
+
+      const action: Record<string, unknown> = {};
+      if (addLabelIds.length > 0) action.addLabelIds = addLabelIds;
+      if (removeLabelIds.length > 0) action.removeLabelIds = removeLabelIds;
+      if (validated.forward) action.forward = validated.forward;
+
+      // Create the filter
+      const filter = await gmailService.createFilter(criteria, action);
+
+      // Build confirmation message
+      const criteriaDesc: string[] = [];
+      if (validated.from) criteriaDesc.push(`from: ${validated.from}`);
+      if (validated.to) criteriaDesc.push(`to: ${validated.to}`);
+      if (validated.subject) criteriaDesc.push(`subject: "${validated.subject}"`);
+      if (validated.query) criteriaDesc.push(`query: ${validated.query}`);
+      if (validated.hasAttachment) criteriaDesc.push('has attachment');
+
+      const actionDesc: string[] = [];
+      if (validated.applyLabel) actionDesc.push(`apply label "${validated.applyLabel}"`);
+      if (validated.archive) actionDesc.push('archive');
+      if (validated.markRead) actionDesc.push('mark as read');
+      if (validated.star) actionDesc.push('star');
+      if (validated.forward) actionDesc.push(`forward to ${validated.forward}`);
+
+      return {
+        message: `Filter created successfully!\n\n**Criteria:** ${criteriaDesc.join(', ')}\n**Actions:** ${actionDesc.join(', ')}\n\n*Filter ID: ${filter.id}*`,
+      };
+    } catch (error) {
+      console.error(`${LOG_PREFIX} Create filter failed:`, error);
+      throw new Error(
+        `Failed to create filter: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  },
+};
+
+/**
+ * List Email Filters Tool
+ * Lists all Gmail filters
+ */
+export const listEmailFiltersToolSchema = z.object({});
+
+export type ListEmailFiltersParams = z.infer<typeof listEmailFiltersToolSchema>;
+
+export const listEmailFiltersTool = {
+  name: 'list_email_filters',
+  description:
+    'List all Gmail filters configured for your account. Shows filter criteria and actions.',
+  parameters: listEmailFiltersToolSchema,
+
+  async execute(
+    _params: ListEmailFiltersParams,
+    userId: string
+  ): Promise<{ message: string }> {
+    try {
+      const gmailService = await getGmailClient(userId);
+      const filters = await gmailService.listFilters();
+
+      if (filters.length === 0) {
+        return {
+          message: 'No email filters configured. Use create_email_filter to set up automatic email processing.',
+        };
+      }
+
+      // Get all labels for resolving IDs to names
+      const labels = await gmailService.getLabels();
+      const labelMap = new Map(labels.map((l) => [l.id, l.name]));
+
+      const filterDescriptions = filters.map((filter, index) => {
+        // Build criteria description
+        const criteriaDesc: string[] = [];
+        if (filter.criteria.from) criteriaDesc.push(`from: ${filter.criteria.from}`);
+        if (filter.criteria.to) criteriaDesc.push(`to: ${filter.criteria.to}`);
+        if (filter.criteria.subject) criteriaDesc.push(`subject: "${filter.criteria.subject}"`);
+        if (filter.criteria.query) criteriaDesc.push(`query: ${filter.criteria.query}`);
+        if (filter.criteria.hasAttachment) criteriaDesc.push('has attachment');
+
+        // Build action description
+        const actionDesc: string[] = [];
+        if (filter.action.addLabelIds) {
+          const labelNames = filter.action.addLabelIds
+            .map((id) => labelMap.get(id) || id)
+            .filter((name) => name !== 'STARRED');
+          if (labelNames.length > 0) actionDesc.push(`apply: ${labelNames.join(', ')}`);
+          if (filter.action.addLabelIds.includes('STARRED')) actionDesc.push('star');
+        }
+        if (filter.action.removeLabelIds) {
+          if (filter.action.removeLabelIds.includes('INBOX')) actionDesc.push('archive');
+          if (filter.action.removeLabelIds.includes('UNREAD')) actionDesc.push('mark read');
+        }
+        if (filter.action.forward) actionDesc.push(`forward to: ${filter.action.forward}`);
+
+        return `**${index + 1}.** ${criteriaDesc.join(', ') || 'No criteria'}\n   Actions: ${actionDesc.join(', ') || 'No actions'}\n   *ID: ${filter.id}*`;
+      });
+
+      return {
+        message: `**Gmail Filters (${filters.length}):**\n\n${filterDescriptions.join('\n\n')}`,
+      };
+    } catch (error) {
+      console.error(`${LOG_PREFIX} List filters failed:`, error);
+      throw new Error(
+        `Failed to list filters: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  },
+};
+
+/**
+ * Delete Email Filter Tool
+ * Deletes a Gmail filter by ID
+ */
+export const deleteEmailFilterToolSchema = z.object({
+  filterId: z.string().describe('The ID of the filter to delete (use list_email_filters to find IDs)'),
+  confirmed: z.boolean().optional().describe('Whether the user has confirmed the deletion'),
+});
+
+export type DeleteEmailFilterParams = z.infer<typeof deleteEmailFilterToolSchema>;
+
+export const deleteEmailFilterTool = {
+  name: 'delete_email_filter',
+  description:
+    'Delete a Gmail filter by its ID. Use list_email_filters first to find the filter ID.',
+  parameters: deleteEmailFilterToolSchema,
+
+  async execute(
+    params: DeleteEmailFilterParams,
+    userId: string
+  ): Promise<{ message: string }> {
+    try {
+      const validated = deleteEmailFilterToolSchema.parse(params);
+      const gmailService = await getGmailClient(userId);
+
+      // First get the filter to show details
+      let filter;
+      try {
+        filter = await gmailService.getFilter(validated.filterId);
+      } catch {
+        return {
+          message: `Filter with ID "${validated.filterId}" not found. Use list_email_filters to see available filters.`,
+        };
+      }
+
+      if (!validated.confirmed) {
+        // Build criteria description
+        const criteriaDesc: string[] = [];
+        if (filter.criteria.from) criteriaDesc.push(`from: ${filter.criteria.from}`);
+        if (filter.criteria.to) criteriaDesc.push(`to: ${filter.criteria.to}`);
+        if (filter.criteria.subject) criteriaDesc.push(`subject: "${filter.criteria.subject}"`);
+        if (filter.criteria.query) criteriaDesc.push(`query: ${filter.criteria.query}`);
+
+        return {
+          message: `**Confirm filter deletion:**\n\nFilter: ${criteriaDesc.join(', ') || 'No criteria'}\nID: ${filter.id}\n\nPlease confirm you want to delete this filter.`,
+        };
+      }
+
+      await gmailService.deleteFilter(validated.filterId);
+
+      return {
+        message: `Filter deleted successfully.\n\n*Deleted filter ID: ${validated.filterId}*`,
+      };
+    } catch (error) {
+      console.error(`${LOG_PREFIX} Delete filter failed:`, error);
+      throw new Error(
+        `Failed to delete filter: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  },
+};
