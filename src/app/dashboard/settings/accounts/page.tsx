@@ -8,6 +8,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { SignOutButton } from '@/components/auth/SignOutButton';
 
 type PageState = 'loading' | 'loaded' | 'error';
 
@@ -69,6 +70,23 @@ const PlusIcon = ({ className }: { className?: string }) => (
     className={className}
   >
     <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+  </svg>
+);
+
+const RefreshCwIcon = ({ className }: { className?: string }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    fill="none"
+    viewBox="0 0 24 24"
+    strokeWidth={1.5}
+    stroke="currentColor"
+    className={className}
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"
+    />
   </svg>
 );
 
@@ -239,6 +257,24 @@ export default function AccountsSettingsPage() {
   const handleAddAccount = () => {
     // Redirect to Google OAuth with link=true parameter
     window.location.href = '/api/auth/google?link=true';
+  };
+
+  // Reconnect account to refresh OAuth scopes
+  // Uses login_hint to pre-select the account and forces consent screen
+  const handleReconnect = (accountEmail: string | null) => {
+    if (!accountEmail) {
+      showMessage('error', 'Cannot reconnect: account email not found');
+      return;
+    }
+
+    // Build OAuth URL with login_hint to pre-select the account
+    // The prompt=consent is already set in Better Auth config, which forces re-consent
+    const params = new URLSearchParams({
+      login_hint: accountEmail,
+      link: 'true', // Add to existing account
+    });
+
+    window.location.href = `/api/auth/google?${params.toString()}`;
   };
 
   // Format date
@@ -414,6 +450,16 @@ export default function AccountsSettingsPage() {
 
                 {/* Right: Actions */}
                 <div className="flex items-center gap-2">
+                  {/* Reconnect button - always shown to allow refreshing OAuth scopes */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleReconnect(account.accountEmail)}
+                    title="Reconnect to update permissions"
+                  >
+                    <RefreshCwIcon className="w-4 h-4 mr-2" />
+                    Reconnect
+                  </Button>
                   {!account.isPrimary && (
                     <Button
                       variant="outline"
@@ -462,6 +508,18 @@ export default function AccountsSettingsPage() {
               <li>Tasks are aggregated across all accounts</li>
               <li>Specify which account to use: &quot;Send from my work email&quot;</li>
             </ul>
+          </div>
+
+          {/* Sign Out Section */}
+          <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-4 mt-8">
+            <h3 className="text-sm font-medium text-foreground mb-2">
+              Sign Out
+            </h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              Sign out of Izzie completely. You&apos;ll need to sign in again with your Google account.
+              This is useful if you need to re-authenticate with updated permissions.
+            </p>
+            <SignOutButton variant="destructive" />
           </div>
         </div>
       )}
