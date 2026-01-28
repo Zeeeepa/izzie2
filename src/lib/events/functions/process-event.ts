@@ -13,9 +13,6 @@ import {
 } from '@/lib/routing';
 import { getTelegramBot } from '@/lib/telegram/bot';
 import { getTelegramLink } from '@/lib/telegram/linking';
-import { dbClient } from '@/lib/db';
-import { digestRecords } from '@/lib/db/schema';
-import { eq } from 'drizzle-orm';
 
 // Global dispatcher instance
 let dispatcher: EventDispatcher | null = null;
@@ -202,19 +199,6 @@ export const sendNotification = inngest.createFunction(
 
       throw new Error(`Unsupported notification channel: ${channel}`);
     });
-
-    // Step 2: Update digest record delivery status if applicable
-    if (result.success && metadata?.digestId) {
-      await step.run('update-delivery-status', async () => {
-        const db = dbClient.getDb();
-        await db
-          .update(digestRecords)
-          .set({ deliveredAt: new Date() })
-          .where(eq(digestRecords.id, metadata.digestId as string));
-
-        logger.info('Updated digest delivery status', { digestId: metadata.digestId });
-      });
-    }
 
     logger.info('Notification sent successfully', result);
 
