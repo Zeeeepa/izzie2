@@ -13,6 +13,7 @@ import {
   deleteTaskList as deleteTaskListService,
   updateTaskList as updateTaskListService,
 } from '@/lib/google/tasks';
+import { requireTasksWriteAccess } from '@/lib/auth/scopes';
 
 /**
  * Create Task Tool
@@ -44,6 +45,9 @@ export const createTaskTool = {
     userId: string
   ): Promise<{ message: string }> {
     try {
+      // Check for write access before any write operation
+      await requireTasksWriteAccess(userId);
+
       const validated = createTaskToolSchema.parse(params);
 
       // Get task lists to find the target list
@@ -135,6 +139,9 @@ export const completeTaskTool = {
     userId: string
   ): Promise<{ message: string }> {
     try {
+      // Check for write access before any write operation
+      await requireTasksWriteAccess(userId);
+
       const validated = completeTaskToolSchema.parse(params);
 
       // Get task lists
@@ -314,6 +321,9 @@ export const createTaskListTool = {
     userId: string
   ): Promise<{ message: string }> {
     try {
+      // Check for write access before any write operation
+      await requireTasksWriteAccess(userId);
+
       const validated = createTaskListToolSchema.parse(params);
 
       const taskList = await createTaskListService(userId, validated.title);
@@ -392,6 +402,9 @@ export const deleteTaskListTool = {
     userId: string
   ): Promise<{ message: string }> {
     try {
+      // Check for write access before any write operation
+      await requireTasksWriteAccess(userId);
+
       const validated = deleteTaskListToolSchema.parse(params);
 
       const { taskLists } = await listTaskLists(userId);
@@ -449,6 +462,9 @@ export const renameTaskListTool = {
     userId: string
   ): Promise<{ message: string }> {
     try {
+      // Check for write access before any write operation
+      await requireTasksWriteAccess(userId);
+
       const validated = renameTaskListToolSchema.parse(params);
 
       const { taskLists } = await listTaskLists(userId);
