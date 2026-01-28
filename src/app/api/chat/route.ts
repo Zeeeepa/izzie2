@@ -491,13 +491,9 @@ ${RESPONSE_FORMAT_INSTRUCTION}
               }
 
               // This is the final response - send it to client
-              const finalResponseData = JSON.stringify({
-                delta: fullContent,
-                content: fullContent,
-                done: true,
-                sessionId: chatSession.id,
-              });
-              controller.enqueue(encoder.encode(`data: ${finalResponseData}\n\n`));
+              // NOTE: DO NOT send fullContent here - it contains raw LLM output (JSON structure)
+              // We must extract and send only the conversational response text
+              // This will be handled after parsing in the fullContent processing block below
               break;
             }
 
@@ -541,6 +537,7 @@ ${RESPONSE_FORMAT_INSTRUCTION}
 
               // Parse structured response
               let structuredResponse: StructuredLLMResponse;
+              let clientResponseText: string; // What to send to client (just conversational response)
 
               try {
                 // Strip markdown code blocks if present
@@ -557,6 +554,10 @@ ${RESPONSE_FORMAT_INSTRUCTION}
                   currentTask: parsed.currentTask || null,
                   memoriesToSave: parsed.memoriesToSave,
                 };
+
+                // Extract only the conversational response for client
+                clientResponseText = structuredResponse.response;
+                console.log(`${LOG_PREFIX} Parsed structured response, sending only response field to client`);
               } catch {
                 // Fallback: treat entire response as conversational response
                 console.log(`${LOG_PREFIX} LLM did not return JSON, using full content`);
@@ -564,6 +565,7 @@ ${RESPONSE_FORMAT_INSTRUCTION}
                   response: fullContent,
                   currentTask: null, // No task tracking if not structured
                 };
+                clientResponseText = fullContent;
               }
 
               // Save any memories from the response
@@ -588,6 +590,11 @@ ${RESPONSE_FORMAT_INSTRUCTION}
                 }
               }
 
+              // Log current task state for debugging (not sent to client)
+              if (structuredResponse.currentTask) {
+                console.log(`${LOG_PREFIX} Current task updated: ${structuredResponse.currentTask.goal}`);
+              }
+
               // Process response and update session
               const updatedSession = await sessionManager.processResponse(
                 chatSession,
@@ -597,6 +604,15 @@ ${RESPONSE_FORMAT_INSTRUCTION}
                   model: MODELS.GENERAL,
                 }
               );
+
+              // Send the PARSED conversational response to client (NOT the raw JSON)
+              const finalResponseData = JSON.stringify({
+                delta: clientResponseText,
+                content: clientResponseText,
+                done: true,
+                sessionId: chatSession.id,
+              });
+              controller.enqueue(encoder.encode(`data: ${finalResponseData}\n\n`));
 
               // Track usage asynchronously (don't block response)
               if (totalPromptTokens > 0 || totalCompletionTokens > 0) {
