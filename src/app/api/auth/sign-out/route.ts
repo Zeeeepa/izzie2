@@ -14,11 +14,14 @@ import { cookies } from 'next/headers';
 
 // Cookie configuration matching auth/index.ts
 const COOKIE_PREFIX = 'izzie2';
+const isProduction = process.env.NODE_ENV === 'production';
+const SECURE_PREFIX = isProduction ? '__Secure-' : '';
+
 const SESSION_COOKIE_NAMES = [
-  `${COOKIE_PREFIX}.session_token`,
-  `${COOKIE_PREFIX}.session_data`,
-  `${COOKIE_PREFIX}.dont_remember`,
-  `${COOKIE_PREFIX}.account_data`,
+  `${SECURE_PREFIX}${COOKIE_PREFIX}.session_token`,
+  `${SECURE_PREFIX}${COOKIE_PREFIX}.session_data`,
+  `${SECURE_PREFIX}${COOKIE_PREFIX}.dont_remember`,
+  `${SECURE_PREFIX}${COOKIE_PREFIX}.account_data`,
 ];
 
 /**
@@ -44,7 +47,7 @@ export async function POST(request: Request): Promise<Response> {
     const cookieStore = await cookies();
 
     // Try to get and delete the session from database
-    const sessionCookie = cookieStore.get(`${COOKIE_PREFIX}.session_token`);
+    const sessionCookie = cookieStore.get(`${SECURE_PREFIX}${COOKIE_PREFIX}.session_token`);
     if (sessionCookie?.value && dbClient.isConfigured()) {
       try {
         const token = parseSessionToken(sessionCookie.value);
@@ -65,20 +68,21 @@ export async function POST(request: Request): Promise<Response> {
     });
 
     // Add Set-Cookie headers to clear cookies
+    const secureFlag = isProduction ? '; Secure' : '';
     for (const cookieName of SESSION_COOKIE_NAMES) {
       response.headers.append(
         'Set-Cookie',
-        `${cookieName}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax`
+        `${cookieName}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax${secureFlag}`
       );
     }
 
     // Also clear any chunked session data cookies (session_data.0, session_data.1, etc.)
     const allCookies = cookieStore.getAll();
     for (const cookie of allCookies) {
-      if (cookie.name.startsWith(`${COOKIE_PREFIX}.session_data.`)) {
+      if (cookie.name.startsWith(`${SECURE_PREFIX}${COOKIE_PREFIX}.session_data.`)) {
         response.headers.append(
           'Set-Cookie',
-          `${cookie.name}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax`
+          `${cookie.name}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax${secureFlag}`
         );
       }
     }
