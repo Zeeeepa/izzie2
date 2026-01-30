@@ -300,6 +300,21 @@ export const ResearchFailedSchema = z.object({
 export type ResearchFailedPayload = z.infer<typeof ResearchFailedSchema>;
 
 /**
+ * Graph updated event schema
+ * Emitted when the graph is updated with new entities
+ */
+export const GraphUpdatedSchema = z.object({
+  userId: z.string(),
+  sourceId: z.string(),
+  sourceType: z.enum(['email', 'drive', 'task', 'calendar']),
+  entitiesCount: z.number(),
+  relationshipsCount: z.number(),
+  updatedAt: z.string(),
+});
+
+export type GraphUpdatedPayload = z.infer<typeof GraphUpdatedSchema>;
+
+/**
  * Research sub-task events
  */
 
@@ -410,6 +425,9 @@ export type Events = {
   'izzie/research.synthesize': {
     data: ResearchSynthesizePayload;
   };
+  'izzie/graph.updated': {
+    data: GraphUpdatedPayload;
+  };
 };
 
 /**
@@ -439,6 +457,7 @@ export function validateEventData<T extends keyof Events>(
     'izzie/research.fetch': ResearchFetchSchema,
     'izzie/research.analyze': ResearchAnalyzeSchema,
     'izzie/research.synthesize': ResearchSynthesizeSchema,
+    'izzie/graph.updated': GraphUpdatedSchema,
   };
 
   const schema = schemas[eventName];

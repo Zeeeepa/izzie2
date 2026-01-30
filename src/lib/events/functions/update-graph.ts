@@ -156,8 +156,8 @@ export const updateGraph = inngest.createFunction(
       }
     });
 
-    // Step 4: Log completion metrics
-    await step.run('log-metrics', async () => {
+    // Step 4: Log completion metrics and emit graph updated event
+    await step.run('log-metrics-and-emit', async () => {
       console.log(`${LOG_PREFIX} Completed graph, relationship, and memory update for ${sourceId}`);
       console.log(`${LOG_PREFIX} Graph update: ${graphUpdateResult.success ? 'SUCCESS' : 'FAILED'}`);
       console.log(`${LOG_PREFIX} Relationship update: ${relationshipUpdateResult.success ? 'SUCCESS' : 'FAILED'}`);
@@ -173,6 +173,22 @@ export const updateGraph = inngest.createFunction(
 
       if (memoryUpdateResult.success && 'memoryId' in memoryUpdateResult) {
         console.log(`${LOG_PREFIX}   - Memory ID: ${memoryUpdateResult.memoryId}`);
+      }
+
+      // Emit graph updated event for downstream processing (e.g., relationship discovery)
+      if (graphUpdateResult.success && entities.length > 0) {
+        await inngest.send({
+          name: 'izzie/graph.updated',
+          data: {
+            userId,
+            sourceId,
+            sourceType,
+            entitiesCount: entities.length,
+            relationshipsCount: (relationships || []).length,
+            updatedAt: new Date().toISOString(),
+          },
+        });
+        console.log(`${LOG_PREFIX} Emitted graph.updated event with ${entities.length} entities`);
       }
 
       // TODO: Send metrics to monitoring service (e.g., Datadog, Prometheus)
