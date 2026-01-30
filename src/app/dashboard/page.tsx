@@ -1,337 +1,90 @@
 /**
  * Dashboard Home Page
- * Main dashboard landing page
+ * Mobile-first proactive card view
  */
 
 'use client';
 
-import Link from 'next/link';
+import { useSession } from '@/lib/auth/client';
+import { ProactiveCard } from '@/components/dashboard/ProactiveCard';
 
 export default function DashboardPage() {
+  const { data: session, isPending } = useSession();
+
+  // TODO: Replace with real data from API
+  const todayEvents = [
+    { id: 1, title: 'Team standup', subtitle: 'Daily sync', time: '9:00 AM' },
+    { id: 2, title: 'Project review', subtitle: 'Q1 planning', time: '2:00 PM' },
+  ];
+
+  const dueTasks = [
+    { id: 1, title: 'Review proposal', subtitle: 'Project X' },
+    { id: 2, title: 'Send follow-up email', subtitle: 'Client meeting' },
+  ];
+
+  // Show skeleton/loading state while session is loading
+  if (isPending) {
+    return (
+      <div className="p-4 space-y-6">
+        <div className="h-8 w-48 bg-muted animate-pulse rounded" />
+        <div className="h-4 w-64 bg-muted animate-pulse rounded" />
+      </div>
+    );
+  }
+
+  const firstName = session?.user?.name?.split(' ')[0] || 'there';
+
   return (
-    <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '2rem' }}>
-      {/* Welcome Header */}
-      <div style={{ marginBottom: '3rem' }}>
-        <h1
-          style={{
-            fontSize: '2.25rem',
-            fontWeight: '700',
-            color: '#111',
-            marginBottom: '0.5rem',
-          }}
-        >
-          Welcome to Izzie
-        </h1>
-        <p style={{ fontSize: '1rem', color: '#6b7280' }}>
-          Your AI-powered personal assistant
-        </p>
+    <div className="p-4 space-y-6">
+      {/* Greeting */}
+      <div>
+        <h2 className="text-2xl font-bold">
+          Hi, {firstName}
+        </h2>
+        <p className="text-muted-foreground">Here&apos;s your day at a glance</p>
       </div>
 
-      {/* Quick Actions Grid */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-          gap: '1.5rem',
-          marginBottom: '3rem',
-        }}
-      >
-        {/* Entities Card */}
-        <Link
-          href="/dashboard/entities"
-          style={{
-            backgroundColor: '#fff',
-            border: '1px solid #e5e7eb',
-            borderRadius: '12px',
-            padding: '2rem',
-            textDecoration: 'none',
-            transition: 'all 0.2s',
-            display: 'block',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = '#6366f1';
-            e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(99, 102, 241, 0.1)';
-            e.currentTarget.style.transform = 'translateY(-2px)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = '#e5e7eb';
-            e.currentTarget.style.boxShadow = 'none';
-            e.currentTarget.style.transform = 'translateY(0)';
-          }}
-        >
-          <div
-            style={{
-              fontSize: '2.5rem',
-              marginBottom: '1rem',
-            }}
-          >
-            <span role="img" aria-label="Entities">📊</span>
-          </div>
-          <h2
-            style={{
-              fontSize: '1.25rem',
-              fontWeight: '600',
-              color: '#111',
-              marginBottom: '0.5rem',
-            }}
-          >
-            Entities
-          </h2>
-          <p style={{ fontSize: '0.875rem', color: '#6b7280' }}>
-            Browse extracted people, companies, tasks, and more from your emails
-          </p>
-        </Link>
-
-        {/* Chat Card */}
-        <Link
-          href="/dashboard/chat"
-          style={{
-            backgroundColor: '#fff',
-            border: '1px solid #e5e7eb',
-            borderRadius: '12px',
-            padding: '2rem',
-            textDecoration: 'none',
-            transition: 'all 0.2s',
-            display: 'block',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = '#6366f1';
-            e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(99, 102, 241, 0.1)';
-            e.currentTarget.style.transform = 'translateY(-2px)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = '#e5e7eb';
-            e.currentTarget.style.boxShadow = 'none';
-            e.currentTarget.style.transform = 'translateY(0)';
-          }}
-        >
-          <div
-            style={{
-              fontSize: '2.5rem',
-              marginBottom: '1rem',
-            }}
-          >
-            <span role="img" aria-label="Chat">💬</span>
-          </div>
-          <h2
-            style={{
-              fontSize: '1.25rem',
-              fontWeight: '600',
-              color: '#111',
-              marginBottom: '0.5rem',
-            }}
-          >
-            Chat
-          </h2>
-          <p style={{ fontSize: '0.875rem', color: '#6b7280' }}>
-            Ask Izzie questions about your emails, calendar, and tasks
-          </p>
-        </Link>
-
-        {/* Extraction Card */}
-        <Link
-          href="/dashboard/extraction"
-          style={{
-            backgroundColor: '#fff',
-            border: '1px solid #e5e7eb',
-            borderRadius: '12px',
-            padding: '2rem',
-            textDecoration: 'none',
-            transition: 'all 0.2s',
-            display: 'block',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = '#6366f1';
-            e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(99, 102, 241, 0.1)';
-            e.currentTarget.style.transform = 'translateY(-2px)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = '#e5e7eb';
-            e.currentTarget.style.boxShadow = 'none';
-            e.currentTarget.style.transform = 'translateY(0)';
-          }}
-        >
-          <div
-            style={{
-              fontSize: '2.5rem',
-              marginBottom: '1rem',
-            }}
-          >
-            <span role="img" aria-label="Extraction">🔄</span>
-          </div>
-          <h2
-            style={{
-              fontSize: '1.25rem',
-              fontWeight: '600',
-              color: '#111',
-              marginBottom: '0.5rem',
-            }}
-          >
-            Extraction
-          </h2>
-          <p style={{ fontSize: '0.875rem', color: '#6b7280' }}>
-            Extract entities and relationships from your email, calendar, and drive
-          </p>
-        </Link>
-
-        {/* Settings Card */}
-        <Link
-          href="/dashboard/settings/preferences"
-          style={{
-            backgroundColor: '#fff',
-            border: '1px solid #e5e7eb',
-            borderRadius: '12px',
-            padding: '2rem',
-            textDecoration: 'none',
-            transition: 'all 0.2s',
-            display: 'block',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = '#6366f1';
-            e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(99, 102, 241, 0.1)';
-            e.currentTarget.style.transform = 'translateY(-2px)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = '#e5e7eb';
-            e.currentTarget.style.boxShadow = 'none';
-            e.currentTarget.style.transform = 'translateY(0)';
-          }}
-        >
-          <div
-            style={{
-              fontSize: '2.5rem',
-              marginBottom: '1rem',
-            }}
-          >
-            <span role="img" aria-label="Settings">⚙️</span>
-          </div>
-          <h2
-            style={{
-              fontSize: '1.25rem',
-              fontWeight: '600',
-              color: '#111',
-              marginBottom: '0.5rem',
-            }}
-          >
-            Settings
-          </h2>
-          <p style={{ fontSize: '0.875rem', color: '#6b7280' }}>
-            Configure your preferences and integrations
-          </p>
-        </Link>
-      </div>
-
-      {/* Info Section */}
-      <div
-        style={{
-          backgroundColor: '#eff6ff',
-          border: '1px solid #bfdbfe',
-          borderRadius: '12px',
-          padding: '1.5rem',
-        }}
-      >
-        <h3
-          style={{
-            fontSize: '1rem',
-            fontWeight: '600',
-            color: '#1e40af',
-            marginBottom: '0.75rem',
-          }}
-        >
-          Getting Started
+      {/* Today's Events */}
+      <section>
+        <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
+          Today&apos;s Events
         </h3>
-        <ul
-          style={{
-            listStyle: 'none',
-            padding: 0,
-            margin: 0,
-          }}
-        >
-          <li
-            style={{
-              fontSize: '0.875rem',
-              color: '#1e40af',
-              marginBottom: '0.5rem',
-              paddingLeft: '1.5rem',
-              position: 'relative',
-            }}
-          >
-            <span
-              style={{
-                position: 'absolute',
-                left: 0,
-                fontWeight: '600',
-              }}
-            >
-              1.
-            </span>
-            Connect your Google account to sync emails, calendar, and tasks
-          </li>
-          <li
-            style={{
-              fontSize: '0.875rem',
-              color: '#1e40af',
-              marginBottom: '0.5rem',
-              paddingLeft: '1.5rem',
-              position: 'relative',
-            }}
-          >
-            <span
-              style={{
-                position: 'absolute',
-                left: 0,
-                fontWeight: '600',
-              }}
-            >
-              2.
-            </span>
-            Go to{' '}
-            <Link href="/dashboard/extraction" style={{ color: '#1e40af', textDecoration: 'underline' }}>
-              Extraction
-            </Link>{' '}
-            to extract entities from your data
-          </li>
-          <li
-            style={{
-              fontSize: '0.875rem',
-              color: '#1e40af',
-              marginBottom: '0.5rem',
-              paddingLeft: '1.5rem',
-              position: 'relative',
-            }}
-          >
-            <span
-              style={{
-                position: 'absolute',
-                left: 0,
-                fontWeight: '600',
-              }}
-            >
-              3.
-            </span>
-            Browse extracted entities to see what Izzie has learned
-          </li>
-          <li
-            style={{
-              fontSize: '0.875rem',
-              color: '#1e40af',
-              paddingLeft: '1.5rem',
-              position: 'relative',
-            }}
-          >
-            <span
-              style={{
-                position: 'absolute',
-                left: 0,
-                fontWeight: '600',
-              }}
-            >
-              4.
-            </span>
-            Start chatting with Izzie to ask questions about your data
-          </li>
-        </ul>
-      </div>
+        <div className="space-y-2">
+          {todayEvents.map((event) => (
+            <ProactiveCard
+              key={event.id}
+              type="event"
+              title={event.title}
+              subtitle={event.subtitle}
+              time={event.time}
+            />
+          ))}
+        </div>
+      </section>
+
+      {/* Due Tasks */}
+      <section>
+        <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
+          Due Today
+        </h3>
+        <div className="space-y-2">
+          {dueTasks.map((task) => (
+            <ProactiveCard
+              key={task.id}
+              type="task"
+              title={task.title}
+              subtitle={task.subtitle}
+            />
+          ))}
+        </div>
+      </section>
+
+      {/* Quick Chat Input Placeholder */}
+      <section className="fixed bottom-20 left-4 right-4">
+        <div className="rounded-full border bg-muted/50 px-4 py-3 text-muted-foreground">
+          Ask me anything...
+        </div>
+      </section>
     </div>
   );
 }

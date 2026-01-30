@@ -5,9 +5,9 @@
 
 export const BUILD_INFO = {
   version: '1.0.4',
-  gitHash: 'a404ed3',
+  gitHash: 'af56622',
   gitBranch: 'preview',
-  buildTime: '2026-01-30T03:14:34Z',
+  buildTime: '2026-01-30T04:13:37Z',
   nodeVersion: 'v25.2.1',
   isDirty: true,
 } as const;

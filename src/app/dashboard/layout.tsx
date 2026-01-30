@@ -1,14 +1,14 @@
 /**
  * Dashboard Layout
- * Wraps all dashboard pages with sidebar navigation using shadcn/ui Sidebar
+ * Mobile-first layout with bottom navigation and simple header
  *
  * Note: Authentication is handled by middleware.ts - this layout assumes user is authenticated
  */
 
-import { AppSidebar } from '@/components/layout/AppSidebar';
-import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
+import { MobileHeader } from '@/components/layout/MobileHeader';
+import { BottomNav } from '@/components/layout/BottomNav';
 import { Suspense } from 'react';
-import { UserInfo } from './UserInfo';
+import { MobileUserInfo } from './MobileUserInfo';
 
 export default function DashboardLayout({
   children,
@@ -16,16 +16,14 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   return (
-    <SidebarProvider>
-      <Suspense fallback={<AppSidebar user={{ name: 'Loading...', email: null }} />}>
-        <UserInfo />
+    <div className="flex min-h-screen flex-col bg-background">
+      <Suspense fallback={<MobileHeader user={{ name: 'Loading...', email: null }} />}>
+        <MobileUserInfo />
       </Suspense>
-      <main className="flex flex-1 flex-col w-full">
-        <div className="flex items-center gap-2 border-b bg-background px-4 py-3">
-          <SidebarTrigger />
-        </div>
-        <div className="flex-1 overflow-y-auto p-6 bg-muted/30">{children}</div>
+      <main className="flex-1 overflow-auto pb-20">
+        {children}
       </main>
-    </SidebarProvider>
+      <BottomNav />
+    </div>
   );
 }
