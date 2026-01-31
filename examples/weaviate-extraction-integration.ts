@@ -96,7 +96,6 @@ async function getUserEntityOverview(userId: string) {
   console.log(`  Locations: ${stats.location}`);
   console.log(`  Action Items: ${stats.action_item}`);
   console.log(`  Topics: ${stats.topic}`);
-  console.log(`  Dates: ${stats.date}`);
 
   const total = Object.values(stats).reduce((sum, count) => sum + count, 0);
   console.log(`\nTotal Entities: ${total}`);

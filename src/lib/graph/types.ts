@@ -198,7 +198,6 @@ export function entityTypeToNodeLabel(entityType: EntityType): NodeLabel {
     project: 'Project',
     topic: 'Topic',
     location: 'Location',
-    date: 'Topic', // Dates are stored as topics for now
     action_item: 'Topic', // Action items stored as topics for now
   };
   return mapping[entityType];

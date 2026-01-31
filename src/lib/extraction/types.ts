@@ -12,7 +12,6 @@ export type EntityType =
   | 'person'
   | 'company'
   | 'project'
-  | 'date'
   | 'topic'
   | 'location'
   | 'action_item';
@@ -22,7 +21,7 @@ export type EntityType =
  * Matches the types defined in lib/relationships/types.ts
  */
 export type InlineRelationshipType =
-  // Person relationships
+  // Person relationships (professional)
   | 'WORKS_WITH'        // Person ↔ Person (colleagues)
   | 'REPORTS_TO'        // Person → Person (hierarchy)
   | 'WORKS_FOR'         // Person → Company
@@ -30,6 +29,11 @@ export type InlineRelationshipType =
   | 'WORKS_ON'          // Person → Project
   | 'EXPERT_IN'         // Person → Topic
   | 'LOCATED_IN'        // Person/Company → Location
+  // Person relationships (personal/familial)
+  | 'FRIEND_OF'         // Person ↔ Person (personal friendship)
+  | 'FAMILY_OF'         // Person ↔ Person (family member: parent, child, grandparent, etc.)
+  | 'MARRIED_TO'        // Person ↔ Person (spouse)
+  | 'SIBLING_OF'        // Person ↔ Person (brother/sister)
   // Company relationships
   | 'PARTNERS_WITH'     // Company ↔ Company
   | 'COMPETES_WITH'     // Company ↔ Company

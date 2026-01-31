@@ -161,7 +161,6 @@ class EntityDiscovererAgent extends BaseAgent<EntityDiscovererInput, EntityDisco
         'person',
         'company',
         'project',
-        'date',
         'topic',
         'location',
         'action_item',

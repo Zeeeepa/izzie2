@@ -20,7 +20,6 @@ const VALID_TYPES: EntityType[] = [
   'person',
   'company',
   'project',
-  'date',
   'topic',
   'location',
   'action_item',

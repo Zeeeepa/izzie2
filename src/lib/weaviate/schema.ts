@@ -20,10 +20,14 @@ export const COLLECTIONS: Record<EntityType, string> = {
   person: 'Person',
   company: 'Company',
   project: 'Project',
-  date: 'Date',
   topic: 'Topic',
   location: 'Location',
   action_item: 'ActionItem',
+};
+
+// Legacy collection for backward compatibility (no longer extracted)
+export const LEGACY_COLLECTIONS = {
+  date: 'Date',
 };
 
 /**
@@ -106,9 +110,11 @@ export async function initializeSchema(): Promise<void> {
         { name: 'context', dataType: 'text', description: 'Surrounding text context' },
       ],
     },
+    // NOTE: Date collection kept for backward compatibility with existing data
+    // No longer extracted as an entity type (dates handled by calendar)
     {
-      name: COLLECTIONS.date,
-      description: 'Date/deadline entities',
+      name: LEGACY_COLLECTIONS.date,
+      description: 'Date/deadline entities (DEPRECATED - no longer extracted)',
       properties: [
         { name: 'value', dataType: 'text', description: 'Original date value' },
         { name: 'normalized', dataType: 'text', description: 'Normalized date (ISO format)' },

@@ -39,7 +39,6 @@ function formatEntitiesByType(entities: Entity[]): string {
     person: 'People',
     company: 'Companies',
     project: 'Projects',
-    date: 'Important Dates',
     topic: 'Topics',
     location: 'Locations',
     action_item: 'Action Items',

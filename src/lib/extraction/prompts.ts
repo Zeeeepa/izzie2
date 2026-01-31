@@ -66,10 +66,9 @@ ${personExtractionRule}
    - Must be a NAMED project or initiative, not a generic task/feature
    - Examples: GitHub repo names, issue numbers, codenames, initiative names
    - DO NOT extract: generic tasks ("database optimization"), features ("email parsing"), technical terms ("sandbox cluster")
-4. **date** - Important dates and deadlines (from metadata, subject, and body)
-5. **topic** - Subject areas and themes (from metadata, subject, and body)
-6. **location** - Geographic locations (from metadata, subject, and body)
-7. **action_item** - ACTIONABLE tasks with clear context (from subject and body)
+4. **topic** - Subject areas and themes (from metadata, subject, and body)
+5. **location** - Geographic locations (from metadata, subject, and body)
+6. **action_item** - ACTIONABLE tasks with clear context (from subject and body)
    - Must include what needs to be done AND at least one of: who/when/priority
    - Extract ONLY if you can identify specific action + (assignee OR deadline OR priority)
    - DO NOT extract vague items like "check status", "follow up", "review changes" without context
@@ -85,13 +84,17 @@ Classify if this email is spam/promotional/low-value based on:
 **Relationship Extraction:**
 Also identify meaningful relationships between the entities you extract:
 RELATIONSHIP TYPES (use exactly these):
-- WORKS_WITH: Two people who work together/collaborate
+- WORKS_WITH: Two people who work together/collaborate (professional)
 - REPORTS_TO: Person reports to another person (hierarchy)
 - WORKS_FOR: Person works for a company
 - LEADS: Person leads/manages a project
 - WORKS_ON: Person works on a project
 - EXPERT_IN: Person has expertise in a topic
 - LOCATED_IN: Person or company is located in a place
+- FRIEND_OF: Person is a friend of another person (personal, non-work relationship)
+- FAMILY_OF: Person is a family member of another (parent, child, grandparent, cousin, etc.)
+- MARRIED_TO: Person is married to/spouse of another person
+- SIBLING_OF: Person is brother or sister of another person
 - PARTNERS_WITH: Two companies partner together
 - COMPETES_WITH: Two companies compete
 - OWNS: Company owns/runs a project
@@ -114,7 +117,6 @@ RELATIONSHIP RULES:
 - Include source (metadata, subject, or body)
 - Link email addresses to person entities when possible
 - Minimum confidence threshold: ${config.minConfidence}
-- For dates, include the actual date value if parseable
 - For action_item: extract assignee, deadline, and priority if mentioned
 - Classify spam with score 0-1 (0=definitely not spam, 1=definitely spam)
 
@@ -183,14 +185,6 @@ RELATIONSHIP RULES:
       "assignee": "you",
       "deadline": "2025-01-10",
       "priority": "high"
-    },
-    {
-      "type": "date",
-      "value": "January 10, 2025",
-      "normalized": "2025-01-10",
-      "confidence": 0.95,
-      "source": "body",
-      "context": "by Friday (January 10, 2025)"
     }
   ],
   "relationships": [
@@ -244,9 +238,9 @@ ${emailSummaries}
 1. person - People's names
 2. company - Organizations
 3. project - Project names
-4. date - Dates and deadlines
-5. topic - Subject areas
-6. location - Geographic locations
+4. topic - Subject areas
+5. location - Geographic locations
+6. action_item - Tasks and todos
 
 **Instructions:**
 - Extract all entities with confidence scores (0.0 to 1.0)
@@ -315,21 +309,24 @@ ${sources.join('\n')}
 1. **person** - People's names (from attendees, organizer, and description)
 2. **company** - Organizations and companies mentioned
 3. **project** - Project names and references
-4. **date** - Important dates and deadlines mentioned in description
-5. **topic** - Subject areas and themes (meeting topics, discussion areas)
-6. **location** - Geographic locations (cities, countries, addresses, meeting rooms)
-7. **action_item** - Tasks, todos, and action items mentioned in description
+4. **topic** - Subject areas and themes (meeting topics, discussion areas)
+5. **location** - Geographic locations (cities, countries, addresses, meeting rooms)
+6. **action_item** - Tasks, todos, and action items mentioned in description
 
 **Relationship Extraction:**
 Also identify meaningful relationships between the entities you extract:
 RELATIONSHIP TYPES (use exactly these):
-- WORKS_WITH: Two people who work together/collaborate
+- WORKS_WITH: Two people who work together/collaborate (professional)
 - REPORTS_TO: Person reports to another person (hierarchy)
 - WORKS_FOR: Person works for a company
 - LEADS: Person leads/manages a project
 - WORKS_ON: Person works on a project
 - EXPERT_IN: Person has expertise in a topic
 - LOCATED_IN: Person or company is located in a place
+- FRIEND_OF: Person is a friend of another person (personal, non-work relationship)
+- FAMILY_OF: Person is a family member of another (parent, child, grandparent, cousin, etc.)
+- MARRIED_TO: Person is married to/spouse of another person
+- SIBLING_OF: Person is brother or sister of another person
 - PARTNERS_WITH: Two companies partner together
 - OWNS: Company owns/runs a project
 - RELATED_TO: Projects or topics are related
@@ -348,7 +345,6 @@ RELATIONSHIP RULES:
 - Include source (metadata, description)
 - Link email addresses to person entities when possible
 - Minimum confidence threshold: ${config.minConfidence}
-- For dates, include the actual date value if parseable
 - For action_item: extract assignee, deadline, and priority if mentioned
 - The event itself is NOT spam, so always set isSpam: false
 

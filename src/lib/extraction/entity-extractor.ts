@@ -475,7 +475,7 @@ export class EntityExtractor {
     }
 
     // Valid entity types
-    const validEntityTypes: EntityType[] = ['person', 'company', 'project', 'date', 'topic', 'location', 'action_item'];
+    const validEntityTypes: EntityType[] = ['person', 'company', 'project', 'topic', 'location', 'action_item'];
     if (!validEntityTypes.includes(rel.fromType) || !validEntityTypes.includes(rel.toType)) {
       console.warn(`${LOG_PREFIX} Invalid entity type in relationship: ${rel.fromType} -> ${rel.toType}`);
       return false;
@@ -484,6 +484,7 @@ export class EntityExtractor {
     // Valid relationship types
     const validRelTypes: InlineRelationshipType[] = [
       'WORKS_WITH', 'REPORTS_TO', 'WORKS_FOR', 'LEADS', 'WORKS_ON', 'EXPERT_IN', 'LOCATED_IN',
+      'FRIEND_OF', 'FAMILY_OF', 'MARRIED_TO', 'SIBLING_OF',
       'PARTNERS_WITH', 'COMPETES_WITH', 'OWNS', 'RELATED_TO', 'DEPENDS_ON', 'PART_OF',
       'SUBTOPIC_OF', 'ASSOCIATED_WITH'
     ];
