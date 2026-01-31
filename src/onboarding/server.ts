@@ -2,12 +2,15 @@
  * Onboarding Test Harness Server
  *
  * Express server for testing email classification and relationship discovery.
- * Runs on localhost:4000 with OAuth support and SSE for real-time updates.
+ * Runs on localhost:3333 with OAuth support and SSE for real-time updates.
  */
 
+// IMPORTANT: Import env first to ensure .env.local is loaded before other modules
+import './env';
+
+import path from 'path';
 import express from 'express';
 import cors from 'cors';
-import path from 'path';
 import { fileURLToPath } from 'url';
 
 import oauthRoutes from './routes/oauth';
