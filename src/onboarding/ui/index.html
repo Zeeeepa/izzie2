@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Onboarding Test Harness</title>
+  <style>
+    :root {
+      --bg-primary: #0f172a;
+      --bg-secondary: #1e293b;
+      --bg-tertiary: #334155;
+      --text-primary: #f8fafc;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --accent-blue: #3b82f6;
+      --accent-green: #22c55e;
+      --accent-yellow: #eab308;
+      --accent-red: #ef4444;
+      --accent-purple: #a855f7;
+      --border-color: #475569;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    h1 {
+      font-size: 1.75rem;
+      font-weight: 600;
+    }
+
+    .auth-status {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .auth-status .user-info {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .auth-status img {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+    }
+
+    button {
+      padding: 0.5rem 1rem;
+      border: none;
+      border-radius: 0.375rem;
+      font-size: 0.875rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-primary {
+      background-color: var(--accent-blue);
+      color: white;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      background-color: #2563eb;
+    }
+
+    .btn-secondary {
+      background-color: var(--bg-tertiary);
+      color: var(--text-primary);
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+      background-color: #475569;
+    }
+
+    .btn-success {
+      background-color: var(--accent-green);
+      color: white;
+    }
+
+    .btn-success:hover:not(:disabled) {
+      background-color: #16a34a;
+    }
+
+    .btn-warning {
+      background-color: var(--accent-yellow);
+      color: black;
+    }
+
+    .btn-warning:hover:not(:disabled) {
+      background-color: #ca8a04;
+    }
+
+    .btn-danger {
+      background-color: var(--accent-red);
+      color: white;
+    }
+
+    .btn-danger:hover:not(:disabled) {
+      background-color: #dc2626;
+    }
+
+    .controls {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 2rem;
+    }
+
+    .status-bar {
+      background-color: var(--bg-secondary);
+      padding: 1rem;
+      border-radius: 0.5rem;
+      margin-bottom: 2rem;
+    }
+
+    .status-bar .status-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 1rem;
+    }
+
+    .status-item {
+      text-align: center;
+    }
+
+    .status-item .label {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .status-item .value {
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .status-item .value.state-running {
+      color: var(--accent-green);
+    }
+
+    .status-item .value.state-paused {
+      color: var(--accent-yellow);
+    }
+
+    .status-item .value.state-stopped {
+      color: var(--accent-red);
+    }
+
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2rem;
+    }
+
+    @media (max-width: 1024px) {
+      .main-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .panel {
+      background-color: var(--bg-secondary);
+      border-radius: 0.5rem;
+      overflow: hidden;
+    }
+
+    .panel-header {
+      padding: 1rem;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .panel-header h2 {
+      font-size: 1rem;
+      font-weight: 600;
+    }
+
+    .panel-header .count {
+      background-color: var(--bg-tertiary);
+      padding: 0.25rem 0.5rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+    }
+
+    .panel-content {
+      max-height: 400px;
+      overflow-y: auto;
+    }
+
+    .email-item {
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .email-item:last-child {
+      border-bottom: none;
+    }
+
+    .email-item .subject {
+      font-weight: 500;
+      margin-bottom: 0.25rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .email-item .meta {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .email-item .entities {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.25rem;
+      margin-top: 0.5rem;
+    }
+
+    .entity-tag {
+      padding: 0.125rem 0.5rem;
+      border-radius: 9999px;
+      font-size: 0.625rem;
+      font-weight: 500;
+    }
+
+    .entity-tag.person {
+      background-color: rgba(59, 130, 246, 0.2);
+      color: #93c5fd;
+    }
+
+    .entity-tag.company {
+      background-color: rgba(168, 85, 247, 0.2);
+      color: #d8b4fe;
+    }
+
+    .entity-tag.project {
+      background-color: rgba(34, 197, 94, 0.2);
+      color: #86efac;
+    }
+
+    .entity-tag.topic {
+      background-color: rgba(234, 179, 8, 0.2);
+      color: #fde047;
+    }
+
+    .relationship-item {
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .relationship-item:last-child {
+      border-bottom: none;
+    }
+
+    .relationship-item .from,
+    .relationship-item .to {
+      font-weight: 500;
+    }
+
+    .relationship-item .type {
+      font-size: 0.625rem;
+      background-color: var(--bg-tertiary);
+      padding: 0.125rem 0.5rem;
+      border-radius: 0.25rem;
+      color: var(--text-secondary);
+    }
+
+    .relationship-item .count {
+      margin-left: auto;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .empty-state {
+      padding: 2rem;
+      text-align: center;
+      color: var(--text-muted);
+    }
+
+    .error-toast {
+      position: fixed;
+      bottom: 2rem;
+      right: 2rem;
+      background-color: var(--accent-red);
+      color: white;
+      padding: 1rem;
+      border-radius: 0.5rem;
+      max-width: 400px;
+      animation: slideIn 0.3s ease;
+    }
+
+    @keyframes slideIn {
+      from {
+        transform: translateX(100%);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+
+    .progress-bar {
+      height: 4px;
+      background-color: var(--bg-tertiary);
+      border-radius: 2px;
+      overflow: hidden;
+      margin-top: 0.5rem;
+    }
+
+    .progress-bar .fill {
+      height: 100%;
+      background-color: var(--accent-blue);
+      transition: width 0.3s ease;
+    }
+
+    .config-section {
+      margin-bottom: 2rem;
+      padding: 1rem;
+      background-color: var(--bg-secondary);
+      border-radius: 0.5rem;
+    }
+
+    .config-section h3 {
+      font-size: 0.875rem;
+      margin-bottom: 1rem;
+      color: var(--text-secondary);
+    }
+
+    .config-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+    }
+
+    .config-field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+
+    .config-field label {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .config-field input {
+      padding: 0.5rem;
+      border: 1px solid var(--border-color);
+      border-radius: 0.25rem;
+      background-color: var(--bg-tertiary);
+      color: var(--text-primary);
+      font-size: 0.875rem;
+    }
+
+    .config-field input:focus {
+      outline: none;
+      border-color: var(--accent-blue);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Onboarding Test Harness</h1>
+      <div class="auth-status" id="authStatus">
+        <span class="text-muted">Checking authentication...</span>
+      </div>
+    </header>
+
+    <div class="status-bar">
+      <div class="status-grid">
+        <div class="status-item">
+          <div class="label">State</div>
+          <div class="value" id="stateValue">idle</div>
+        </div>
+        <div class="status-item">
+          <div class="label">Current Day</div>
+          <div class="value" id="dayValue">-</div>
+        </div>
+        <div class="status-item">
+          <div class="label">Emails</div>
+          <div class="value" id="emailsValue">0</div>
+        </div>
+        <div class="status-item">
+          <div class="label">Entities</div>
+          <div class="value" id="entitiesValue">0</div>
+        </div>
+        <div class="status-item">
+          <div class="label">Relationships</div>
+          <div class="value" id="relationshipsValue">0</div>
+        </div>
+        <div class="status-item">
+          <div class="label">Progress</div>
+          <div class="value" id="progressValue">0%</div>
+          <div class="progress-bar">
+            <div class="fill" id="progressFill" style="width: 0%"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="config-section" id="configSection">
+      <h3>Processing Configuration</h3>
+      <div class="config-grid">
+        <div class="config-field">
+          <label for="batchSize">Batch Size</label>
+          <input type="number" id="batchSize" value="50" min="1" max="100">
+        </div>
+        <div class="config-field">
+          <label for="maxEmailsPerDay">Max Emails/Day</label>
+          <input type="number" id="maxEmailsPerDay" value="100" min="1" max="500">
+        </div>
+        <div class="config-field">
+          <label for="startDate">Start Date</label>
+          <input type="date" id="startDate">
+        </div>
+        <div class="config-field">
+          <label for="endDate">End Date</label>
+          <input type="date" id="endDate">
+        </div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button class="btn-success" id="startBtn" disabled>Start</button>
+      <button class="btn-warning" id="pauseBtn" disabled>Pause</button>
+      <button class="btn-primary" id="resumeBtn" disabled>Resume</button>
+      <button class="btn-danger" id="stopBtn" disabled>Stop</button>
+      <button class="btn-secondary" id="flushBtn">Flush Data</button>
+    </div>
+
+    <div class="main-grid">
+      <div class="panel">
+        <div class="panel-header">
+          <h2>Processed Emails</h2>
+          <span class="count" id="emailCount">0</span>
+        </div>
+        <div class="panel-content" id="emailList">
+          <div class="empty-state">No emails processed yet</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <h2>Discovered Relationships</h2>
+          <span class="count" id="relationshipCount">0</span>
+        </div>
+        <div class="panel-content" id="relationshipList">
+          <div class="empty-state">No relationships discovered yet</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="errorToast" class="error-toast" style="display: none;"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
