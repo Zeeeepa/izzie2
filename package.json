@@ -52,7 +52,8 @@
     "check:relationships": "tsx scripts/check-relationships.ts",
     "check:user-graph": "tsx scripts/check-user-graph.ts",
     "mcp-server": "tsx src/mcp-server/index.ts",
-    "onboarding": "tsx src/onboarding/server.ts"
+    "onboarding": "tsx src/onboarding/server.ts",
+    "onboarding:train": "tsx src/onboarding/scripts/train.ts"
   },
   "repository": {
     "type": "git",
