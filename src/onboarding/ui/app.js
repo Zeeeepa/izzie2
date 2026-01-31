@@ -47,6 +47,8 @@ let syncingContacts = false;
 let syncingTasks = false;
 let syncedEntities = new Map(); // Track contact sync status per entity
 let syncedTasks = new Map(); // Track task sync status per entity
+let feedbackState = new Map(); // Track feedback state per entity/relationship
+let topicOntology = new Map(); // Track topic hierarchy
 
 // Modal elements
 const inspectModal = document.getElementById('inspectModal');
@@ -273,6 +275,10 @@ function handleSSEEvent(data) {
       handleTaskSync(data);
       break;
 
+    case 'feedback':
+      handleFeedbackEvent(data);
+      break;
+
     default:
       console.log('Unknown SSE event:', data);
   }
@@ -339,6 +345,11 @@ function handleEmailProcessed(data) {
           sources: [data.email.subject],
           sourceEmail: data.email
         });
+
+        // Auto-add topics to ontology for hierarchy detection
+        if (entity.type === 'topic' && !topicOntology.has(entity.value)) {
+          addTopicToOntology(entity.value);
+        }
       }
     }
   }
@@ -507,17 +518,42 @@ function updateEmailList() {
 
   emailList.innerHTML = syncButtonHtml + sortedEntities
     .slice(0, 100)
-    .map((entity, idx) => `
-      <div class="entity-card new" data-type="${entity.type}" onclick="inspectEntity(${idx})">
-        <span class="icon">${icons[entity.type] || '📋'}</span>
-        <div class="info">
+    .map((entity, idx) => {
+      const feedbackKey = `entity:${entity.value}`;
+      const feedback = feedbackState.get(feedbackKey);
+      const hierarchy = entity.type === 'topic' ? topicOntology.get(entity.value) : null;
+
+      return `
+      <div class="entity-card new" data-type="${entity.type}" data-idx="${idx}">
+        <span class="icon" onclick="inspectEntity(${idx})">${icons[entity.type] || '📋'}</span>
+        <div class="info" onclick="inspectEntity(${idx})">
           <div class="name">${escapeHtml(entity.value)}</div>
           <div class="meta">${entity.type} • seen ${entity.count}x</div>
+          ${hierarchy && hierarchy.parentName ? `
+            <div class="topic-hierarchy">
+              <span class="parent-icon">└─</span> subtopic of: ${escapeHtml(hierarchy.parentName)}
+            </div>
+          ` : ''}
         </div>
         ${getSyncBadge(entity.value, entity.type)}
+        ${feedback ? `
+          <span class="feedback-status ${feedback}">${feedback === 'positive' ? '✓' : '✕'}</span>
+        ` : ''}
         <span class="confidence">${(entity.confidence || 0.8).toFixed(2)}</span>
+        <div class="feedback-btns">
+          <button class="feedback-btn thumbs-up ${feedback === 'positive' ? 'active-positive' : ''}"
+                  onclick="event.stopPropagation(); submitFeedback('entity', ${idx}, 'positive')"
+                  title="Good extraction">
+            👍
+          </button>
+          <button class="feedback-btn thumbs-down ${feedback === 'negative' ? 'active-negative' : ''}"
+                  onclick="event.stopPropagation(); submitFeedback('entity', ${idx}, 'negative')"
+                  title="Bad extraction">
+            👎
+          </button>
+        </div>
       </div>
-    `)
+    `})
     .join('');
 
   // Store for inspection
@@ -555,18 +591,39 @@ function updateRelationshipList() {
 
   relationshipList.innerHTML = sortedRelationships
     .slice(0, 100)
-    .map((rel, idx) => `
-      <div class="rel-card new" onclick="inspectRelationship(${idx})">
-        <div class="rel-line">
+    .map((rel, idx) => {
+      const feedbackKey = `relationship:${rel.fromValue}|${rel.relationshipType}|${rel.toValue}`;
+      const feedback = feedbackState.get(feedbackKey);
+
+      return `
+      <div class="rel-card new" data-idx="${idx}">
+        <div class="rel-line" onclick="inspectRelationship(${idx})">
           <span class="source">${escapeHtml(rel.fromValue)}</span>
           <span class="arrow">${rel.relationshipType}</span>
           <span class="target">${escapeHtml(rel.toValue)}</span>
         </div>
-        <div class="meta">
-          Confidence: ${(rel.confidence || 0.8).toFixed(2)} • Seen ${rel.count}x
+        <div class="meta" style="display: flex; align-items: center; justify-content: space-between;">
+          <span onclick="inspectRelationship(${idx})">
+            Confidence: ${(rel.confidence || 0.8).toFixed(2)} • Seen ${rel.count}x
+          </span>
+          ${feedback ? `
+            <span class="feedback-status ${feedback}">${feedback === 'positive' ? '✓' : '✕'}</span>
+          ` : ''}
+          <div class="feedback-btns">
+            <button class="feedback-btn thumbs-up ${feedback === 'positive' ? 'active-positive' : ''}"
+                    onclick="event.stopPropagation(); submitRelationshipFeedback(${idx}, 'positive')"
+                    title="Good extraction">
+              👍
+            </button>
+            <button class="feedback-btn thumbs-down ${feedback === 'negative' ? 'active-negative' : ''}"
+                    onclick="event.stopPropagation(); submitRelationshipFeedback(${idx}, 'negative')"
+                    title="Bad extraction">
+              👎
+            </button>
+          </div>
         </div>
       </div>
-    `)
+    `})
     .join('');
 
   // Store for inspection
@@ -714,6 +771,8 @@ async function flushData() {
     relationships.clear();
     syncedEntities.clear();
     syncedTasks.clear();
+    feedbackState.clear();
+    topicOntology.clear();
     updateEmailList();
     updateRelationshipList();
 
@@ -930,4 +989,173 @@ function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
+}
+
+/**
+ * Handle feedback SSE event
+ */
+function handleFeedbackEvent(data) {
+  const key = data.feedbackType === 'entity'
+    ? `entity:${data.value}`
+    : `relationship:${data.value}`;
+
+  feedbackState.set(key, data.feedback);
+
+  // Update UI
+  if (data.feedbackType === 'entity') {
+    updateEmailList();
+  } else {
+    updateRelationshipList();
+  }
+}
+
+/**
+ * Submit feedback for an entity
+ */
+async function submitFeedback(type, idx, feedback) {
+  const entity = window._entities[idx];
+  if (!entity) return;
+
+  const feedbackKey = `entity:${entity.value}`;
+  const currentFeedback = feedbackState.get(feedbackKey);
+
+  // Toggle off if clicking the same feedback
+  if (currentFeedback === feedback) {
+    feedbackState.delete(feedbackKey);
+    updateEmailList();
+    return;
+  }
+
+  try {
+    const response = await fetch('/api/feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'entity',
+        extracted: {
+          value: entity.value,
+          entityType: entity.type,
+          confidence: entity.confidence,
+        },
+        feedback,
+        context: {
+          emailSubject: entity.sources?.[0],
+        },
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to submit feedback');
+    }
+
+    // Update local state
+    feedbackState.set(feedbackKey, feedback);
+    updateEmailList();
+
+    showToast(`Feedback recorded: ${feedback === 'positive' ? '👍' : '👎'} ${entity.value}`, 'success');
+  } catch (error) {
+    console.error('Feedback failed:', error);
+    showToast(`Feedback failed: ${error.message}`, 'error');
+  }
+}
+
+/**
+ * Submit feedback for a relationship
+ */
+async function submitRelationshipFeedback(idx, feedback) {
+  const rel = window._relationships[idx];
+  if (!rel) return;
+
+  const feedbackKey = `relationship:${rel.fromValue}|${rel.relationshipType}|${rel.toValue}`;
+  const currentFeedback = feedbackState.get(feedbackKey);
+
+  // Toggle off if clicking the same feedback
+  if (currentFeedback === feedback) {
+    feedbackState.delete(feedbackKey);
+    updateRelationshipList();
+    return;
+  }
+
+  try {
+    const response = await fetch('/api/feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'relationship',
+        extracted: {
+          value: `${rel.fromValue} ${rel.relationshipType} ${rel.toValue}`,
+          relationshipType: rel.relationshipType,
+          source: rel.fromValue,
+          target: rel.toValue,
+          confidence: rel.confidence,
+        },
+        feedback,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to submit feedback');
+    }
+
+    // Update local state
+    feedbackState.set(feedbackKey, feedback);
+    updateRelationshipList();
+
+    showToast(`Feedback recorded: ${feedback === 'positive' ? '👍' : '👎'} relationship`, 'success');
+  } catch (error) {
+    console.error('Feedback failed:', error);
+    showToast(`Feedback failed: ${error.message}`, 'error');
+  }
+}
+
+/**
+ * Load topic ontology from server
+ */
+async function loadTopicOntology() {
+  try {
+    const response = await fetch('/api/ontology');
+    const data = await response.json();
+
+    if (data.success && data.flat) {
+      topicOntology.clear();
+      for (const topic of data.flat) {
+        topicOntology.set(topic.name, topic);
+      }
+      console.log(`Loaded ${data.flat.length} topics into ontology`);
+    }
+  } catch (error) {
+    console.error('Failed to load ontology:', error);
+  }
+}
+
+/**
+ * Add a topic to the ontology with auto-parent detection
+ */
+async function addTopicToOntology(topicName) {
+  try {
+    const response = await fetch('/api/ontology/topic', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: topicName,
+        autoDetectParent: true,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (data.success && data.hierarchy) {
+      topicOntology.set(topicName, data.hierarchy);
+      updateEmailList();
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Failed to add topic to ontology:', error);
+    return null;
+  }
 }

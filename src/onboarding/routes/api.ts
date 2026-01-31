@@ -9,6 +9,8 @@ import { getProgressService } from '../services/progress';
 import { createEmailProcessor, EmailProcessorService } from '../services/email-processor';
 import { syncEntitiesWithProgress as syncContactsWithProgress } from '../services/contacts-sync';
 import { syncEntitiesWithProgress as syncTasksWithProgress } from '../services/tasks-sync';
+import { getFeedbackService } from '../services/feedback';
+import { getOntologyService } from '../services/ontology';
 import { getAuthenticatedClient, isAuthenticated } from './oauth';
 import type { ProcessingConfig } from '../types';
 
@@ -406,6 +408,195 @@ router.post('/sync-tasks', requireAuth, async (req: Request, res: Response) => {
     console.error(`${LOG_PREFIX} Sync tasks error:`, error);
     res.status(500).json({
       error: 'Failed to sync tasks',
+      details: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
+/**
+ * POST /api/feedback
+ * Record feedback for an entity or relationship
+ */
+router.post('/feedback', (req: Request, res: Response) => {
+  console.log(`${LOG_PREFIX} Feedback received`);
+
+  const { type, extracted, feedback, context, correction } = req.body;
+
+  if (!type || !extracted || !feedback) {
+    res.status(400).json({
+      error: 'Missing required fields: type, extracted, feedback',
+    });
+    return;
+  }
+
+  if (!['entity', 'relationship'].includes(type)) {
+    res.status(400).json({
+      error: 'Invalid type. Must be "entity" or "relationship"',
+    });
+    return;
+  }
+
+  if (!['positive', 'negative'].includes(feedback)) {
+    res.status(400).json({
+      error: 'Invalid feedback. Must be "positive" or "negative"',
+    });
+    return;
+  }
+
+  const feedbackService = getFeedbackService();
+  const record = feedbackService.recordFeedback(
+    type,
+    extracted,
+    feedback,
+    context,
+    correction
+  );
+
+  // Emit feedback event via SSE
+  const progress = getProgressService();
+  progress.recordFeedback(
+    record.id,
+    type,
+    extracted.value,
+    feedback,
+    extracted.entityType,
+    extracted.relationshipType
+  );
+
+  res.json({
+    success: true,
+    record,
+  });
+});
+
+/**
+ * GET /api/feedback/stats
+ * Get feedback statistics
+ */
+router.get('/feedback/stats', (_req: Request, res: Response) => {
+  const feedbackService = getFeedbackService();
+  const stats = feedbackService.getStats();
+
+  res.json({
+    success: true,
+    stats,
+  });
+});
+
+/**
+ * GET /api/feedback/export
+ * Export feedback as JSONL for ML training
+ */
+router.get('/feedback/export', (_req: Request, res: Response) => {
+  const feedbackService = getFeedbackService();
+  const jsonl = feedbackService.exportToJSONL();
+  const stats = feedbackService.getStats();
+
+  // Set headers for file download
+  res.setHeader('Content-Type', 'application/x-ndjson');
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="feedback_${new Date().toISOString().split('T')[0]}.jsonl"`
+  );
+
+  res.send(jsonl);
+});
+
+/**
+ * GET /api/feedback
+ * Get all feedback records
+ */
+router.get('/feedback', (_req: Request, res: Response) => {
+  const feedbackService = getFeedbackService();
+  const records = feedbackService.getAllRecords();
+
+  res.json({
+    success: true,
+    count: records.length,
+    records,
+  });
+});
+
+/**
+ * DELETE /api/feedback/:id
+ * Delete a feedback record
+ */
+router.delete('/feedback/:id', (req: Request, res: Response) => {
+  const feedbackService = getFeedbackService();
+  const deleted = feedbackService.deleteRecord(req.params.id);
+
+  if (deleted) {
+    res.json({ success: true });
+  } else {
+    res.status(404).json({ error: 'Feedback record not found' });
+  }
+});
+
+/**
+ * GET /api/ontology
+ * Get the topic ontology tree
+ */
+router.get('/ontology', (_req: Request, res: Response) => {
+  const ontologyService = getOntologyService();
+
+  res.json({
+    success: true,
+    tree: ontologyService.getOntologyTree(),
+    flat: ontologyService.getAllTopicsFlat(),
+    stats: ontologyService.getStats(),
+  });
+});
+
+/**
+ * GET /api/ontology/topic/:name
+ * Get hierarchy information for a specific topic
+ */
+router.get('/ontology/topic/:name', (req: Request, res: Response) => {
+  const ontologyService = getOntologyService();
+  const hierarchy = ontologyService.getTopicWithHierarchy(req.params.name);
+
+  if (hierarchy) {
+    res.json({
+      success: true,
+      topic: hierarchy,
+      path: ontologyService.getHierarchyPath(req.params.name),
+    });
+  } else {
+    res.status(404).json({ error: 'Topic not found' });
+  }
+});
+
+/**
+ * POST /api/ontology/topic
+ * Add a topic to the ontology (with optional auto-parent detection)
+ */
+router.post('/ontology/topic', async (req: Request, res: Response) => {
+  const { name, parentName, autoDetectParent } = req.body;
+
+  if (!name) {
+    res.status(400).json({ error: 'Missing required field: name' });
+    return;
+  }
+
+  const ontologyService = getOntologyService();
+
+  try {
+    let node;
+    if (autoDetectParent && !parentName) {
+      node = await ontologyService.addTopicWithAutoParent(name);
+    } else {
+      node = ontologyService.addTopic(name, parentName);
+    }
+
+    res.json({
+      success: true,
+      topic: node,
+      hierarchy: ontologyService.getTopicWithHierarchy(name),
+    });
+  } catch (error) {
+    console.error(`${LOG_PREFIX} Failed to add topic:`, error);
+    res.status(500).json({
+      error: 'Failed to add topic',
       details: error instanceof Error ? error.message : String(error),
     });
   }

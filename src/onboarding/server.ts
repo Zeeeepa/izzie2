@@ -70,6 +70,16 @@ app.listen(PORT, () => {
   console.log('    GET  /api/entities  - Get discovered entities');
   console.log('    GET  /api/relationships - Get discovered relationships');
   console.log('');
+  console.log('  Feedback (RLHF):');
+  console.log('    POST /api/feedback       - Submit feedback');
+  console.log('    GET  /api/feedback       - Get all feedback');
+  console.log('    GET  /api/feedback/stats - Feedback statistics');
+  console.log('    GET  /api/feedback/export - Export JSONL for ML');
+  console.log('');
+  console.log('  Ontology:');
+  console.log('    GET  /api/ontology       - Get topic tree');
+  console.log('    POST /api/ontology/topic - Add topic');
+  console.log('');
   console.log('='.repeat(60));
   console.log('');
 });

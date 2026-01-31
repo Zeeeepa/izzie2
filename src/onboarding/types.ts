@@ -110,6 +110,19 @@ export interface TaskSyncEvent {
 }
 
 /**
+ * Feedback event sent via SSE when user provides feedback
+ */
+export interface FeedbackEvent {
+  type: 'feedback';
+  feedbackId: string;
+  feedbackType: 'entity' | 'relationship';
+  value: string;
+  feedback: 'positive' | 'negative';
+  entityType?: string;
+  relationshipType?: string;
+}
+
+/**
  * Union type for all SSE events
  */
 export type SSEEvent =
@@ -120,7 +133,8 @@ export type SSEEvent =
   | CompleteEvent
   | StateChangeEvent
   | ContactSyncEvent
-  | TaskSyncEvent;
+  | TaskSyncEvent
+  | FeedbackEvent;
 
 /**
  * Processing summary after completion

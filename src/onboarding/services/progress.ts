@@ -15,6 +15,7 @@ import type {
   StateChangeEvent,
   ContactSyncEvent,
   TaskSyncEvent,
+  FeedbackEvent,
   ProcessingSummary,
   DiscoveredEntity,
   DiscoveredRelationship,
@@ -506,6 +507,32 @@ export class ProgressService {
 
   private emitTaskSync(event: TaskSyncEvent): void {
     this.broadcast(event);
+  }
+
+  private emitFeedback(event: FeedbackEvent): void {
+    this.broadcast(event);
+  }
+
+  /**
+   * Record a feedback event
+   */
+  recordFeedback(
+    feedbackId: string,
+    feedbackType: 'entity' | 'relationship',
+    value: string,
+    feedback: 'positive' | 'negative',
+    entityType?: string,
+    relationshipType?: string
+  ): void {
+    this.emitFeedback({
+      type: 'feedback',
+      feedbackId,
+      feedbackType,
+      value,
+      feedback,
+      entityType,
+      relationshipType,
+    });
   }
 
   private broadcast(event: SSEEvent): void {
