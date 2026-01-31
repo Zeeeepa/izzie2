@@ -282,7 +282,22 @@ router.post('/sync-contacts', requireAuth, async (req: Request, res: Response) =
   const progress = getProgressService();
   const client = getAuthenticatedClient();
 
+  // Log OAuth token status (not the token itself)
+  console.log(`${LOG_PREFIX} OAuth client status:`, {
+    hasClient: !!client,
+    hasCredentials: !!client?.credentials,
+    hasAccessToken: !!client?.credentials?.access_token,
+    hasRefreshToken: !!client?.credentials?.refresh_token,
+    tokenExpiry: client?.credentials?.expiry_date
+      ? new Date(client.credentials.expiry_date).toISOString()
+      : 'unknown',
+    isTokenExpired: client?.credentials?.expiry_date
+      ? Date.now() > client.credentials.expiry_date
+      : 'unknown',
+  });
+
   if (!client) {
+    console.error(`${LOG_PREFIX} No authenticated client available`);
     res.status(401).json({ error: 'Not authenticated' });
     return;
   }
@@ -290,6 +305,13 @@ router.post('/sync-contacts', requireAuth, async (req: Request, res: Response) =
   // Get all discovered entities
   const entities = progress.getEntities();
   const personEntities = entities.filter((e) => e.type === 'person');
+
+  // Log entity counts before syncing
+  console.log(`${LOG_PREFIX} Entity counts:`, {
+    totalEntities: entities.length,
+    personEntities: personEntities.length,
+    entityTypes: [...new Set(entities.map(e => e.type))],
+  });
 
   if (personEntities.length === 0) {
     res.json({
@@ -306,7 +328,11 @@ router.post('/sync-contacts', requireAuth, async (req: Request, res: Response) =
     ? personEntities.filter((e) => selectedValues.includes(e.value))
     : personEntities;
 
-  console.log(`${LOG_PREFIX} Syncing ${entitiesToSync.length} person entities to contacts`);
+  console.log(`${LOG_PREFIX} Syncing ${entitiesToSync.length} person entities to contacts`, {
+    selectedCount: entitiesToSync.length,
+    totalPersonEntities: personEntities.length,
+    hasSelectedValues: !!selectedValues,
+  });
 
   try {
     // Sync with progress callback
@@ -326,16 +352,37 @@ router.post('/sync-contacts', requireAuth, async (req: Request, res: Response) =
       }
     );
 
+    console.log(`${LOG_PREFIX} Sync contacts completed:`, summary);
+
     res.json({
       success: true,
       message: `Synced ${summary.created + summary.updated} contacts`,
       summary,
     });
-  } catch (error) {
-    console.error(`${LOG_PREFIX} Sync contacts error:`, error);
+  } catch (error: unknown) {
+    // Log full error details
+    console.error(`${LOG_PREFIX} Sync contacts error:`, {
+      errorName: error instanceof Error ? error.name : 'Unknown',
+      errorMessage: error instanceof Error ? error.message : String(error),
+      errorStack: error instanceof Error ? error.stack : undefined,
+    });
+
+    // Log Google API specific error details if available
+    const googleError = error as { code?: number; status?: string; errors?: unknown[]; response?: { data?: unknown } };
+    if (googleError.code || googleError.status || googleError.errors) {
+      console.error(`${LOG_PREFIX} Google API error details:`, {
+        code: googleError.code,
+        status: googleError.status,
+        errors: googleError.errors,
+        responseData: googleError.response?.data,
+      });
+    }
+
     res.status(500).json({
       error: 'Failed to sync contacts',
       details: error instanceof Error ? error.message : String(error),
+      errorCode: (error as { code?: number }).code,
+      errorStatus: (error as { status?: string }).status,
     });
   }
 });
@@ -350,7 +397,22 @@ router.post('/sync-tasks', requireAuth, async (req: Request, res: Response) => {
   const progress = getProgressService();
   const client = getAuthenticatedClient();
 
+  // Log OAuth token status (not the token itself)
+  console.log(`${LOG_PREFIX} OAuth client status:`, {
+    hasClient: !!client,
+    hasCredentials: !!client?.credentials,
+    hasAccessToken: !!client?.credentials?.access_token,
+    hasRefreshToken: !!client?.credentials?.refresh_token,
+    tokenExpiry: client?.credentials?.expiry_date
+      ? new Date(client.credentials.expiry_date).toISOString()
+      : 'unknown',
+    isTokenExpired: client?.credentials?.expiry_date
+      ? Date.now() > client.credentials.expiry_date
+      : 'unknown',
+  });
+
   if (!client) {
+    console.error(`${LOG_PREFIX} No authenticated client available`);
     res.status(401).json({ error: 'Not authenticated' });
     return;
   }
@@ -358,6 +420,13 @@ router.post('/sync-tasks', requireAuth, async (req: Request, res: Response) => {
   // Get all discovered entities
   const entities = progress.getEntities();
   const actionItems = entities.filter((e) => e.type === 'action_item');
+
+  // Log entity counts before syncing
+  console.log(`${LOG_PREFIX} Entity counts:`, {
+    totalEntities: entities.length,
+    actionItems: actionItems.length,
+    entityTypes: [...new Set(entities.map(e => e.type))],
+  });
 
   if (actionItems.length === 0) {
     res.json({
@@ -377,7 +446,12 @@ router.post('/sync-tasks', requireAuth, async (req: Request, res: Response) => {
   // Optional: custom task list name
   const listName: string | undefined = req.body.listName;
 
-  console.log(`${LOG_PREFIX} Syncing ${entitiesToSync.length} action_item entities to tasks`);
+  console.log(`${LOG_PREFIX} Syncing ${entitiesToSync.length} action_item entities to tasks`, {
+    selectedCount: entitiesToSync.length,
+    totalActionItems: actionItems.length,
+    hasSelectedValues: !!selectedValues,
+    listName: listName || '(default)',
+  });
 
   try {
     // Sync with progress callback
@@ -399,16 +473,37 @@ router.post('/sync-tasks', requireAuth, async (req: Request, res: Response) => {
       { listName }
     );
 
+    console.log(`${LOG_PREFIX} Sync tasks completed:`, summary);
+
     res.json({
       success: true,
       message: `Synced ${summary.created} tasks`,
       summary,
     });
-  } catch (error) {
-    console.error(`${LOG_PREFIX} Sync tasks error:`, error);
+  } catch (error: unknown) {
+    // Log full error details
+    console.error(`${LOG_PREFIX} Sync tasks error:`, {
+      errorName: error instanceof Error ? error.name : 'Unknown',
+      errorMessage: error instanceof Error ? error.message : String(error),
+      errorStack: error instanceof Error ? error.stack : undefined,
+    });
+
+    // Log Google API specific error details if available
+    const googleError = error as { code?: number; status?: string; errors?: unknown[]; response?: { data?: unknown } };
+    if (googleError.code || googleError.status || googleError.errors) {
+      console.error(`${LOG_PREFIX} Google API error details:`, {
+        code: googleError.code,
+        status: googleError.status,
+        errors: googleError.errors,
+        responseData: googleError.response?.data,
+      });
+    }
+
     res.status(500).json({
       error: 'Failed to sync tasks',
       details: error instanceof Error ? error.message : String(error),
+      errorCode: (error as { code?: number }).code,
+      errorStatus: (error as { status?: string }).status,
     });
   }
 });

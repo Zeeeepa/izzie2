@@ -66,8 +66,12 @@ export async function ensureTaskList(
 
   try {
     // Fetch all task lists
+    console.log(`${LOG_PREFIX} Fetching existing task lists...`);
     const response = await tasks.tasklists.list({ maxResults: 100 });
     const taskLists = response.data.items || [];
+    console.log(`${LOG_PREFIX} Found ${taskLists.length} existing task lists:`,
+      taskLists.map(l => ({ id: l.id, title: l.title }))
+    );
 
     // Find existing list by name
     const existingList = taskLists.find(
@@ -75,7 +79,10 @@ export async function ensureTaskList(
     );
 
     if (existingList && existingList.id) {
-      console.log(`${LOG_PREFIX} Found existing list: ${existingList.id}`);
+      console.log(`${LOG_PREFIX} Using existing task list:`, {
+        id: existingList.id,
+        title: existingList.title,
+      });
       return {
         id: existingList.id,
         title: existingList.title || listName,
@@ -92,13 +99,32 @@ export async function ensureTaskList(
       throw new Error('Failed to create task list - no ID returned');
     }
 
-    console.log(`${LOG_PREFIX} Created list: ${createResponse.data.id}`);
+    console.log(`${LOG_PREFIX} Successfully created task list:`, {
+      id: createResponse.data.id,
+      title: createResponse.data.title,
+    });
     return {
       id: createResponse.data.id,
       title: createResponse.data.title || listName,
     };
-  } catch (error) {
-    console.error(`${LOG_PREFIX} Failed to ensure task list:`, error);
+  } catch (error: unknown) {
+    console.error(`${LOG_PREFIX} Failed to ensure task list:`, {
+      errorName: error instanceof Error ? error.name : 'Unknown',
+      errorMessage: error instanceof Error ? error.message : String(error),
+      errorStack: error instanceof Error ? error.stack : undefined,
+    });
+
+    // Log Google API specific error details if available
+    const googleError = error as { code?: number; status?: string; errors?: unknown[]; response?: { data?: unknown } };
+    if (googleError.code || googleError.status || googleError.errors) {
+      console.error(`${LOG_PREFIX} Google API error details:`, {
+        code: googleError.code,
+        status: googleError.status,
+        errors: googleError.errors,
+        responseData: googleError.response?.data,
+      });
+    }
+
     throw new Error(
       `Failed to ensure task list: ${error instanceof Error ? error.message : String(error)}`
     );
@@ -154,42 +180,84 @@ export async function syncEntityToTasks(
     return { action: 'skipped', error: 'Empty task title' };
   }
 
+  // Log the task list being used
+  console.log(`${LOG_PREFIX} Syncing entity to task list:`, {
+    taskListId,
+    entityValue: entity.value,
+    entityType: entity.type,
+    occurrenceCount: (entity as DiscoveredEntity).occurrenceCount || 1,
+  });
+
   const tasks = getTasksApi(auth);
 
   try {
     // Check for duplicates by title
+    console.log(`${LOG_PREFIX} Checking for duplicate task: "${title}"`);
     const exists = await taskExistsByTitle(auth, taskListId, title);
     if (exists) {
-      console.log(`${LOG_PREFIX} Task already exists: "${title}"`);
+      console.log(`${LOG_PREFIX} Task already exists, skipping: "${title}"`);
       return { action: 'skipped', taskListId, error: 'Duplicate task' };
     }
 
     // Build task notes from entity metadata
     const notes = buildTaskNotes(entity);
 
-    // Create the task
-    console.log(`${LOG_PREFIX} Creating task: "${title}"`);
-    const response = await tasks.tasks.insert({
+    // Log the request being made
+    const createRequest = {
       tasklist: taskListId,
       requestBody: {
         title,
         notes,
       },
+    };
+    console.log(`${LOG_PREFIX} Creating task with request:`, {
+      taskListId,
+      title,
+      notesLength: notes.length,
     });
+
+    // Create the task
+    const response = await tasks.tasks.insert(createRequest);
 
     if (!response.data.id) {
       throw new Error('Failed to create task - no ID returned');
     }
 
-    console.log(`${LOG_PREFIX} Created task: ${response.data.id}`);
+    // Log when task is successfully created
+    console.log(`${LOG_PREFIX} Successfully created task:`, {
+      taskId: response.data.id,
+      taskListId,
+      title: response.data.title,
+      status: response.data.status,
+      selfLink: response.data.selfLink,
+    });
+
     return {
       action: 'created',
       taskId: response.data.id,
       taskListId,
     };
-  } catch (error) {
+  } catch (error: unknown) {
+    // Log full error details for debugging
+    console.error(`${LOG_PREFIX} Failed to sync entity "${entity.value}":`, {
+      taskListId,
+      errorName: error instanceof Error ? error.name : 'Unknown',
+      errorMessage: error instanceof Error ? error.message : String(error),
+      errorStack: error instanceof Error ? error.stack : undefined,
+    });
+
+    // Log Google API specific error details if available
+    const googleError = error as { code?: number; status?: string; errors?: unknown[]; response?: { data?: unknown } };
+    if (googleError.code || googleError.status || googleError.errors) {
+      console.error(`${LOG_PREFIX} Google API error details:`, {
+        code: googleError.code,
+        status: googleError.status,
+        errors: googleError.errors,
+        responseData: googleError.response?.data,
+      });
+    }
+
     const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error(`${LOG_PREFIX} Failed to sync entity:`, error);
     return {
       action: 'skipped',
       taskListId,

@@ -86,42 +86,88 @@ export async function syncEntityToContacts(
     // Try to find email for this person
     const email = relatedEmail || extractEmailFromEntity(entity);
 
+    // Log the request being made
+    console.log(`${LOG_PREFIX} Syncing entity:`, {
+      value: entity.value,
+      givenName,
+      familyName,
+      email: email || '(none)',
+      occurrenceCount: (entity as DiscoveredEntity).occurrenceCount || 1,
+    });
+
     // If we have an email, check if contact already exists
     if (email) {
+      console.log(`${LOG_PREFIX} Searching for existing contact with email: ${email}`);
       const existing = await contactsService.findContactByEmail(email);
 
       if (existing && existing.resourceName) {
         // Update existing contact
-        console.log(`${LOG_PREFIX} Updating existing contact for ${email}`);
+        console.log(`${LOG_PREFIX} Found existing contact, updating:`, {
+          resourceName: existing.resourceName,
+          email,
+        });
         const updated = await contactsService.updateContact(existing.resourceName, {
           givenName,
           familyName,
           notes: `Discovered via email analysis. Seen ${(entity as DiscoveredEntity).occurrenceCount || 1} times.`,
         });
 
+        // Log successful response
+        console.log(`${LOG_PREFIX} Successfully updated contact:`, {
+          resourceName: updated.resourceName,
+          etag: updated.etag,
+        });
+
         return {
           action: 'updated',
           resourceName: updated.resourceName || undefined,
         };
+      } else {
+        console.log(`${LOG_PREFIX} No existing contact found for email: ${email}`);
       }
     }
 
     // Create new contact
-    console.log(`${LOG_PREFIX} Creating new contact: ${entity.value}`);
-    const created = await contactsService.createContact({
+    const createRequest = {
       givenName,
       familyName,
       email,
       notes: `Discovered via email analysis. Seen ${(entity as DiscoveredEntity).occurrenceCount || 1} times.`,
+    };
+    console.log(`${LOG_PREFIX} Creating new contact with request:`, createRequest);
+
+    const created = await contactsService.createContact(createRequest);
+
+    // Log successful response
+    console.log(`${LOG_PREFIX} Successfully created contact:`, {
+      resourceName: created.resourceName,
+      etag: created.etag,
     });
 
     return {
       action: 'created',
       resourceName: created.resourceName || undefined,
     };
-  } catch (error) {
+  } catch (error: unknown) {
+    // Log full error details for debugging
+    console.error(`${LOG_PREFIX} Failed to sync entity "${entity.value}":`, {
+      errorName: error instanceof Error ? error.name : 'Unknown',
+      errorMessage: error instanceof Error ? error.message : String(error),
+      errorStack: error instanceof Error ? error.stack : undefined,
+    });
+
+    // Log Google API specific error details if available
+    const googleError = error as { code?: number; status?: string; errors?: unknown[]; response?: { data?: unknown } };
+    if (googleError.code || googleError.status || googleError.errors) {
+      console.error(`${LOG_PREFIX} Google API error details:`, {
+        code: googleError.code,
+        status: googleError.status,
+        errors: googleError.errors,
+        responseData: googleError.response?.data,
+      });
+    }
+
     const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error(`${LOG_PREFIX} Failed to sync entity:`, error);
     return {
       action: 'skipped',
       error: errorMessage,
