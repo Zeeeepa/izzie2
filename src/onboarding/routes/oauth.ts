@@ -29,7 +29,7 @@ function getOAuth2Client(): Auth.OAuth2Client {
   if (!oauth2Client) {
     const clientId = process.env.GOOGLE_CLIENT_ID;
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-    const redirectUri = 'http://localhost:4000/oauth/callback';
+    const redirectUri = 'http://localhost:3333/oauth/callback';
 
     if (!clientId || !clientSecret) {
       throw new Error('GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set');

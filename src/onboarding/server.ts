@@ -16,7 +16,7 @@ import apiRoutes from './routes/api';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const PORT = process.env.ONBOARDING_PORT || 4000;
+const PORT = process.env.ONBOARDING_PORT || 3333;
 
 const app = express();
 
