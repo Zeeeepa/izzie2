@@ -97,11 +97,35 @@ router.get('/login', (_req: Request, res: Response) => {
     const client = getOAuth2Client();
 
     const scopes = [
+      // OpenID
       'openid',
       'email',
       'profile',
+
+      // Gmail (read/write)
       'https://www.googleapis.com/auth/gmail.readonly',
       'https://www.googleapis.com/auth/gmail.modify',
+      'https://www.googleapis.com/auth/gmail.send',
+
+      // Calendar (read/write)
+      'https://www.googleapis.com/auth/calendar',
+      'https://www.googleapis.com/auth/calendar.events',
+
+      // Contacts (read/write)
+      'https://www.googleapis.com/auth/contacts',
+
+      // Drive (read/write)
+      'https://www.googleapis.com/auth/drive',
+      'https://www.googleapis.com/auth/drive.file',
+
+      // Docs (read/write)
+      'https://www.googleapis.com/auth/documents',
+
+      // Sheets (read/write)
+      'https://www.googleapis.com/auth/spreadsheets',
+
+      // Tasks (read/write)
+      'https://www.googleapis.com/auth/tasks',
     ];
 
     const authUrl = client.generateAuthUrl({
