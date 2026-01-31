@@ -13,6 +13,7 @@ import type {
   ErrorEvent,
   CompleteEvent,
   StateChangeEvent,
+  ContactSyncEvent,
   ProcessingSummary,
   DiscoveredEntity,
   DiscoveredRelationship,
@@ -287,6 +288,28 @@ export class ProgressService {
   }
 
   /**
+   * Record a contact sync event
+   */
+  recordContactSync(
+    entityValue: string,
+    action: 'created' | 'updated' | 'skipped',
+    current: number,
+    total: number,
+    resourceName?: string,
+    error?: string
+  ): void {
+    this.emitContactSync({
+      type: 'contact_sync',
+      entityValue,
+      action,
+      resourceName,
+      error,
+      current,
+      total,
+    });
+  }
+
+  /**
    * Add SSE client
    */
   addClient(res: Response): void {
@@ -450,6 +473,10 @@ export class ProgressService {
       type: 'complete',
       summary,
     });
+  }
+
+  private emitContactSync(event: ContactSyncEvent): void {
+    this.broadcast(event);
   }
 
   private broadcast(event: SSEEvent): void {

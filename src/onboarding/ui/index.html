@@ -653,6 +653,48 @@
     .entity-card.new, .rel-card.new {
       animation: slideDown 0.3s ease;
     }
+
+    /* Sync controls */
+    .sync-controls {
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--border-color);
+      background: var(--bg-tertiary);
+    }
+    .sync-controls button {
+      width: 100%;
+    }
+
+    /* Sync badge styles */
+    .sync-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      font-size: 0.7rem;
+      margin-right: 0.25rem;
+    }
+    .sync-badge.sync-pending {
+      background: var(--bg-tertiary);
+      color: var(--text-muted);
+    }
+    .sync-badge.sync-created {
+      background: var(--accent-green);
+      color: white;
+    }
+    .sync-badge.sync-updated {
+      background: var(--accent-blue);
+      color: white;
+    }
+    .sync-badge.sync-skipped {
+      background: var(--bg-tertiary);
+      color: var(--text-secondary);
+    }
+    .sync-badge.sync-error {
+      background: var(--accent-red);
+      color: white;
+    }
   </style>
 
   <script src="app.js"></script>

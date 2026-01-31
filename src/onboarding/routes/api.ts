@@ -7,6 +7,7 @@
 import { Router, Request, Response } from 'express';
 import { getProgressService } from '../services/progress';
 import { createEmailProcessor, EmailProcessorService } from '../services/email-processor';
+import { syncEntitiesWithProgress } from '../services/contacts-sync';
 import { getAuthenticatedClient, isAuthenticated } from './oauth';
 import type { ProcessingConfig } from '../types';
 
@@ -266,6 +267,74 @@ router.get('/relationships', (_req: Request, res: Response) => {
     count: relationships.length,
     relationships,
   });
+});
+
+/**
+ * POST /api/sync-contacts
+ * Sync discovered Person entities to Google Contacts
+ */
+router.post('/sync-contacts', requireAuth, async (req: Request, res: Response) => {
+  console.log(`${LOG_PREFIX} Sync contacts requested`);
+
+  const progress = getProgressService();
+  const client = getAuthenticatedClient();
+
+  if (!client) {
+    res.status(401).json({ error: 'Not authenticated' });
+    return;
+  }
+
+  // Get all discovered entities
+  const entities = progress.getEntities();
+  const personEntities = entities.filter((e) => e.type === 'person');
+
+  if (personEntities.length === 0) {
+    res.json({
+      success: true,
+      message: 'No person entities to sync',
+      summary: { total: 0, created: 0, updated: 0, skipped: 0, errors: 0 },
+    });
+    return;
+  }
+
+  // Optional: get specific entity values from request body
+  const selectedValues: string[] | undefined = req.body.entityValues;
+  const entitiesToSync = selectedValues
+    ? personEntities.filter((e) => selectedValues.includes(e.value))
+    : personEntities;
+
+  console.log(`${LOG_PREFIX} Syncing ${entitiesToSync.length} person entities to contacts`);
+
+  try {
+    // Sync with progress callback
+    const summary = await syncEntitiesWithProgress(
+      client,
+      entitiesToSync,
+      (current, total, result) => {
+        // Emit progress via SSE
+        progress.recordContactSync(
+          entitiesToSync[current - 1].value,
+          result.action,
+          current,
+          total,
+          result.resourceName,
+          result.error
+        );
+      }
+    );
+
+    res.json({
+      success: true,
+      message: `Synced ${summary.created + summary.updated} contacts`,
+      summary,
+    });
+  } catch (error) {
+    console.error(`${LOG_PREFIX} Sync contacts error:`, error);
+    res.status(500).json({
+      error: 'Failed to sync contacts',
+      details: error instanceof Error ? error.message : String(error),
+    });
+  }
 });
 
 export default router;

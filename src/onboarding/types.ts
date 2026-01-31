@@ -83,6 +83,19 @@ export interface StateChangeEvent {
 }
 
 /**
+ * Contact sync event sent via SSE
+ */
+export interface ContactSyncEvent {
+  type: 'contact_sync';
+  entityValue: string;
+  action: 'created' | 'updated' | 'skipped';
+  resourceName?: string;
+  error?: string;
+  current: number;
+  total: number;
+}
+
+/**
  * Union type for all SSE events
  */
 export type SSEEvent =
@@ -91,7 +104,8 @@ export type SSEEvent =
   | RelationshipEvent
   | ErrorEvent
   | CompleteEvent
-  | StateChangeEvent;
+  | StateChangeEvent
+  | ContactSyncEvent;
 
 /**
  * Processing summary after completion

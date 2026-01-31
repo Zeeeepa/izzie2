@@ -43,6 +43,8 @@ let eventSource = null;
 let processedEmails = [];
 let entities = new Map(); // Track unique entities
 let relationships = new Map();
+let syncingContacts = false;
+let syncedEntities = new Map(); // Track sync status per entity
 
 // Modal elements
 const inspectModal = document.getElementById('inspectModal');
@@ -261,6 +263,10 @@ function handleSSEEvent(data) {
       handleComplete(data);
       break;
 
+    case 'contact_sync':
+      handleContactSync(data);
+      break;
+
     default:
       console.log('Unknown SSE event:', data);
   }
@@ -365,6 +371,52 @@ function handleComplete(data) {
 }
 
 /**
+ * Handle contact sync event
+ */
+function handleContactSync(data) {
+  syncedEntities.set(data.entityValue, {
+    action: data.action,
+    resourceName: data.resourceName,
+    error: data.error,
+  });
+
+  // Update progress display
+  if (data.current === data.total) {
+    syncingContacts = false;
+    showToast(`Sync complete: ${data.current} contacts processed`, 'success');
+  }
+
+  // Refresh entity list to show sync status
+  updateEmailList();
+}
+
+/**
+ * Get sync status badge HTML for an entity
+ */
+function getSyncBadge(entityValue, entityType) {
+  if (entityType !== 'person') return '';
+
+  const syncStatus = syncedEntities.get(entityValue);
+  if (!syncStatus) {
+    return '<span class="sync-badge sync-pending" title="Not synced to contacts">⬡</span>';
+  }
+
+  switch (syncStatus.action) {
+    case 'created':
+      return '<span class="sync-badge sync-created" title="Created in contacts">✓</span>';
+    case 'updated':
+      return '<span class="sync-badge sync-updated" title="Updated in contacts">↻</span>';
+    case 'skipped':
+      if (syncStatus.error) {
+        return `<span class="sync-badge sync-error" title="${escapeHtml(syncStatus.error)}">✕</span>`;
+      }
+      return '<span class="sync-badge sync-skipped" title="Skipped">−</span>';
+    default:
+      return '';
+  }
+}
+
+/**
  * Update email list UI - shows entities as clickable cards
  */
 function updateEmailList() {
@@ -380,7 +432,17 @@ function updateEmailList() {
 
   const icons = { person: '👤', company: '🏢', project: '📁', location: '📍', topic: '🏷️' };
 
-  emailList.innerHTML = sortedEntities
+  // Check if we have any person entities for the sync button
+  const personEntities = sortedEntities.filter(e => e.type === 'person');
+  const syncButtonHtml = personEntities.length > 0 ? `
+    <div class="sync-controls">
+      <button class="btn-secondary" onclick="syncAllContacts()" ${syncingContacts ? 'disabled' : ''}>
+        ${syncingContacts ? 'Syncing...' : `Sync ${personEntities.length} People to Contacts`}
+      </button>
+    </div>
+  ` : '';
+
+  emailList.innerHTML = syncButtonHtml + sortedEntities
     .slice(0, 100)
     .map((entity, idx) => `
       <div class="entity-card new" data-type="${entity.type}" onclick="inspectEntity(${idx})">
@@ -389,6 +451,7 @@ function updateEmailList() {
           <div class="name">${escapeHtml(entity.value)}</div>
           <div class="meta">${entity.type} • seen ${entity.count}x</div>
         </div>
+        ${getSyncBadge(entity.value, entity.type)}
         <span class="confidence">${(entity.confidence || 0.8).toFixed(2)}</span>
       </div>
     `)
@@ -586,6 +649,7 @@ async function flushData() {
     processedEmails = [];
     entities.clear();
     relationships.clear();
+    syncedEntities.clear();
     updateEmailList();
     updateRelationshipList();
 
@@ -601,6 +665,93 @@ async function flushData() {
   } catch (error) {
     console.error('Flush failed:', error);
     showToast(`Flush failed: ${error.message}`, 'error');
+  }
+}
+
+/**
+ * Sync all person entities to Google Contacts
+ */
+async function syncAllContacts() {
+  if (syncingContacts) {
+    showToast('Sync already in progress', 'info');
+    return;
+  }
+
+  if (!isAuthenticated) {
+    showToast('Please login first', 'error');
+    return;
+  }
+
+  const personEntities = Array.from(entities.values()).filter(e => e.type === 'person');
+  if (personEntities.length === 0) {
+    showToast('No person entities to sync', 'info');
+    return;
+  }
+
+  if (!confirm(`Sync ${personEntities.length} people to Google Contacts?`)) {
+    return;
+  }
+
+  syncingContacts = true;
+  updateEmailList(); // Update button state
+
+  try {
+    const response = await fetch('/api/sync-contacts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to sync contacts');
+    }
+
+    showToast(
+      `Sync complete: ${data.summary.created} created, ${data.summary.updated} updated`,
+      'success'
+    );
+  } catch (error) {
+    console.error('Sync failed:', error);
+    showToast(`Sync failed: ${error.message}`, 'error');
+  } finally {
+    syncingContacts = false;
+    updateEmailList();
+  }
+}
+
+/**
+ * Sync a single entity to Google Contacts
+ */
+async function syncSingleContact(entityValue) {
+  if (syncingContacts) {
+    showToast('Sync already in progress', 'info');
+    return;
+  }
+
+  if (!isAuthenticated) {
+    showToast('Please login first', 'error');
+    return;
+  }
+
+  try {
+    const response = await fetch('/api/sync-contacts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entityValues: [entityValue] }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to sync contact');
+    }
+
+    showToast(`Contact synced: ${entityValue}`, 'success');
+  } catch (error) {
+    console.error('Sync failed:', error);
+    showToast(`Sync failed: ${error.message}`, 'error');
   }
 }
 
