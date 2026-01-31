@@ -471,17 +471,17 @@
     <div class="main-grid">
       <div class="panel">
         <div class="panel-header">
-          <h2>Processed Emails</h2>
+          <h2>📋 Discovered Entities</h2>
           <span class="count" id="emailCount">0</span>
         </div>
         <div class="panel-content" id="emailList">
-          <div class="empty-state">No emails processed yet</div>
+          <div class="empty-state">No entities discovered yet</div>
         </div>
       </div>
 
       <div class="panel">
         <div class="panel-header">
-          <h2>Discovered Relationships</h2>
+          <h2>🔗 Discovered Relationships</h2>
           <span class="count" id="relationshipCount">0</span>
         </div>
         <div class="panel-content" id="relationshipList">
@@ -492,6 +492,168 @@
   </div>
 
   <div id="errorToast" class="error-toast" style="display: none;"></div>
+
+  <!-- Inspection Modal -->
+  <div id="inspectModal" class="modal" style="display: none;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="modalTitle">Inspect</h3>
+        <button class="close-btn" onclick="closeModal()">×</button>
+      </div>
+      <div class="modal-body">
+        <div id="modalFields"></div>
+        <details class="json-details">
+          <summary>Raw JSON</summary>
+          <pre id="modalJson" class="json-view"></pre>
+        </details>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    /* Modal styles */
+    .modal {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.85);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    .modal-content {
+      background: var(--bg-secondary);
+      border-radius: 12px;
+      max-width: 600px;
+      width: 90%;
+      max-height: 80vh;
+      overflow: auto;
+      border: 1px solid var(--border-color);
+    }
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 1rem 1.5rem;
+      border-bottom: 1px solid var(--border-color);
+    }
+    .modal-header h3 { margin: 0; font-size: 1.1rem; }
+    .close-btn {
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      font-size: 1.5rem;
+      cursor: pointer;
+      padding: 0;
+      line-height: 1;
+    }
+    .close-btn:hover { color: var(--text-primary); }
+    .modal-body { padding: 1.5rem; }
+    .modal-field {
+      display: flex;
+      margin-bottom: 0.75rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid var(--border-color);
+    }
+    .modal-field:last-of-type { border-bottom: none; }
+    .modal-field .label {
+      width: 120px;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+    .modal-field .value {
+      flex: 1;
+      color: var(--text-primary);
+    }
+    .json-details { margin-top: 1rem; }
+    .json-details summary {
+      cursor: pointer;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+    .json-view {
+      background: var(--bg-primary);
+      padding: 1rem;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-size: 0.75rem;
+      line-height: 1.4;
+      margin-top: 0.5rem;
+    }
+
+    /* Entity card styles */
+    .entity-card {
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .entity-card:hover { background: var(--bg-tertiary); }
+    .entity-card:last-child { border-bottom: none; }
+    .entity-card .icon { font-size: 1.25rem; }
+    .entity-card .info { flex: 1; min-width: 0; }
+    .entity-card .name {
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .entity-card .meta {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+    }
+    .entity-card .confidence {
+      font-size: 0.7rem;
+      padding: 0.125rem 0.4rem;
+      border-radius: 4px;
+      background: var(--bg-tertiary);
+    }
+    .entity-card[data-type="person"] { border-left: 3px solid var(--accent-blue); }
+    .entity-card[data-type="company"] { border-left: 3px solid var(--accent-green); }
+    .entity-card[data-type="project"] { border-left: 3px solid var(--accent-purple); }
+    .entity-card[data-type="location"] { border-left: 3px solid var(--accent-yellow); }
+
+    /* Relationship card styles */
+    .rel-card {
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--border-color);
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .rel-card:hover { background: var(--bg-tertiary); }
+    .rel-card:last-child { border-bottom: none; }
+    .rel-card .rel-line {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .rel-card .source, .rel-card .target { font-weight: 500; }
+    .rel-card .arrow {
+      font-size: 0.7rem;
+      padding: 0.125rem 0.5rem;
+      border-radius: 4px;
+      background: var(--accent-purple);
+      color: white;
+    }
+    .rel-card .meta {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      margin-top: 0.25rem;
+    }
+
+    /* Animation for new items */
+    @keyframes slideDown {
+      from { opacity: 0; transform: translateY(-10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .entity-card.new, .rel-card.new {
+      animation: slideDown 0.3s ease;
+    }
+  </style>
 
   <script src="app.js"></script>
 </body>

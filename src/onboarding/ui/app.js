@@ -41,7 +41,46 @@ let userEmail = '';
 let userName = '';
 let eventSource = null;
 let processedEmails = [];
+let entities = new Map(); // Track unique entities
 let relationships = new Map();
+
+// Modal elements
+const inspectModal = document.getElementById('inspectModal');
+const modalTitle = document.getElementById('modalTitle');
+const modalFields = document.getElementById('modalFields');
+const modalJson = document.getElementById('modalJson');
+
+/**
+ * Open inspection modal
+ */
+function openModal(title, fields, data) {
+  modalTitle.textContent = title;
+  modalFields.innerHTML = fields.map(f => `
+    <div class="modal-field">
+      <span class="label">${f.label}:</span>
+      <span class="value">${escapeHtml(String(f.value))}</span>
+    </div>
+  `).join('');
+  modalJson.textContent = JSON.stringify(data, null, 2);
+  inspectModal.style.display = 'flex';
+}
+
+/**
+ * Close inspection modal
+ */
+function closeModal() {
+  inspectModal.style.display = 'none';
+}
+
+// Close modal on backdrop click
+inspectModal?.addEventListener('click', (e) => {
+  if (e.target === inspectModal) closeModal();
+});
+
+// Close modal on Escape
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeModal();
+});
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -273,6 +312,25 @@ function handleEmailProcessed(data) {
     processedEmails.pop();
   }
 
+  // Track unique entities
+  if (data.entities) {
+    for (const entity of data.entities) {
+      const key = `${entity.type}:${entity.value}`;
+      const existing = entities.get(key);
+      if (existing) {
+        existing.count++;
+        existing.sources.push(data.email.subject);
+      } else {
+        entities.set(key, {
+          ...entity,
+          count: 1,
+          sources: [data.email.subject],
+          sourceEmail: data.email
+        });
+      }
+    }
+  }
+
   updateEmailList();
 }
 
@@ -307,40 +365,56 @@ function handleComplete(data) {
 }
 
 /**
- * Update email list UI
+ * Update email list UI - shows entities as clickable cards
  */
 function updateEmailList() {
-  emailCount.textContent = processedEmails.length;
+  const sortedEntities = Array.from(entities.values())
+    .sort((a, b) => b.count - a.count);
 
-  if (processedEmails.length === 0) {
-    emailList.innerHTML = '<div class="empty-state">No emails processed yet</div>';
+  emailCount.textContent = sortedEntities.length;
+
+  if (sortedEntities.length === 0) {
+    emailList.innerHTML = '<div class="empty-state">No entities discovered yet</div>';
     return;
   }
 
-  emailList.innerHTML = processedEmails
-    .slice(0, 50)
-    .map((item) => {
-      const entitiesTags = item.entities
-        .slice(0, 5)
-        .map((e) => `<span class="entity-tag ${e.type}">${e.value}</span>`)
-        .join('');
+  const icons = { person: '👤', company: '🏢', project: '📁', location: '📍', topic: '🏷️' };
 
-      return `
-        <div class="email-item">
-          <div class="subject">${escapeHtml(item.email.subject)}</div>
-          <div class="meta">
-            ${escapeHtml(item.email.from)} | ${new Date(item.email.date).toLocaleDateString()}
-            ${item.isSpam ? ' | <span style="color: var(--accent-red);">SPAM</span>' : ''}
-          </div>
-          ${entitiesTags ? `<div class="entities">${entitiesTags}</div>` : ''}
+  emailList.innerHTML = sortedEntities
+    .slice(0, 100)
+    .map((entity, idx) => `
+      <div class="entity-card new" data-type="${entity.type}" onclick="inspectEntity(${idx})">
+        <span class="icon">${icons[entity.type] || '📋'}</span>
+        <div class="info">
+          <div class="name">${escapeHtml(entity.value)}</div>
+          <div class="meta">${entity.type} • seen ${entity.count}x</div>
         </div>
-      `;
-    })
+        <span class="confidence">${(entity.confidence || 0.8).toFixed(2)}</span>
+      </div>
+    `)
     .join('');
+
+  // Store for inspection
+  window._entities = sortedEntities;
 }
 
 /**
- * Update relationship list UI
+ * Inspect an entity
+ */
+function inspectEntity(idx) {
+  const entity = window._entities[idx];
+  if (!entity) return;
+
+  openModal(`Entity: ${entity.value}`, [
+    { label: 'Type', value: entity.type },
+    { label: 'Confidence', value: (entity.confidence || 0.8).toFixed(2) },
+    { label: 'Seen in', value: `${entity.count} emails` },
+    { label: 'First source', value: entity.sources?.[0] || 'Unknown' },
+  ], entity);
+}
+
+/**
+ * Update relationship list UI - shows relationships as clickable cards
  */
 function updateRelationshipList() {
   const sortedRelationships = Array.from(relationships.values())
@@ -354,16 +428,41 @@ function updateRelationshipList() {
   }
 
   relationshipList.innerHTML = sortedRelationships
-    .slice(0, 50)
-    .map((rel) => `
-      <div class="relationship-item">
-        <span class="from">${escapeHtml(rel.fromValue)}</span>
-        <span class="type">${rel.relationshipType}</span>
-        <span class="to">${escapeHtml(rel.toValue)}</span>
-        <span class="count">x${rel.count}</span>
+    .slice(0, 100)
+    .map((rel, idx) => `
+      <div class="rel-card new" onclick="inspectRelationship(${idx})">
+        <div class="rel-line">
+          <span class="source">${escapeHtml(rel.fromValue)}</span>
+          <span class="arrow">${rel.relationshipType}</span>
+          <span class="target">${escapeHtml(rel.toValue)}</span>
+        </div>
+        <div class="meta">
+          Confidence: ${(rel.confidence || 0.8).toFixed(2)} • Seen ${rel.count}x
+        </div>
       </div>
     `)
     .join('');
+
+  // Store for inspection
+  window._relationships = sortedRelationships;
+}
+
+/**
+ * Inspect a relationship
+ */
+function inspectRelationship(idx) {
+  const rel = window._relationships[idx];
+  if (!rel) return;
+
+  openModal(`Relationship: ${rel.relationshipType}`, [
+    { label: 'Source', value: rel.fromValue },
+    { label: 'Source Type', value: rel.fromType || 'unknown' },
+    { label: 'Relationship', value: rel.relationshipType },
+    { label: 'Target', value: rel.toValue },
+    { label: 'Target Type', value: rel.toType || 'unknown' },
+    { label: 'Confidence', value: (rel.confidence || 0.8).toFixed(2) },
+    { label: 'Seen in', value: `${rel.count} emails` },
+  ], rel);
 }
 
 /**
@@ -405,6 +504,7 @@ async function startProcessing() {
 
     // Clear previous data
     processedEmails = [];
+    entities.clear();
     relationships.clear();
     updateEmailList();
     updateRelationshipList();
@@ -484,6 +584,7 @@ async function flushData() {
 
     // Clear UI
     processedEmails = [];
+    entities.clear();
     relationships.clear();
     updateEmailList();
     updateRelationshipList();
