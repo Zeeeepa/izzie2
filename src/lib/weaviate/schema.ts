@@ -2,7 +2,7 @@
  * Weaviate Schema Definitions
  *
  * Defines collections for extracted entities and memories:
- * - Person, Company, Project, Date, Topic, Location, ActionItem
+ * - Person, Company, Project, Topic, Location, ActionItem
  * - Memory (with temporal decay)
  */
 
@@ -25,10 +25,8 @@ export const COLLECTIONS: Record<EntityType, string> = {
   action_item: 'ActionItem',
 };
 
-// Legacy collection for backward compatibility (no longer extracted)
-export const LEGACY_COLLECTIONS = {
-  date: 'Date',
-};
+// Legacy Date collection name (used for cleanup/deletion)
+const LEGACY_DATE_COLLECTION = 'Date';
 
 /**
  * Relationship collection name
@@ -66,6 +64,18 @@ export async function initializeSchema(): Promise<void> {
 
   console.log(`${LOG_PREFIX} Initializing schema...`);
 
+  // Clean up legacy Date collection if it exists
+  try {
+    const dateCollectionExists = await client.collections.exists(LEGACY_DATE_COLLECTION);
+    if (dateCollectionExists) {
+      await client.collections.delete(LEGACY_DATE_COLLECTION);
+      console.log(`${LOG_PREFIX} Deleted legacy collection '${LEGACY_DATE_COLLECTION}'`);
+    }
+  } catch (error) {
+    console.error(`${LOG_PREFIX} Failed to delete legacy collection '${LEGACY_DATE_COLLECTION}':`, error);
+    // Don't throw - continue with schema initialization
+  }
+
   // Define collections for each entity type
   const collectionDefinitions = [
     {
@@ -102,22 +112,6 @@ export async function initializeSchema(): Promise<void> {
       properties: [
         { name: 'value', dataType: 'text', description: 'Original project name' },
         { name: 'normalized', dataType: 'text', description: 'Normalized project name' },
-        { name: 'confidence', dataType: 'number', description: 'Extraction confidence (0-1)' },
-        { name: 'source', dataType: 'text', description: 'Source: metadata, body, or subject' },
-        { name: 'sourceId', dataType: 'text', description: 'Email or event ID' },
-        { name: 'userId', dataType: 'text', description: 'User ID who owns this entity' },
-        { name: 'extractedAt', dataType: 'text', description: 'ISO timestamp of extraction' },
-        { name: 'context', dataType: 'text', description: 'Surrounding text context' },
-      ],
-    },
-    // NOTE: Date collection kept for backward compatibility with existing data
-    // No longer extracted as an entity type (dates handled by calendar)
-    {
-      name: LEGACY_COLLECTIONS.date,
-      description: 'Date/deadline entities (DEPRECATED - no longer extracted)',
-      properties: [
-        { name: 'value', dataType: 'text', description: 'Original date value' },
-        { name: 'normalized', dataType: 'text', description: 'Normalized date (ISO format)' },
         { name: 'confidence', dataType: 'number', description: 'Extraction confidence (0-1)' },
         { name: 'source', dataType: 'text', description: 'Source: metadata, body, or subject' },
         { name: 'sourceId', dataType: 'text', description: 'Email or event ID' },
