@@ -20,6 +20,7 @@ import {
   Cable,
   RefreshCw,
   Contact,
+  GraduationCap,
 } from 'lucide-react';
 import {
   Sidebar,
@@ -76,6 +77,11 @@ const mainNavItems = [
     href: '/dashboard/relationships',
     label: 'Relationships',
     icon: Network,
+  },
+  {
+    href: '/dashboard/train',
+    label: 'Train',
+    icon: GraduationCap,
   },
 ];
 

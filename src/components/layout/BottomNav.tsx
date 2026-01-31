@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Calendar, MessageSquare, Users } from 'lucide-react';
+import { Home, Calendar, MessageSquare, Users, GraduationCap } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const navItems = [
@@ -10,6 +10,7 @@ const navItems = [
   { href: '/dashboard/calendar', icon: Calendar, label: 'Calendar' },
   { href: '/dashboard/chat', icon: MessageSquare, label: 'Chat' },
   { href: '/dashboard/people', icon: Users, label: 'People' },
+  { href: '/dashboard/train', icon: GraduationCap, label: 'Train' },
 ];
 
 export function BottomNav() {

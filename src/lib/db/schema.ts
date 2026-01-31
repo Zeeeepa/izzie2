@@ -1439,3 +1439,144 @@ export const sentReminders = pgTable(
  */
 export type SentReminder = typeof sentReminders.$inferSelect;
 export type NewSentReminder = typeof sentReminders.$inferInsert;
+
+/**
+ * Training Sessions table - tracks ML training sessions with human-in-the-loop
+ * Stores session configuration, budget, and progress metrics
+ */
+export const trainingSessions = pgTable(
+  'training_sessions',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    userId: text('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull(),
+
+    // Session status and mode
+    status: text('status').notNull().default('collecting'), // 'collecting' | 'training' | 'paused' | 'complete'
+    mode: text('mode').notNull().default('collect_feedback'), // 'collect_feedback' | 'auto_train'
+
+    // Budget tracking (in cents)
+    budgetTotal: integer('budget_total').notNull().default(500), // $5 default
+    budgetUsed: integer('budget_used').notNull().default(0),
+
+    // Configuration
+    sampleSize: integer('sample_size').notNull().default(100),
+    autoTrainThreshold: integer('auto_train_threshold').notNull().default(50),
+    sampleTypes: text('sample_types')
+      .array()
+      .default(sql`ARRAY['entity']::text[]`)
+      .notNull(),
+
+    // Progress tracking
+    samplesCollected: integer('samples_collected').notNull().default(0),
+    feedbackReceived: integer('feedback_received').notNull().default(0),
+    exceptionsCount: integer('exceptions_count').notNull().default(0),
+    accuracy: real('accuracy').notNull().default(0), // 0-100
+
+    // Timestamps
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+    completedAt: timestamp('completed_at'),
+  },
+  (table) => ({
+    userIdIdx: index('training_sessions_user_id_idx').on(table.userId),
+    statusIdx: index('training_sessions_status_idx').on(table.status),
+    createdAtIdx: index('training_sessions_created_at_idx').on(table.createdAt),
+  })
+);
+
+/**
+ * Training Samples table - stores samples for user feedback
+ * Each sample contains a prediction that needs human validation
+ */
+export const trainingSamples = pgTable(
+  'training_samples',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    sessionId: text('session_id')
+      .references(() => trainingSessions.id, { onDelete: 'cascade' })
+      .notNull(),
+
+    // Sample type and content
+    type: text('type').notNull().default('entity'), // 'entity' | 'relationship' | 'classification'
+    contentText: text('content_text').notNull(),
+    contentContext: text('content_context'),
+    sourceId: text('source_id'),
+    sourceType: text('source_type'), // 'email' | 'calendar' | 'document'
+
+    // Model prediction
+    predictionLabel: text('prediction_label').notNull(),
+    predictionConfidence: integer('prediction_confidence').notNull(), // 0-100
+    predictionReasoning: text('prediction_reasoning'),
+
+    // User feedback
+    status: text('status').notNull().default('pending'), // 'pending' | 'reviewed' | 'skipped'
+    feedbackIsCorrect: boolean('feedback_is_correct'),
+    feedbackCorrectedLabel: text('feedback_corrected_label'),
+    feedbackNotes: text('feedback_notes'),
+    feedbackAt: timestamp('feedback_at'),
+
+    // Timestamps
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    sessionIdIdx: index('training_samples_session_id_idx').on(table.sessionId),
+    statusIdx: index('training_samples_status_idx').on(table.status),
+    typeIdx: index('training_samples_type_idx').on(table.type),
+    confidenceIdx: index('training_samples_confidence_idx').on(table.predictionConfidence),
+  })
+);
+
+/**
+ * Training Exceptions table - items requiring human review
+ * Flags low confidence predictions, conflicts, and novel patterns
+ */
+export const trainingExceptions = pgTable(
+  'training_exceptions',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    sessionId: text('session_id')
+      .references(() => trainingSessions.id, { onDelete: 'cascade' })
+      .notNull(),
+    userId: text('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull(),
+
+    // Exception details
+    type: text('type').notNull(), // 'low_confidence' | 'conflicting_labels' | 'novel_pattern' | 'error'
+    severity: text('severity').notNull().default('medium'), // 'low' | 'medium' | 'high'
+    reason: text('reason').notNull(),
+
+    // Item reference
+    itemSampleId: text('item_sample_id'),
+    itemContent: text('item_content').notNull(),
+    itemContext: text('item_context'),
+
+    // Status tracking
+    status: text('status').notNull().default('pending'), // 'pending' | 'reviewed' | 'dismissed'
+    notifiedAt: timestamp('notified_at'),
+    reviewedAt: timestamp('reviewed_at'),
+
+    // Timestamps
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    sessionIdIdx: index('training_exceptions_session_id_idx').on(table.sessionId),
+    userIdIdx: index('training_exceptions_user_id_idx').on(table.userId),
+    statusIdx: index('training_exceptions_status_idx').on(table.status),
+    severityIdx: index('training_exceptions_severity_idx').on(table.severity),
+  })
+);
+
+/**
+ * Type exports for training tables
+ */
+export type TrainingSession = typeof trainingSessions.$inferSelect;
+export type NewTrainingSession = typeof trainingSessions.$inferInsert;
+
+export type TrainingSample = typeof trainingSamples.$inferSelect;
+export type NewTrainingSample = typeof trainingSamples.$inferInsert;
+
+export type TrainingException = typeof trainingExceptions.$inferSelect;
+export type NewTrainingException = typeof trainingExceptions.$inferInsert;
