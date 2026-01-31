@@ -615,6 +615,7 @@
     .entity-card[data-type="company"] { border-left: 3px solid var(--accent-green); }
     .entity-card[data-type="project"] { border-left: 3px solid var(--accent-purple); }
     .entity-card[data-type="location"] { border-left: 3px solid var(--accent-yellow); }
+    .entity-card[data-type="action_item"] { border-left: 3px solid #f97316; /* orange */ }
 
     /* Relationship card styles */
     .rel-card {
@@ -659,6 +660,9 @@
       padding: 0.75rem 1rem;
       border-bottom: 1px solid var(--border-color);
       background: var(--bg-tertiary);
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
     }
     .sync-controls button {
       width: 100%;

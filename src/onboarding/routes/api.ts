@@ -7,7 +7,8 @@
 import { Router, Request, Response } from 'express';
 import { getProgressService } from '../services/progress';
 import { createEmailProcessor, EmailProcessorService } from '../services/email-processor';
-import { syncEntitiesWithProgress } from '../services/contacts-sync';
+import { syncEntitiesWithProgress as syncContactsWithProgress } from '../services/contacts-sync';
+import { syncEntitiesWithProgress as syncTasksWithProgress } from '../services/tasks-sync';
 import { getAuthenticatedClient, isAuthenticated } from './oauth';
 import type { ProcessingConfig } from '../types';
 
@@ -307,7 +308,7 @@ router.post('/sync-contacts', requireAuth, async (req: Request, res: Response) =
 
   try {
     // Sync with progress callback
-    const summary = await syncEntitiesWithProgress(
+    const summary = await syncContactsWithProgress(
       client,
       entitiesToSync,
       (current, total, result) => {
@@ -332,6 +333,79 @@ router.post('/sync-contacts', requireAuth, async (req: Request, res: Response) =
     console.error(`${LOG_PREFIX} Sync contacts error:`, error);
     res.status(500).json({
       error: 'Failed to sync contacts',
+      details: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
+/**
+ * POST /api/sync-tasks
+ * Sync discovered action_item entities to Google Tasks
+ */
+router.post('/sync-tasks', requireAuth, async (req: Request, res: Response) => {
+  console.log(`${LOG_PREFIX} Sync tasks requested`);
+
+  const progress = getProgressService();
+  const client = getAuthenticatedClient();
+
+  if (!client) {
+    res.status(401).json({ error: 'Not authenticated' });
+    return;
+  }
+
+  // Get all discovered entities
+  const entities = progress.getEntities();
+  const actionItems = entities.filter((e) => e.type === 'action_item');
+
+  if (actionItems.length === 0) {
+    res.json({
+      success: true,
+      message: 'No action_item entities to sync',
+      summary: { total: 0, created: 0, skipped: 0, errors: 0, taskListId: '', taskListName: '' },
+    });
+    return;
+  }
+
+  // Optional: get specific entity values from request body
+  const selectedValues: string[] | undefined = req.body.entityValues;
+  const entitiesToSync = selectedValues
+    ? actionItems.filter((e) => selectedValues.includes(e.value))
+    : actionItems;
+
+  // Optional: custom task list name
+  const listName: string | undefined = req.body.listName;
+
+  console.log(`${LOG_PREFIX} Syncing ${entitiesToSync.length} action_item entities to tasks`);
+
+  try {
+    // Sync with progress callback
+    const summary = await syncTasksWithProgress(
+      client,
+      entitiesToSync,
+      (current, total, entityValue, result) => {
+        // Emit progress via SSE
+        progress.recordTaskSync(
+          entityValue,
+          result.action,
+          current,
+          total,
+          result.taskId,
+          result.taskListId,
+          result.error
+        );
+      },
+      { listName }
+    );
+
+    res.json({
+      success: true,
+      message: `Synced ${summary.created} tasks`,
+      summary,
+    });
+  } catch (error) {
+    console.error(`${LOG_PREFIX} Sync tasks error:`, error);
+    res.status(500).json({
+      error: 'Failed to sync tasks',
       details: error instanceof Error ? error.message : String(error),
     });
   }

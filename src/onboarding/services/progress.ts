@@ -14,6 +14,7 @@ import type {
   CompleteEvent,
   StateChangeEvent,
   ContactSyncEvent,
+  TaskSyncEvent,
   ProcessingSummary,
   DiscoveredEntity,
   DiscoveredRelationship,
@@ -310,6 +311,30 @@ export class ProgressService {
   }
 
   /**
+   * Record a task sync event
+   */
+  recordTaskSync(
+    entityValue: string,
+    action: 'created' | 'skipped',
+    current: number,
+    total: number,
+    taskId?: string,
+    taskListId?: string,
+    error?: string
+  ): void {
+    this.emitTaskSync({
+      type: 'task_sync',
+      entityValue,
+      action,
+      taskId,
+      taskListId,
+      error,
+      current,
+      total,
+    });
+  }
+
+  /**
    * Add SSE client
    */
   addClient(res: Response): void {
@@ -476,6 +501,10 @@ export class ProgressService {
   }
 
   private emitContactSync(event: ContactSyncEvent): void {
+    this.broadcast(event);
+  }
+
+  private emitTaskSync(event: TaskSyncEvent): void {
     this.broadcast(event);
   }
 

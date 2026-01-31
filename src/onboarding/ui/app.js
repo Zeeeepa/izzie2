@@ -44,7 +44,9 @@ let processedEmails = [];
 let entities = new Map(); // Track unique entities
 let relationships = new Map();
 let syncingContacts = false;
-let syncedEntities = new Map(); // Track sync status per entity
+let syncingTasks = false;
+let syncedEntities = new Map(); // Track contact sync status per entity
+let syncedTasks = new Map(); // Track task sync status per entity
 
 // Modal elements
 const inspectModal = document.getElementById('inspectModal');
@@ -267,6 +269,10 @@ function handleSSEEvent(data) {
       handleContactSync(data);
       break;
 
+    case 'task_sync':
+      handleTaskSync(data);
+      break;
+
     default:
       console.log('Unknown SSE event:', data);
   }
@@ -391,29 +397,73 @@ function handleContactSync(data) {
 }
 
 /**
+ * Handle task sync event
+ */
+function handleTaskSync(data) {
+  syncedTasks.set(data.entityValue, {
+    action: data.action,
+    taskId: data.taskId,
+    taskListId: data.taskListId,
+    error: data.error,
+  });
+
+  // Update progress display
+  if (data.current === data.total) {
+    syncingTasks = false;
+    showToast(`Sync complete: ${data.current} tasks processed`, 'success');
+  }
+
+  // Refresh entity list to show sync status
+  updateEmailList();
+}
+
+/**
  * Get sync status badge HTML for an entity
  */
 function getSyncBadge(entityValue, entityType) {
-  if (entityType !== 'person') return '';
+  // Handle person entities (contacts sync)
+  if (entityType === 'person') {
+    const syncStatus = syncedEntities.get(entityValue);
+    if (!syncStatus) {
+      return '<span class="sync-badge sync-pending" title="Not synced to contacts">⬡</span>';
+    }
 
-  const syncStatus = syncedEntities.get(entityValue);
-  if (!syncStatus) {
-    return '<span class="sync-badge sync-pending" title="Not synced to contacts">⬡</span>';
+    switch (syncStatus.action) {
+      case 'created':
+        return '<span class="sync-badge sync-created" title="Created in contacts">✓</span>';
+      case 'updated':
+        return '<span class="sync-badge sync-updated" title="Updated in contacts">↻</span>';
+      case 'skipped':
+        if (syncStatus.error) {
+          return `<span class="sync-badge sync-error" title="${escapeHtml(syncStatus.error)}">✕</span>`;
+        }
+        return '<span class="sync-badge sync-skipped" title="Skipped">−</span>';
+      default:
+        return '';
+    }
   }
 
-  switch (syncStatus.action) {
-    case 'created':
-      return '<span class="sync-badge sync-created" title="Created in contacts">✓</span>';
-    case 'updated':
-      return '<span class="sync-badge sync-updated" title="Updated in contacts">↻</span>';
-    case 'skipped':
-      if (syncStatus.error) {
-        return `<span class="sync-badge sync-error" title="${escapeHtml(syncStatus.error)}">✕</span>`;
-      }
-      return '<span class="sync-badge sync-skipped" title="Skipped">−</span>';
-    default:
-      return '';
+  // Handle action_item entities (tasks sync)
+  if (entityType === 'action_item') {
+    const syncStatus = syncedTasks.get(entityValue);
+    if (!syncStatus) {
+      return '<span class="sync-badge sync-pending" title="Not synced to tasks">⬡</span>';
+    }
+
+    switch (syncStatus.action) {
+      case 'created':
+        return '<span class="sync-badge sync-created" title="Created in Google Tasks">✓</span>';
+      case 'skipped':
+        if (syncStatus.error) {
+          return `<span class="sync-badge sync-error" title="${escapeHtml(syncStatus.error)}">✕</span>`;
+        }
+        return '<span class="sync-badge sync-skipped" title="Skipped (duplicate)">−</span>';
+      default:
+        return '';
+    }
   }
+
+  return '';
 }
 
 /**
@@ -430,15 +480,28 @@ function updateEmailList() {
     return;
   }
 
-  const icons = { person: '👤', company: '🏢', project: '📁', location: '📍', topic: '🏷️' };
+  const icons = { person: '👤', company: '🏢', project: '📁', location: '📍', topic: '🏷️', action_item: '✅' };
 
-  // Check if we have any person entities for the sync button
+  // Check if we have any person entities for the contacts sync button
   const personEntities = sortedEntities.filter(e => e.type === 'person');
-  const syncButtonHtml = personEntities.length > 0 ? `
+  const contactsSyncHtml = personEntities.length > 0 ? `
+    <button class="btn-secondary" onclick="syncAllContacts()" ${syncingContacts ? 'disabled' : ''}>
+      ${syncingContacts ? 'Syncing...' : `Sync ${personEntities.length} People to Contacts`}
+    </button>
+  ` : '';
+
+  // Check if we have any action_item entities for the tasks sync button
+  const actionItems = sortedEntities.filter(e => e.type === 'action_item');
+  const tasksSyncHtml = actionItems.length > 0 ? `
+    <button class="btn-secondary" onclick="syncAllTasks()" ${syncingTasks ? 'disabled' : ''}>
+      ${syncingTasks ? 'Syncing...' : `Sync ${actionItems.length} Action Items to Tasks`}
+    </button>
+  ` : '';
+
+  const syncButtonHtml = (contactsSyncHtml || tasksSyncHtml) ? `
     <div class="sync-controls">
-      <button class="btn-secondary" onclick="syncAllContacts()" ${syncingContacts ? 'disabled' : ''}>
-        ${syncingContacts ? 'Syncing...' : `Sync ${personEntities.length} People to Contacts`}
-      </button>
+      ${contactsSyncHtml}
+      ${tasksSyncHtml}
     </div>
   ` : '';
 
@@ -650,6 +713,7 @@ async function flushData() {
     entities.clear();
     relationships.clear();
     syncedEntities.clear();
+    syncedTasks.clear();
     updateEmailList();
     updateRelationshipList();
 
@@ -749,6 +813,93 @@ async function syncSingleContact(entityValue) {
     }
 
     showToast(`Contact synced: ${entityValue}`, 'success');
+  } catch (error) {
+    console.error('Sync failed:', error);
+    showToast(`Sync failed: ${error.message}`, 'error');
+  }
+}
+
+/**
+ * Sync all action_item entities to Google Tasks
+ */
+async function syncAllTasks() {
+  if (syncingTasks) {
+    showToast('Sync already in progress', 'info');
+    return;
+  }
+
+  if (!isAuthenticated) {
+    showToast('Please login first', 'error');
+    return;
+  }
+
+  const actionItems = Array.from(entities.values()).filter(e => e.type === 'action_item');
+  if (actionItems.length === 0) {
+    showToast('No action items to sync', 'info');
+    return;
+  }
+
+  if (!confirm(`Sync ${actionItems.length} action items to Google Tasks?`)) {
+    return;
+  }
+
+  syncingTasks = true;
+  updateEmailList(); // Update button state
+
+  try {
+    const response = await fetch('/api/sync-tasks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to sync tasks');
+    }
+
+    showToast(
+      `Sync complete: ${data.summary.created} created, ${data.summary.skipped} skipped`,
+      'success'
+    );
+  } catch (error) {
+    console.error('Sync failed:', error);
+    showToast(`Sync failed: ${error.message}`, 'error');
+  } finally {
+    syncingTasks = false;
+    updateEmailList();
+  }
+}
+
+/**
+ * Sync a single action_item entity to Google Tasks
+ */
+async function syncSingleTask(entityValue) {
+  if (syncingTasks) {
+    showToast('Sync already in progress', 'info');
+    return;
+  }
+
+  if (!isAuthenticated) {
+    showToast('Please login first', 'error');
+    return;
+  }
+
+  try {
+    const response = await fetch('/api/sync-tasks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entityValues: [entityValue] }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to sync task');
+    }
+
+    showToast(`Task synced: ${entityValue}`, 'success');
   } catch (error) {
     console.error('Sync failed:', error);
     showToast(`Sync failed: ${error.message}`, 'error');

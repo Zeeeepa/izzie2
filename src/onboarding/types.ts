@@ -96,6 +96,20 @@ export interface ContactSyncEvent {
 }
 
 /**
+ * Task sync event sent via SSE
+ */
+export interface TaskSyncEvent {
+  type: 'task_sync';
+  entityValue: string;
+  action: 'created' | 'skipped';
+  taskId?: string;
+  taskListId?: string;
+  error?: string;
+  current: number;
+  total: number;
+}
+
+/**
  * Union type for all SSE events
  */
 export type SSEEvent =
@@ -105,7 +119,8 @@ export type SSEEvent =
   | ErrorEvent
   | CompleteEvent
   | StateChangeEvent
-  | ContactSyncEvent;
+  | ContactSyncEvent
+  | TaskSyncEvent;
 
 /**
  * Processing summary after completion
