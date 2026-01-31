@@ -62,13 +62,24 @@ ${sources.join('\n')}
 **Entity Types to Extract:**
 ${personExtractionRule}
 2. **company** - Organizations and companies (from metadata, subject, and body)
+   - Business entities with employees, products, or services
+   - NOT software tools/platforms (those are "tool" type)
 3. **project** - SPECIFIC project names with proper nouns (e.g., "claude-mpm", "Issue #24", "Q4 Migration")
    - Must be a NAMED project or initiative, not a generic task/feature
    - Examples: GitHub repo names, issue numbers, codenames, initiative names
    - DO NOT extract: generic tasks ("database optimization"), features ("email parsing"), technical terms ("sandbox cluster")
-4. **topic** - Subject areas and themes (from metadata, subject, and body)
-5. **location** - Geographic locations (from metadata, subject, and body)
-6. **action_item** - ACTIONABLE tasks with clear context (from subject and body)
+   - DO NOT extract: Invoice numbers (INV-xxx, Invoice #xxx, or date-based codes like "2026-01-RECESS")
+4. **tool** - Software tools, platforms, APIs, and services
+   - Examples: Slack, GitHub, HiBob, Notion, Figma, Jira, Asana, Salesforce, Zoom
+   - Internal tools and bots: Clawdbot, deployment scripts, CI/CD tools
+   - Differentiate from companies: "HiBob" (HR software) is a TOOL, not a company
+   - If it's something you USE to do work, it's likely a tool
+5. **topic** - Subject areas and themes (from metadata, subject, and body)
+6. **location** - SPECIFIC geographic locations only
+   - Extract: Cities, specific addresses, neighborhoods, building names
+   - DO NOT extract: Countries (USA, Croatia), States (California, Texas), Regions (East Coast, Europe)
+   - DO NOT extract: Generic areas (Washington DC as a region - only extract if specific address/building)
+7. **action_item** - ACTIONABLE tasks with clear context (from subject and body)
    - Must include what needs to be done AND at least one of: who/when/priority
    - Extract ONLY if you can identify specific action + (assignee OR deadline OR priority)
    - DO NOT extract vague items like "check status", "follow up", "review changes" without context
@@ -85,12 +96,20 @@ Classify if this email is spam/promotional/low-value based on:
 Also identify meaningful relationships between the entities you extract:
 RELATIONSHIP TYPES (use exactly these):
 - WORKS_WITH: Two people who work together/collaborate (professional)
+  * REQUIRES: Explicit evidence of formal collaboration (same project, same team, same company)
+  * NOT just two people mentioned in the same email
+  * Evidence must show: "working together on X", "teammates", "colleagues at Y"
 - REPORTS_TO: Person reports to another person (hierarchy)
 - WORKS_FOR: Person works for a company
+  * If company name is ambiguous/unknown (short acronyms like "HFNA"), use LOWER confidence (0.5-0.6)
+  * Only high confidence (0.8+) if company is well-known or clearly stated
 - LEADS: Person leads/manages a project
 - WORKS_ON: Person works on a project
 - EXPERT_IN: Person has expertise in a topic
-- LOCATED_IN: Person or company is located in a place
+- LOCATED_IN: Person or company is located in a SPECIFIC place
+  * ONLY use for specific cities/addresses, NOT countries/states/regions
+  * Prefer user-provided context over email content for user's own location
+  * If user context says "Hastings on Hudson NY", use that, not other locations mentioned
 - FRIEND_OF: Person is a friend of another person (personal, non-work relationship)
 - FAMILY_OF: Person is a family member of another (parent, child, grandparent, cousin, etc.)
 - MARRIED_TO: Person is married to/spouse of another person
@@ -105,11 +124,13 @@ RELATIONSHIP TYPES (use exactly these):
 - ASSOCIATED_WITH: Topics are associated
 
 RELATIONSHIP RULES:
-1. Only infer relationships with clear evidence in the content
+1. Only infer relationships with CLEAR, EXPLICIT evidence in the content
 2. Confidence should reflect how explicitly stated (0.5-1.0)
 3. Include a brief quote as evidence supporting each relationship
 4. Focus on meaningful relationships, not every possible connection
 5. Maximum 5 relationships per email
+6. For WORKS_WITH: require explicit collaboration evidence, not just co-occurrence
+7. For unknown/ambiguous company names: cap confidence at 0.6
 
 **Instructions:**
 - Extract all entities with confidence scores (0.0 to 1.0)
@@ -307,22 +328,27 @@ ${sources.join('\n')}
 
 **Entity Types to Extract:**
 1. **person** - People's names (from attendees, organizer, and description)
-2. **company** - Organizations and companies mentioned
-3. **project** - Project names and references
-4. **topic** - Subject areas and themes (meeting topics, discussion areas)
-5. **location** - Geographic locations (cities, countries, addresses, meeting rooms)
-6. **action_item** - Tasks, todos, and action items mentioned in description
+2. **company** - Organizations and companies mentioned (NOT software tools/platforms)
+3. **project** - Project names and references (NOT invoice numbers like INV-xxx)
+4. **tool** - Software tools, platforms, APIs, and services (Slack, GitHub, HiBob, Notion, Zoom, etc.)
+5. **topic** - Subject areas and themes (meeting topics, discussion areas)
+6. **location** - SPECIFIC geographic locations only (cities, specific addresses, meeting rooms)
+   - DO NOT extract: Countries, states, or regions
+7. **action_item** - Tasks, todos, and action items mentioned in description
 
 **Relationship Extraction:**
 Also identify meaningful relationships between the entities you extract:
 RELATIONSHIP TYPES (use exactly these):
 - WORKS_WITH: Two people who work together/collaborate (professional)
+  * REQUIRES: Explicit evidence of formal collaboration (same project, same team, same company)
+  * NOT just two people attending the same meeting
 - REPORTS_TO: Person reports to another person (hierarchy)
 - WORKS_FOR: Person works for a company
+  * If company name is ambiguous/unknown, use LOWER confidence (0.5-0.6)
 - LEADS: Person leads/manages a project
 - WORKS_ON: Person works on a project
 - EXPERT_IN: Person has expertise in a topic
-- LOCATED_IN: Person or company is located in a place
+- LOCATED_IN: Person or company is located in a SPECIFIC place (cities only, not countries/states)
 - FRIEND_OF: Person is a friend of another person (personal, non-work relationship)
 - FAMILY_OF: Person is a family member of another (parent, child, grandparent, cousin, etc.)
 - MARRIED_TO: Person is married to/spouse of another person
@@ -333,11 +359,13 @@ RELATIONSHIP TYPES (use exactly these):
 - PART_OF: Project is part of a larger project
 
 RELATIONSHIP RULES:
-1. Only infer relationships with clear evidence in the content
+1. Only infer relationships with CLEAR, EXPLICIT evidence in the content
 2. Confidence should reflect how explicitly stated (0.5-1.0)
 3. Include a brief quote as evidence supporting each relationship
 4. Focus on meaningful relationships, not every possible connection
 5. Maximum 5 relationships per event
+6. For WORKS_WITH: require explicit collaboration evidence, not just co-attendance
+7. For unknown/ambiguous company names: cap confidence at 0.6
 
 **Instructions:**
 - Extract all entities with confidence scores (0.0 to 1.0)

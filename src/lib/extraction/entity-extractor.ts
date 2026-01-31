@@ -410,8 +410,8 @@ export class EntityExtractor {
         };
       }
 
-      // Validate each entity
-      const validEntities = parsed.entities.filter((entity: any) => {
+      // Validate each entity structure
+      const structurallyValidEntities = parsed.entities.filter((entity: any) => {
         return (
           entity.type &&
           entity.value &&
@@ -420,6 +420,9 @@ export class EntityExtractor {
           entity.source
         );
       });
+
+      // Apply post-extraction filters (invoice numbers, generic locations, confidence adjustments)
+      const validEntities = this.filterAndAdjustEntities(structurallyValidEntities);
 
       // Parse spam classification with fallback
       const spam = {
@@ -465,6 +468,77 @@ export class EntityExtractor {
   }
 
   /**
+   * Filter out invalid entities based on post-extraction rules
+   * Returns filtered entities with potentially adjusted confidence scores
+   */
+  private filterAndAdjustEntities(entities: Entity[]): Entity[] {
+    // Invoice number patterns to filter from projects
+    const invoicePatterns = [
+      /^INV-/i,
+      /^invoice[-_#]/i,
+      /^\d{4}-\d{2}-[A-Z]+$/i,  // Patterns like "2026-01-RECESS"
+    ];
+
+    // Generic locations to filter (countries, states, regions - not specific cities/addresses)
+    const genericLocationPatterns = [
+      /^(USA|US|United States|America)$/i,
+      /^(UK|United Kingdom|Great Britain|England|Scotland|Wales)$/i,
+      /^(Canada|Australia|Germany|France|Italy|Spain|Japan|China|India|Brazil|Mexico)$/i,
+      /^(California|Texas|New York|Florida|Washington|Oregon|Arizona|Nevada|Colorado)$/i,
+      /^(Europe|Asia|Africa|North America|South America|Oceania|Middle East)$/i,
+      /^(East Coast|West Coast|Midwest|Southeast|Northeast|Southwest|Pacific Northwest)$/i,
+      /^(Croatia|Serbia|Slovenia|Bosnia|Montenegro|Albania|Kosovo|Macedonia)$/i,
+      /^(Washington DC|DC)$/i,
+    ];
+
+    // Short/ambiguous company names that should have lower confidence
+    const ambiguousCompanyPatterns = [
+      /^[A-Z]{2,5}$/,  // Short acronyms like "HFNA", "ABC"
+      /^(Inc|LLC|Corp|Ltd|Co)$/i,
+    ];
+
+    return entities
+      .filter((entity) => {
+        // Filter invoice numbers from projects
+        if (entity.type === 'project') {
+          for (const pattern of invoicePatterns) {
+            if (pattern.test(entity.value)) {
+              console.warn(`${LOG_PREFIX} Filtering invoice number from projects: ${entity.value}`);
+              return false;
+            }
+          }
+        }
+
+        // Filter generic locations
+        if (entity.type === 'location') {
+          for (const pattern of genericLocationPatterns) {
+            if (pattern.test(entity.value.trim())) {
+              console.warn(`${LOG_PREFIX} Filtering generic location: ${entity.value}`);
+              return false;
+            }
+          }
+        }
+
+        return true;
+      })
+      .map((entity) => {
+        // Lower confidence for ambiguous/unknown company names
+        if (entity.type === 'company') {
+          for (const pattern of ambiguousCompanyPatterns) {
+            if (pattern.test(entity.value.trim())) {
+              const adjustedConfidence = Math.min(entity.confidence, 0.5);
+              if (adjustedConfidence !== entity.confidence) {
+                console.warn(`${LOG_PREFIX} Lowering confidence for ambiguous company: ${entity.value} (${entity.confidence} -> ${adjustedConfidence})`);
+              }
+              return { ...entity, confidence: adjustedConfidence };
+            }
+          }
+        }
+        return entity;
+      });
+  }
+
+  /**
    * Validate that a relationship has valid structure and types
    */
   private isValidRelationship(rel: any): boolean {
@@ -474,8 +548,8 @@ export class EntityExtractor {
       return false;
     }
 
-    // Valid entity types
-    const validEntityTypes: EntityType[] = ['person', 'company', 'project', 'topic', 'location', 'action_item'];
+    // Valid entity types (includes 'tool' for software platforms/services)
+    const validEntityTypes: EntityType[] = ['person', 'company', 'project', 'tool', 'topic', 'location', 'action_item'];
     if (!validEntityTypes.includes(rel.fromType) || !validEntityTypes.includes(rel.toType)) {
       console.warn(`${LOG_PREFIX} Invalid entity type in relationship: ${rel.fromType} -> ${rel.toType}`);
       return false;

@@ -201,7 +201,7 @@ export const EntitiesExtractedSchema = z.object({
   sourceType: z.enum(['email', 'drive', 'task', 'calendar']),
   entities: z.array(
     z.object({
-      type: z.enum(['person', 'company', 'project', 'location', 'date', 'topic', 'action_item']),
+      type: z.enum(['person', 'company', 'project', 'tool', 'location', 'topic', 'action_item']),
       value: z.string(),
       normalized: z.string(),
       confidence: z.number().min(0).max(1),

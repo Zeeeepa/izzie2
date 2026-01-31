@@ -196,6 +196,7 @@ export function entityTypeToNodeLabel(entityType: EntityType): NodeLabel {
     person: 'Person',
     company: 'Company',
     project: 'Project',
+    tool: 'Project',     // Tools mapped to Project nodes for now
     topic: 'Topic',
     location: 'Location',
     action_item: 'Topic', // Action items stored as topics for now

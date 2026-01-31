@@ -20,6 +20,7 @@ export const COLLECTIONS: Record<EntityType, string> = {
   person: 'Person',
   company: 'Company',
   project: 'Project',
+  tool: 'Tool',           // NEW: software tools, platforms, APIs, services
   topic: 'Topic',
   location: 'Location',
   action_item: 'ActionItem',
@@ -112,6 +113,20 @@ export async function initializeSchema(): Promise<void> {
       properties: [
         { name: 'value', dataType: 'text', description: 'Original project name' },
         { name: 'normalized', dataType: 'text', description: 'Normalized project name' },
+        { name: 'confidence', dataType: 'number', description: 'Extraction confidence (0-1)' },
+        { name: 'source', dataType: 'text', description: 'Source: metadata, body, or subject' },
+        { name: 'sourceId', dataType: 'text', description: 'Email or event ID' },
+        { name: 'userId', dataType: 'text', description: 'User ID who owns this entity' },
+        { name: 'extractedAt', dataType: 'text', description: 'ISO timestamp of extraction' },
+        { name: 'context', dataType: 'text', description: 'Surrounding text context' },
+      ],
+    },
+    {
+      name: COLLECTIONS.tool,
+      description: 'Software tools, platforms, APIs, and services',
+      properties: [
+        { name: 'value', dataType: 'text', description: 'Original tool name' },
+        { name: 'normalized', dataType: 'text', description: 'Normalized tool name' },
         { name: 'confidence', dataType: 'number', description: 'Extraction confidence (0-1)' },
         { name: 'source', dataType: 'text', description: 'Source: metadata, body, or subject' },
         { name: 'sourceId', dataType: 'text', description: 'Email or event ID' },

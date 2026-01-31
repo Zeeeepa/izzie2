@@ -12,6 +12,7 @@ export type EntityType =
   | 'person'
   | 'company'
   | 'project'
+  | 'tool'      // NEW: software tools, platforms, APIs, services (e.g., Slack, GitHub, HiBob)
   | 'topic'
   | 'location'
   | 'action_item';

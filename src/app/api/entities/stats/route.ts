@@ -29,6 +29,7 @@ async function getEntityStatsFromWeaviate(): Promise<Record<EntityType, number>>
     person: 0,
     company: 0,
     project: 0,
+    tool: 0,
     topic: 0,
     location: 0,
     action_item: 0,
