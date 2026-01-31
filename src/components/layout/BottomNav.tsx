@@ -2,14 +2,14 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Calendar, MessageSquare, Users, GraduationCap } from 'lucide-react';
+import { Home, MessageSquare, Users, GitBranch, GraduationCap } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const navItems = [
   { href: '/dashboard', icon: Home, label: 'Home' },
-  { href: '/dashboard/calendar', icon: Calendar, label: 'Calendar' },
   { href: '/dashboard/chat', icon: MessageSquare, label: 'Chat' },
-  { href: '/dashboard/people', icon: Users, label: 'People' },
+  { href: '/dashboard/entities', icon: Users, label: 'Entities' },
+  { href: '/dashboard/relationships', icon: GitBranch, label: 'Relations' },
   { href: '/dashboard/train', icon: GraduationCap, label: 'Train' },
 ];
 
@@ -28,7 +28,7 @@ export function BottomNav() {
               key={href}
               href={href}
               className={cn(
-                'flex flex-col items-center justify-center gap-1 px-4 py-2 text-xs transition-colors',
+                'flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs transition-colors',
                 isActive
                   ? 'text-primary'
                   : 'text-muted-foreground hover:text-foreground'
