@@ -67,7 +67,15 @@ test-results/
 
 # Screenshots (large files, not needed in version control)
 screenshots/
+# Claude MPM internal
+.claude-mpm/sessions/
+.claude-mpm/cache/
 .claude-mpm/correlations/
+.claude-mpm/monitor-daemon-*.pid
+
+# Local data
+data/
+
 .env.vercel.production
 .env.vercel
 .env.vercel-prod
