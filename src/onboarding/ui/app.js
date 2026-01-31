@@ -56,6 +56,16 @@ const modalTitle = document.getElementById('modalTitle');
 const modalFields = document.getElementById('modalFields');
 const modalJson = document.getElementById('modalJson');
 
+// Feedback modal elements
+const feedbackModal = document.getElementById('feedbackModal');
+const feedbackModalTitle = document.getElementById('feedbackModalTitle');
+const feedbackItemPreview = document.getElementById('feedbackItemPreview');
+const feedbackNoteInput = document.getElementById('feedbackNoteInput');
+const feedbackNoteLabel = document.getElementById('feedbackNoteLabel');
+
+// Pending feedback state (used when modal is open)
+let pendingFeedback = null;
+
 /**
  * Open inspection modal
  */
@@ -78,14 +88,99 @@ function closeModal() {
   inspectModal.style.display = 'none';
 }
 
+/**
+ * Open feedback modal
+ */
+function openFeedbackModal(type, itemData, feedback) {
+  pendingFeedback = { type, itemData, feedback };
+
+  // Set modal title based on feedback type
+  const feedbackEmoji = feedback === 'positive' ? '👍' : '👎';
+  feedbackModalTitle.textContent = `${feedbackEmoji} Feedback`;
+
+  // Set label based on positive/negative
+  feedbackNoteLabel.textContent = feedback === 'positive'
+    ? 'Any additional notes? (optional)'
+    : 'Why is this incorrect? (optional)';
+
+  // Build preview content
+  if (type === 'entity') {
+    const entity = itemData;
+    feedbackItemPreview.innerHTML = `
+      <div class="preview-type">Entity</div>
+      <div class="preview-value">${escapeHtml(entity.value)} (${entity.type})</div>
+      <div class="preview-feedback ${feedback}">${feedbackEmoji} ${feedback}</div>
+    `;
+  } else {
+    const rel = itemData;
+    feedbackItemPreview.innerHTML = `
+      <div class="preview-type">Relationship</div>
+      <div class="preview-value">${escapeHtml(rel.fromValue)} → ${rel.relationshipType} → ${escapeHtml(rel.toValue)}</div>
+      <div class="preview-feedback ${feedback}">${feedbackEmoji} ${feedback}</div>
+    `;
+  }
+
+  // Clear previous note
+  feedbackNoteInput.value = '';
+
+  // Show modal
+  feedbackModal.style.display = 'flex';
+
+  // Focus the input
+  setTimeout(() => feedbackNoteInput.focus(), 100);
+}
+
+/**
+ * Close feedback modal
+ */
+function closeFeedbackModal() {
+  feedbackModal.style.display = 'none';
+  pendingFeedback = null;
+}
+
+/**
+ * Confirm feedback submission
+ */
+async function confirmFeedback() {
+  if (!pendingFeedback) return;
+
+  const { type, itemData, feedback } = pendingFeedback;
+  const correction = feedbackNoteInput.value.trim() || undefined;
+
+  // Close modal immediately
+  closeFeedbackModal();
+
+  // Submit the feedback
+  if (type === 'entity') {
+    await doSubmitEntityFeedback(itemData, feedback, correction);
+  } else {
+    await doSubmitRelationshipFeedback(itemData, feedback, correction);
+  }
+}
+
 // Close modal on backdrop click
 inspectModal?.addEventListener('click', (e) => {
   if (e.target === inspectModal) closeModal();
 });
 
+// Close feedback modal on backdrop click
+feedbackModal?.addEventListener('click', (e) => {
+  if (e.target === feedbackModal) closeFeedbackModal();
+});
+
 // Close modal on Escape
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') closeModal();
+  if (e.key === 'Escape') {
+    closeModal();
+    closeFeedbackModal();
+  }
+});
+
+// Submit feedback on Enter in the textarea (with Ctrl/Cmd)
+feedbackNoteInput?.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    confirmFeedback();
+  }
 });
 
 // Initialize
@@ -1010,7 +1105,7 @@ function handleFeedbackEvent(data) {
 }
 
 /**
- * Submit feedback for an entity
+ * Submit feedback for an entity - opens modal for optional note
  */
 async function submitFeedback(type, idx, feedback) {
   const entity = window._entities[idx];
@@ -1026,6 +1121,16 @@ async function submitFeedback(type, idx, feedback) {
     return;
   }
 
+  // Open modal for optional note
+  openFeedbackModal('entity', entity, feedback);
+}
+
+/**
+ * Actually submit entity feedback to API
+ */
+async function doSubmitEntityFeedback(entity, feedback, correction) {
+  const feedbackKey = `entity:${entity.value}`;
+
   try {
     const response = await fetch('/api/feedback', {
       method: 'POST',
@@ -1038,6 +1143,7 @@ async function submitFeedback(type, idx, feedback) {
           confidence: entity.confidence,
         },
         feedback,
+        correction,
         context: {
           emailSubject: entity.sources?.[0],
         },
@@ -1054,7 +1160,8 @@ async function submitFeedback(type, idx, feedback) {
     feedbackState.set(feedbackKey, feedback);
     updateEmailList();
 
-    showToast(`Feedback recorded: ${feedback === 'positive' ? '👍' : '👎'} ${entity.value}`, 'success');
+    const noteText = correction ? ' (with note)' : '';
+    showToast(`Feedback recorded: ${feedback === 'positive' ? '👍' : '👎'} ${entity.value}${noteText}`, 'success');
   } catch (error) {
     console.error('Feedback failed:', error);
     showToast(`Feedback failed: ${error.message}`, 'error');
@@ -1062,7 +1169,7 @@ async function submitFeedback(type, idx, feedback) {
 }
 
 /**
- * Submit feedback for a relationship
+ * Submit feedback for a relationship - opens modal for optional note
  */
 async function submitRelationshipFeedback(idx, feedback) {
   const rel = window._relationships[idx];
@@ -1078,6 +1185,16 @@ async function submitRelationshipFeedback(idx, feedback) {
     return;
   }
 
+  // Open modal for optional note
+  openFeedbackModal('relationship', rel, feedback);
+}
+
+/**
+ * Actually submit relationship feedback to API
+ */
+async function doSubmitRelationshipFeedback(rel, feedback, correction) {
+  const feedbackKey = `relationship:${rel.fromValue}|${rel.relationshipType}|${rel.toValue}`;
+
   try {
     const response = await fetch('/api/feedback', {
       method: 'POST',
@@ -1092,6 +1209,7 @@ async function submitRelationshipFeedback(idx, feedback) {
           confidence: rel.confidence,
         },
         feedback,
+        correction,
       }),
     });
 
@@ -1105,7 +1223,8 @@ async function submitRelationshipFeedback(idx, feedback) {
     feedbackState.set(feedbackKey, feedback);
     updateRelationshipList();
 
-    showToast(`Feedback recorded: ${feedback === 'positive' ? '👍' : '👎'} relationship`, 'success');
+    const noteText = correction ? ' (with note)' : '';
+    showToast(`Feedback recorded: ${feedback === 'positive' ? '👍' : '👎'} relationship${noteText}`, 'success');
   } catch (error) {
     console.error('Feedback failed:', error);
     showToast(`Feedback failed: ${error.message}`, 'error');
