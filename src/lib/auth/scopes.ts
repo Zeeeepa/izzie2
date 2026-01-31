@@ -215,3 +215,138 @@ export async function requireTasksWriteAccess(
     throw new Error(INSUFFICIENT_TASKS_SCOPE_ERROR);
   }
 }
+
+/**
+ * Error message for insufficient Gmail modify permissions
+ * Used by chat tools to provide helpful guidance
+ */
+export const INSUFFICIENT_GMAIL_MODIFY_SCOPE_ERROR =
+  'Your Google account needs reconnection to enable email management. ' +
+  'You currently have limited email access. ' +
+  'Please go to Settings > Connections and click "Reconnect" on your Google account ' +
+  'to grant the necessary permissions for archiving, deleting, labeling, and modifying emails.';
+
+/**
+ * Error message for insufficient Gmail send permissions
+ * Used by chat tools to provide helpful guidance
+ */
+export const INSUFFICIENT_GMAIL_SEND_SCOPE_ERROR =
+  'Your Google account needs reconnection to enable sending emails. ' +
+  'You currently do not have permission to send emails. ' +
+  'Please go to Settings > Connections and click "Reconnect" on your Google account ' +
+  'to grant the necessary permissions for sending emails and creating drafts.';
+
+/**
+ * Error message for insufficient Contacts permissions
+ * Used by chat tools to provide helpful guidance
+ */
+export const INSUFFICIENT_CONTACTS_SCOPE_ERROR =
+  'Your Google account needs reconnection to enable contacts access. ' +
+  'You currently do not have permission to access your contacts. ' +
+  'Please go to Settings > Connections and click "Reconnect" on your Google account ' +
+  'to grant the necessary permissions for searching and viewing contacts.';
+
+/**
+ * Check if user has Gmail modify access
+ * Quick helper for chat tools
+ *
+ * @param userId - The user ID
+ * @param accountId - Optional specific account ID
+ * @returns true if user has gmail.modify access
+ */
+export async function hasGmailModifyAccess(
+  userId: string,
+  accountId?: string
+): Promise<boolean> {
+  const result = await checkUserScopes(userId, accountId);
+  return result.hasGmailModify;
+}
+
+/**
+ * Check if user has Gmail send access
+ * Quick helper for chat tools
+ *
+ * @param userId - The user ID
+ * @param accountId - Optional specific account ID
+ * @returns true if user has gmail.send access
+ */
+export async function hasGmailSendAccess(
+  userId: string,
+  accountId?: string
+): Promise<boolean> {
+  const result = await checkUserScopes(userId, accountId);
+  return result.hasGmailSend;
+}
+
+/**
+ * Check if user has Contacts readonly access
+ * Quick helper for chat tools
+ *
+ * @param userId - The user ID
+ * @param accountId - Optional specific account ID
+ * @returns true if user has contacts.readonly access
+ */
+export async function hasContactsAccess(
+  userId: string,
+  accountId?: string
+): Promise<boolean> {
+  const result = await checkUserScopes(userId, accountId);
+  return result.hasContactsReadonly;
+}
+
+/**
+ * Validate Gmail modify access and throw helpful error if insufficient
+ * Use this at the start of any Gmail modify operation (archive, delete, label, move)
+ *
+ * @param userId - The user ID
+ * @param accountId - Optional specific account ID
+ * @throws Error with helpful reconnection message if scope is insufficient
+ */
+export async function requireGmailModifyAccess(
+  userId: string,
+  accountId?: string
+): Promise<void> {
+  const result = await checkUserScopes(userId, accountId);
+
+  if (!result.hasGmailModify) {
+    throw new Error(INSUFFICIENT_GMAIL_MODIFY_SCOPE_ERROR);
+  }
+}
+
+/**
+ * Validate Gmail send access and throw helpful error if insufficient
+ * Use this at the start of any Gmail send operation (send email, create draft)
+ *
+ * @param userId - The user ID
+ * @param accountId - Optional specific account ID
+ * @throws Error with helpful reconnection message if scope is insufficient
+ */
+export async function requireGmailSendAccess(
+  userId: string,
+  accountId?: string
+): Promise<void> {
+  const result = await checkUserScopes(userId, accountId);
+
+  if (!result.hasGmailSend) {
+    throw new Error(INSUFFICIENT_GMAIL_SEND_SCOPE_ERROR);
+  }
+}
+
+/**
+ * Validate Contacts readonly access and throw helpful error if insufficient
+ * Use this at the start of any Contacts operation
+ *
+ * @param userId - The user ID
+ * @param accountId - Optional specific account ID
+ * @throws Error with helpful reconnection message if scope is insufficient
+ */
+export async function requireContactsAccess(
+  userId: string,
+  accountId?: string
+): Promise<void> {
+  const result = await checkUserScopes(userId, accountId);
+
+  if (!result.hasContactsReadonly) {
+    throw new Error(INSUFFICIENT_CONTACTS_SCOPE_ERROR);
+  }
+}

@@ -6,6 +6,7 @@
 import { z } from 'zod';
 import { google } from 'googleapis';
 import { getGoogleTokens, updateGoogleTokens } from '@/lib/auth';
+import { requireGmailModifyAccess, requireGmailSendAccess } from '@/lib/auth/scopes';
 import { GmailService } from '@/lib/google/gmail';
 
 const LOG_PREFIX = '[Email Tools]';
@@ -69,6 +70,9 @@ export const archiveEmailTool = {
     userId: string
   ): Promise<{ message: string }> {
     try {
+      // Check for Gmail modify access before any modify operation
+      await requireGmailModifyAccess(userId);
+
       const validated = archiveEmailToolSchema.parse(params);
       const gmailService = await getGmailClient(userId);
 
@@ -140,6 +144,9 @@ export const deleteEmailTool = {
     userId: string
   ): Promise<{ message: string }> {
     try {
+      // Check for Gmail modify access before any modify operation
+      await requireGmailModifyAccess(userId);
+
       const validated = deleteEmailToolSchema.parse(params);
       const gmailService = await getGmailClient(userId);
 
@@ -213,6 +220,9 @@ export const applyLabelTool = {
     userId: string
   ): Promise<{ message: string }> {
     try {
+      // Check for Gmail modify access before any modify operation
+      await requireGmailModifyAccess(userId);
+
       const validated = applyLabelToolSchema.parse(params);
       const gmailService = await getGmailClient(userId);
 
@@ -347,6 +357,9 @@ export const sendEmailTool = {
     userId: string
   ): Promise<{ message: string }> {
     try {
+      // Check for Gmail send access before any send operation
+      await requireGmailSendAccess(userId);
+
       const validated = sendEmailToolSchema.parse(params);
 
       if (!validated.confirmed) {
@@ -418,6 +431,9 @@ export const bulkArchiveTool = {
     userId: string
   ): Promise<{ message: string }> {
     try {
+      // Check for Gmail modify access before any modify operation
+      await requireGmailModifyAccess(userId);
+
       const validated = bulkArchiveToolSchema.parse(params);
       const gmailService = await getGmailClient(userId);
 
@@ -502,6 +518,9 @@ export const createDraftTool = {
     userId: string
   ): Promise<{ message: string }> {
     try {
+      // Check for Gmail send access before any draft operation
+      await requireGmailSendAccess(userId);
+
       const validated = createDraftToolSchema.parse(params);
       const gmailService = await getGmailClient(userId);
 
@@ -555,6 +574,9 @@ export const moveEmailTool = {
     userId: string
   ): Promise<{ message: string }> {
     try {
+      // Check for Gmail modify access before any modify operation
+      await requireGmailModifyAccess(userId);
+
       const validated = moveEmailToolSchema.parse(params);
       const gmailService = await getGmailClient(userId);
 
@@ -639,6 +661,9 @@ export const createEmailFilterTool = {
     userId: string
   ): Promise<{ message: string }> {
     try {
+      // Check for Gmail modify access before creating filters
+      await requireGmailModifyAccess(userId);
+
       const validated = createEmailFilterToolSchema.parse(params);
       const gmailService = await getGmailClient(userId);
 
@@ -824,6 +849,9 @@ export const deleteEmailFilterTool = {
     userId: string
   ): Promise<{ message: string }> {
     try {
+      // Check for Gmail modify access before deleting filters
+      await requireGmailModifyAccess(userId);
+
       const validated = deleteEmailFilterToolSchema.parse(params);
       const gmailService = await getGmailClient(userId);
 

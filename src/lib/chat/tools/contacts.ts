@@ -6,6 +6,7 @@
 import { z } from 'zod';
 import { google } from 'googleapis';
 import { getGoogleTokens, updateGoogleTokens } from '@/lib/auth';
+import { requireContactsAccess } from '@/lib/auth/scopes';
 import { ContactsService } from '@/lib/google/contacts';
 import type { Contact } from '@/lib/google/types';
 
@@ -152,6 +153,9 @@ export const searchContactsTool = {
     userId: string
   ): Promise<{ message: string }> {
     try {
+      // Check for Contacts access before any contacts operation
+      await requireContactsAccess(userId);
+
       const validated = searchContactsToolSchema.parse(params);
       const contactsService = await getContactsClient(userId);
 
@@ -224,6 +228,9 @@ export const getContactDetailsTool = {
     userId: string
   ): Promise<{ message: string }> {
     try {
+      // Check for Contacts access before any contacts operation
+      await requireContactsAccess(userId);
+
       const validated = getContactDetailsToolSchema.parse(params);
       const contactsService = await getContactsClient(userId);
       const identifier = validated.identifier.trim();
@@ -289,6 +296,9 @@ export const syncContactsTool = {
     userId: string
   ): Promise<{ message: string }> {
     try {
+      // Check for Contacts access before any contacts operation
+      await requireContactsAccess(userId);
+
       const validated = syncContactsToolSchema.parse(params);
       const contactsService = await getContactsClient(userId);
 
