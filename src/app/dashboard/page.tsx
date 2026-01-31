@@ -1,26 +1,15 @@
 /**
  * Dashboard Home Page
- * Mobile-first proactive card view
+ * Mobile-first proactive view - content populated by Izzie
  */
 
 'use client';
 
 import { useSession } from '@/lib/auth/client';
-import { ProactiveCard } from '@/components/dashboard/ProactiveCard';
+import Link from 'next/link';
 
 export default function DashboardPage() {
   const { data: session, isPending } = useSession();
-
-  // TODO: Replace with real data from API
-  const todayEvents = [
-    { id: 1, title: 'Team standup', subtitle: 'Daily sync', time: '9:00 AM' },
-    { id: 2, title: 'Project review', subtitle: 'Q1 planning', time: '2:00 PM' },
-  ];
-
-  const dueTasks = [
-    { id: 1, title: 'Review proposal', subtitle: 'Project X' },
-    { id: 2, title: 'Send follow-up email', subtitle: 'Client meeting' },
-  ];
 
   // Show skeleton/loading state while session is loading
   if (isPending) {
@@ -38,52 +27,61 @@ export default function DashboardPage() {
     <div className="p-4 space-y-6">
       {/* Greeting */}
       <div>
-        <h2 className="text-2xl font-bold">
-          Hi, {firstName}
-        </h2>
-        <p className="text-muted-foreground">Here&apos;s your day at a glance</p>
+        <h2 className="text-2xl font-bold">Hi, {firstName}</h2>
+        <p className="text-muted-foreground">What can I help you with?</p>
       </div>
 
-      {/* Today's Events */}
-      <section>
-        <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
-          Today&apos;s Events
-        </h3>
-        <div className="space-y-2">
-          {todayEvents.map((event) => (
-            <ProactiveCard
-              key={event.id}
-              type="event"
-              title={event.title}
-              subtitle={event.subtitle}
-              time={event.time}
-            />
-          ))}
-        </div>
+      {/* Quick Actions */}
+      <section className="grid grid-cols-2 gap-3">
+        <Link
+          href="/dashboard/chat"
+          className="flex flex-col items-center justify-center p-6 rounded-xl border bg-card hover:bg-accent transition-colors"
+        >
+          <span className="text-3xl mb-2">💬</span>
+          <span className="font-medium">Chat</span>
+        </Link>
+        <Link
+          href="/dashboard/train"
+          className="flex flex-col items-center justify-center p-6 rounded-xl border bg-card hover:bg-accent transition-colors"
+        >
+          <span className="text-3xl mb-2">🎓</span>
+          <span className="font-medium">Train</span>
+        </Link>
+        <Link
+          href="/dashboard/calendar"
+          className="flex flex-col items-center justify-center p-6 rounded-xl border bg-card hover:bg-accent transition-colors"
+        >
+          <span className="text-3xl mb-2">📅</span>
+          <span className="font-medium">Calendar</span>
+        </Link>
+        <Link
+          href="/dashboard/people"
+          className="flex flex-col items-center justify-center p-6 rounded-xl border bg-card hover:bg-accent transition-colors"
+        >
+          <span className="text-3xl mb-2">👥</span>
+          <span className="font-medium">People</span>
+        </Link>
       </section>
 
-      {/* Due Tasks */}
+      {/* Proactive Content Area - populated by Izzie */}
       <section>
-        <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
-          Due Today
+        <h3 className="text-sm font-medium text-muted-foreground mb-3">
+          Izzie&apos;s Suggestions
         </h3>
-        <div className="space-y-2">
-          {dueTasks.map((task) => (
-            <ProactiveCard
-              key={task.id}
-              type="task"
-              title={task.title}
-              subtitle={task.subtitle}
-            />
-          ))}
+        <div className="rounded-xl border bg-muted/30 p-6 text-center text-muted-foreground">
+          <p className="text-sm">
+            Start a conversation or train Izzie to see personalized suggestions here.
+          </p>
         </div>
       </section>
 
       {/* Quick Chat Input Placeholder */}
       <section className="fixed bottom-20 left-4 right-4">
-        <div className="rounded-full border bg-muted/50 px-4 py-3 text-muted-foreground">
-          Ask me anything...
-        </div>
+        <Link href="/dashboard/chat">
+          <div className="rounded-full border bg-muted/50 px-4 py-3 text-muted-foreground cursor-pointer hover:bg-muted transition-colors">
+            Ask me anything...
+          </div>
+        </Link>
       </section>
     </div>
   );
