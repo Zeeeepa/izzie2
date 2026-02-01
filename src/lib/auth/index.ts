@@ -91,6 +91,7 @@ function getAuth(): ReturnType<typeof betterAuth> | null {
             'https://www.googleapis.com/auth/gmail.settings.basic',
             'https://www.googleapis.com/auth/tasks',
             'https://www.googleapis.com/auth/drive.readonly',
+            'https://www.googleapis.com/auth/contacts',
             'https://www.googleapis.com/auth/contacts.readonly',
             'https://www.googleapis.com/auth/chat.spaces.readonly',
             'https://www.googleapis.com/auth/chat.messages.readonly',

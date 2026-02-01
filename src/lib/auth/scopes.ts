@@ -31,6 +31,7 @@ export const REQUIRED_SCOPES = {
   driveReadonly: 'https://www.googleapis.com/auth/drive.readonly',
 
   // Contacts scopes
+  contacts: 'https://www.googleapis.com/auth/contacts',
   contactsReadonly: 'https://www.googleapis.com/auth/contacts.readonly',
 
   // Chat scopes
@@ -56,6 +57,8 @@ export interface ScopeCheckResult {
   hasDriveReadonly: boolean;
   /** Whether user has Contacts readonly access */
   hasContactsReadonly: boolean;
+  /** Whether user has Contacts write access */
+  hasContactsWriteAccess: boolean;
   /** List of missing scopes that would enable additional features */
   missingScopes: string[];
   /** Whether user needs to reconnect to get updated scopes */
@@ -103,6 +106,7 @@ export async function checkUserScopes(
       hasCalendar: false,
       hasDriveReadonly: false,
       hasContactsReadonly: false,
+      hasContactsWriteAccess: false,
       missingScopes: Object.values(REQUIRED_SCOPES),
       needsReconnect: true,
       rawScope: null,
@@ -149,8 +153,12 @@ export async function checkUserScopes(
 
   // Check Contacts scopes
   const hasContactsReadonly = hasScope(scopes, REQUIRED_SCOPES.contactsReadonly);
+  const hasContactsWriteAccess = hasScope(scopes, REQUIRED_SCOPES.contacts);
   if (!hasContactsReadonly) {
     missingScopes.push(REQUIRED_SCOPES.contactsReadonly);
+  }
+  if (!hasContactsWriteAccess) {
+    missingScopes.push(REQUIRED_SCOPES.contacts);
   }
 
   // User needs reconnect if they have old/insufficient scopes
@@ -165,6 +173,7 @@ export async function checkUserScopes(
     hasCalendar,
     hasDriveReadonly,
     hasContactsReadonly,
+    hasContactsWriteAccess,
     missingScopes,
     needsReconnect,
     rawScope: tokens.scope,
@@ -245,6 +254,16 @@ export const INSUFFICIENT_CONTACTS_SCOPE_ERROR =
   'You currently do not have permission to access your contacts. ' +
   'Please go to Settings > Connections and click "Reconnect" on your Google account ' +
   'to grant the necessary permissions for searching and viewing contacts.';
+
+/**
+ * Error message for insufficient Contacts write permissions
+ * Used by chat tools to provide helpful guidance
+ */
+export const INSUFFICIENT_CONTACTS_WRITE_SCOPE_ERROR =
+  'Your Google account needs reconnection to enable contacts management. ' +
+  'You currently do not have permission to create or update contacts. ' +
+  'Please go to Settings > Connections and click "Reconnect" on your Google account ' +
+  'to grant the necessary permissions for creating and updating contacts.';
 
 /**
  * Check if user has Gmail modify access
@@ -348,5 +367,40 @@ export async function requireContactsAccess(
 
   if (!result.hasContactsReadonly) {
     throw new Error(INSUFFICIENT_CONTACTS_SCOPE_ERROR);
+  }
+}
+
+/**
+ * Check if user has Contacts write access
+ * Quick helper for chat tools
+ *
+ * @param userId - The user ID
+ * @param accountId - Optional specific account ID
+ * @returns true if user has contacts write access
+ */
+export async function hasContactsWriteAccess(
+  userId: string,
+  accountId?: string
+): Promise<boolean> {
+  const result = await checkUserScopes(userId, accountId);
+  return result.hasContactsWriteAccess;
+}
+
+/**
+ * Validate Contacts write access and throw helpful error if insufficient
+ * Use this at the start of any Contacts create/update operation
+ *
+ * @param userId - The user ID
+ * @param accountId - Optional specific account ID
+ * @throws Error with helpful reconnection message if scope is insufficient
+ */
+export async function requireContactsWriteAccess(
+  userId: string,
+  accountId?: string
+): Promise<void> {
+  const result = await checkUserScopes(userId, accountId);
+
+  if (!result.hasContactsWriteAccess) {
+    throw new Error(INSUFFICIENT_CONTACTS_WRITE_SCOPE_ERROR);
   }
 }
