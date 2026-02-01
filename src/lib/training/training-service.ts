@@ -272,17 +272,43 @@ export async function generateSamples(
   // 2. Generate predictions using the AI model
   // 3. Store samples for user feedback
 
-  // For now, create placeholder samples
+  // For now, create placeholder samples cycling through all sample types
+  const sampleTypes = session.config.sampleTypes;
   const samples: Array<typeof trainingSamples.$inferInsert> = [];
+
+  // Sample content and labels for each type
+  const sampleData: Record<SampleType, { contentPrefix: string; labels: string[]; reasoningPrefix: string }> = {
+    entity: {
+      contentPrefix: 'Sample entity',
+      labels: ['Person', 'Organization', 'Location', 'Event'],
+      reasoningPrefix: 'Matched pattern for',
+    },
+    relationship: {
+      contentPrefix: 'Sample relationship',
+      labels: ['Works At', 'Reports To', 'Collaborates With', 'Manages'],
+      reasoningPrefix: 'Detected relationship pattern:',
+    },
+    classification: {
+      contentPrefix: 'Sample classification',
+      labels: ['Meeting', 'Task', 'Decision', 'Question'],
+      reasoningPrefix: 'Classified based on',
+    },
+  };
+
   for (let i = 0; i < Math.min(count, 10); i++) {
+    // Cycle through sample types to get a mix
+    const type = sampleTypes[i % sampleTypes.length];
+    const typeData = sampleData[type];
+    const label = typeData.labels[i % typeData.labels.length];
+
     samples.push({
       sessionId,
-      type: session.config.sampleTypes[0] || 'entity',
-      contentText: `Sample entity ${i + 1}`,
+      type,
+      contentText: `${typeData.contentPrefix} ${i + 1}`,
       contentContext: 'From email thread about project planning',
-      predictionLabel: 'Person',
+      predictionLabel: label,
       predictionConfidence: Math.floor(Math.random() * 40) + 60, // 60-100
-      predictionReasoning: 'Matched pattern for person names',
+      predictionReasoning: `${typeData.reasoningPrefix} ${label.toLowerCase()}`,
       status: 'pending',
     });
   }

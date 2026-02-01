@@ -37,12 +37,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Always include all sample types (entities, relationships, classifications)
+    const allSampleTypes: SampleType[] = ['entity', 'relationship', 'classification'];
+
     // Create new training session
     const trainingSession = await createTrainingSession(session.user.id, {
       sampleSize: body.sampleSize || 100,
       budget: Math.round((body.budget || 5) * 100), // Convert dollars to cents
       mode: body.mode || 'collect_feedback',
-      sampleTypes: body.sampleTypes || ['entity'],
+      sampleTypes: allSampleTypes,
       autoTrainThreshold: body.sampleSize
         ? Math.floor(body.sampleSize * 0.5)
         : 50,

@@ -15,6 +15,9 @@ type TrainingStatus = 'collecting' | 'training' | 'paused' | 'complete';
 type TrainingMode = 'collect_feedback' | 'auto_train';
 type SampleType = 'entity' | 'relationship' | 'classification';
 
+// Training always includes all sample types
+const ALL_SAMPLE_TYPES: SampleType[] = ['entity', 'relationship', 'classification'];
+
 interface TrainingSession {
   id: string;
   status: TrainingStatus;
@@ -126,7 +129,6 @@ export default function TrainPage() {
   const [setupBudget, setSetupBudget] = useState(5);
   const [setupSampleSize, setSetupSampleSize] = useState(100);
   const [setupMode, setSetupMode] = useState<TrainingMode>('collect_feedback');
-  const [setupSampleTypes, setSetupSampleTypes] = useState<SampleType[]>(['entity']);
 
   // Feedback form
   const [feedbackNotes, setFeedbackNotes] = useState('');
@@ -208,7 +210,7 @@ export default function TrainPage() {
           budget: setupBudget,
           sampleSize: setupSampleSize,
           mode: setupMode,
-          sampleTypes: setupSampleTypes,
+          sampleTypes: ALL_SAMPLE_TYPES,
         }),
       });
 
@@ -321,15 +323,6 @@ export default function TrainPage() {
     } catch (err) {
       console.error('Failed to dismiss exception:', err);
     }
-  };
-
-  const toggleSampleType = (type: SampleType) => {
-    setSetupSampleTypes((prev) => {
-      if (prev.includes(type)) {
-        return prev.filter((t) => t !== type);
-      }
-      return [...prev, type];
-    });
   };
 
   // ============================================================
@@ -491,48 +484,37 @@ export default function TrainPage() {
             </p>
           </div>
 
-          {/* Sample Types */}
-          <div style={{ marginBottom: '1.5rem' }}>
-            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', color: '#374151', marginBottom: '0.75rem' }}>
-              Sample Types
-            </label>
-            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-              {(['entity', 'relationship', 'classification'] as SampleType[]).map((type) => (
-                <button
-                  key={type}
-                  onClick={() => toggleSampleType(type)}
-                  style={{
-                    padding: '0.625rem 1rem',
-                    borderRadius: '8px',
-                    border: `2px solid ${setupSampleTypes.includes(type) ? '#10b981' : '#e5e7eb'}`,
-                    backgroundColor: setupSampleTypes.includes(type) ? '#ecfdf5' : '#fff',
-                    color: setupSampleTypes.includes(type) ? '#065f46' : '#374151',
-                    fontSize: '0.875rem',
-                    fontWeight: '600',
-                    cursor: 'pointer',
-                    textTransform: 'capitalize',
-                  }}
-                >
-                  {type}
-                </button>
-              ))}
+          {/* Sample Types Info */}
+          <div
+            style={{
+              marginBottom: '1.5rem',
+              backgroundColor: '#f0fdf4',
+              border: '1px solid #86efac',
+              borderRadius: '8px',
+              padding: '1rem',
+            }}
+          >
+            <div style={{ fontSize: '0.875rem', fontWeight: '600', color: '#065f46', marginBottom: '0.5rem' }}>
+              Training Includes All Types
             </div>
+            <p style={{ fontSize: '0.75rem', color: '#166534', margin: 0 }}>
+              Training samples include entities, relationships, and classifications for comprehensive model improvement.
+            </p>
           </div>
 
           {/* Start Button */}
           <button
             onClick={handleStartTraining}
-            disabled={setupSampleTypes.length === 0}
             style={{
               width: '100%',
-              backgroundColor: setupSampleTypes.length === 0 ? '#d1d5db' : '#10b981',
+              backgroundColor: '#10b981',
               color: '#fff',
               padding: '1rem 1.5rem',
               borderRadius: '8px',
               border: 'none',
               fontSize: '1rem',
               fontWeight: '600',
-              cursor: setupSampleTypes.length === 0 ? 'not-allowed' : 'pointer',
+              cursor: 'pointer',
             }}
           >
             Start Training Session
@@ -1013,7 +995,7 @@ export default function TrainPage() {
         <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
           <li style={{ fontSize: '0.875rem', color: '#1e40af', marginBottom: '0.75rem', paddingLeft: '1.5rem', position: 'relative' }}>
             <span style={{ position: 'absolute', left: 0, fontWeight: '600' }}>1.</span>
-            <strong>Select samples</strong> - Choose how many entities and relationships to review
+            <strong>Start a session</strong> - Training includes entities, relationships, and classifications
           </li>
           <li style={{ fontSize: '0.875rem', color: '#1e40af', marginBottom: '0.75rem', paddingLeft: '1.5rem', position: 'relative' }}>
             <span style={{ position: 'absolute', left: 0, fontWeight: '600' }}>2.</span>
