@@ -16,7 +16,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAuthWithTestBypass } from '@/lib/auth/test-auth';
 import { rateLimit, getClientIP, getRetryAfterSeconds } from '@/lib/rate-limit';
 import { getAIClient } from '@/lib/ai/client';
 import { MODELS, estimateTokens, MODEL_ROLES, ESCALATION_CONFIG } from '@/lib/ai/models';
@@ -134,25 +134,8 @@ async function executeTool(
  */
 export async function POST(request: NextRequest) {
   try {
-    // Test auth bypass: Check X-Test-Secret header against TEST_API_SECRET env var
-    const testSecret = request.headers.get('X-Test-Secret');
-    const expectedTestSecret = process.env.CHAT_TEST_SECRET;
-    const testUserId = request.headers.get('X-Test-User-Id');
-
-    let userId: string;
-    let userName: string;
-
-    if (testSecret && expectedTestSecret && testSecret === expectedTestSecret && testUserId) {
-      // Valid test auth - use provided user ID
-      userId = testUserId;
-      userName = 'Test User';
-      console.log(`${LOG_PREFIX} Test auth bypass: using user ${userId}`);
-    } else {
-      // Require normal authentication
-      const authSession = await requireAuth(request);
-      userId = authSession.user.id;
-      userName = authSession.user.name || 'there';
-    }
+    // Authenticate with test bypass support
+    const { userId, userName } = await requireAuthWithTestBypass(request);
 
     // Rate limiting (use user ID for authenticated requests)
     const rateLimitResult = await rateLimit(userId, true);

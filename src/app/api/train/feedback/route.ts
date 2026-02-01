@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAuthWithTestBypass } from '@/lib/auth/test-auth';
 import { submitFeedback, skipSample, getActiveSession } from '@/lib/training';
 import type { FeedbackSubmission } from '@/lib/training';
 
@@ -18,7 +18,7 @@ interface FeedbackRequest {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await requireAuth(request);
+    const { userId } = await requireAuthWithTestBypass(request);
     const body: FeedbackRequest = await request.json();
 
     // Validate request
@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify user has active session
-    const trainingSession = await getActiveSession(session.user.id);
+    const trainingSession = await getActiveSession(userId);
     if (!trainingSession) {
       return NextResponse.json(
         { success: false, error: 'No active training session' },

@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAuthWithTestBypass } from '@/lib/auth/test-auth';
 import {
   createTrainingSession,
   getActiveSession,
@@ -21,11 +21,11 @@ interface StartRequest {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await requireAuth(request);
+    const { userId } = await requireAuthWithTestBypass(request);
     const body: StartRequest = await request.json();
 
     // Check for existing active session
-    const existingSession = await getActiveSession(session.user.id);
+    const existingSession = await getActiveSession(userId);
     if (existingSession) {
       return NextResponse.json(
         {
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
     const allSampleTypes: SampleType[] = ['entity', 'relationship', 'classification'];
 
     // Create new training session
-    const trainingSession = await createTrainingSession(session.user.id, {
+    const trainingSession = await createTrainingSession(userId, {
       sampleSize: body.sampleSize || 100,
       budget: Math.round((body.budget || 5) * 100), // Convert dollars to cents
       mode: body.mode || 'collect_feedback',

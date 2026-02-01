@@ -7,17 +7,17 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAuthWithTestBypass } from '@/lib/auth/test-auth';
 import { getActiveSession, getExceptions, updateException } from '@/lib/training';
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await requireAuth(request);
+    const { userId } = await requireAuthWithTestBypass(request);
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status') as 'pending' | 'reviewed' | 'dismissed' | null;
 
     // Get active training session
-    const trainingSession = await getActiveSession(session.user.id);
+    const trainingSession = await getActiveSession(userId);
 
     if (!trainingSession) {
       return NextResponse.json({
@@ -65,7 +65,7 @@ interface UpdateExceptionRequest {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await requireAuth(request);
+    const { userId: _userId } = await requireAuthWithTestBypass(request);
     const body: UpdateExceptionRequest = await request.json();
 
     // Validate request

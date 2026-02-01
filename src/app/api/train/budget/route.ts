@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAuthWithTestBypass } from '@/lib/auth/test-auth';
 import { getActiveSession, updateBudget, updateSessionStatus } from '@/lib/training';
 
 interface BudgetRequest {
@@ -14,11 +14,11 @@ interface BudgetRequest {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await requireAuth(request);
+    const { userId } = await requireAuthWithTestBypass(request);
     const body: BudgetRequest = await request.json();
 
     // Get active training session
-    const trainingSession = await getActiveSession(session.user.id);
+    const trainingSession = await getActiveSession(userId);
 
     if (!trainingSession) {
       return NextResponse.json(
