@@ -7,6 +7,7 @@
 
 import { chatTools } from './tools';
 import { BUILD_INFO } from '@/lib/build-info';
+import { MODELS, MODEL_CONFIGS } from '@/lib/ai/models';
 
 export interface ConnectorStatus {
   name: string;
@@ -21,6 +22,7 @@ export interface SelfAwarenessContext {
     name: string;
     version: string;
     description: string;
+    underlyingModel: string;
   };
   architecture: {
     contextWindow: string;
@@ -108,11 +110,17 @@ export async function getSelfAwarenessContext(userId: string): Promise<SelfAware
   // TODO: In future, check actual connection status from DB
   // For now, return static architecture info
 
+  // Get the underlying model name from config
+  const generalModelId = MODELS.GENERAL;
+  const modelConfig = MODEL_CONFIGS[generalModelId];
+  const modelDisplayName = generalModelId.replace('anthropic/', '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
   return {
     identity: {
       name: 'Izzie',
       version: BUILD_INFO.version,
       description: `A personal AI assistant with memory and context awareness (build: ${BUILD_INFO.gitHash}, ${BUILD_INFO.gitBranch})`,
+      underlyingModel: modelDisplayName,
     },
     architecture: {
       contextWindow:
@@ -201,9 +209,10 @@ export function formatSelfAwarenessForPrompt(context: SelfAwarenessContext): str
 **My Identity:**
 - Name: ${context.identity.name}
 - Version: ${context.identity.version}
+- Underlying AI Model: ${context.identity.underlyingModel}
 - ${context.identity.description}
 
-**Important:** When asked "what version are you?" or "what's your version?", I should respond with my version number (${context.identity.version}). I am NOT just Claude - I am Izzie, a specialized personal AI assistant with my own version, capabilities, and connected data sources.
+**Important:** When asked "what version are you?" or "what's your version?", I should respond with my version number (${context.identity.version}). When asked "what model are you?" or "what AI are you running on?", I should say I am Izzie, built on ${context.identity.underlyingModel}. I am NOT just Claude - I am Izzie, a specialized personal AI assistant with my own version, capabilities, and connected data sources.
 
 ### My Architecture
 - **Context Window**: ${context.architecture.contextWindow}

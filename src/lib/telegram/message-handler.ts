@@ -254,32 +254,57 @@ ${RESPONSE_FORMAT_INSTRUCTION}
 
     try {
       // Strip markdown code blocks if present
-      let jsonContent = aiResponse.content;
+      let jsonContent = aiResponse.content.trim();
       const jsonMatch = aiResponse.content.match(/```(?:json)?\s*([\s\S]*?)```/);
       if (jsonMatch) {
         jsonContent = jsonMatch[1].trim();
       }
 
+      // Try to extract JSON object if content has extra text around it
+      const jsonObjectMatch = jsonContent.match(/\{[\s\S]*\}/);
+      if (jsonObjectMatch) {
+        jsonContent = jsonObjectMatch[0];
+      }
+
       const parsed = JSON.parse(jsonContent);
+
+      // CRITICAL: Always use parsed.response if it exists (even if empty string)
+      // Never fall back to raw JSON content - that would show the user raw JSON
+      if (typeof parsed.response === 'string') {
+        telegramResponseText = parsed.response;
+      } else {
+        // If response field is missing or not a string, the LLM didn't follow format
+        // Extract any conversational text or provide a fallback
+        console.warn(`${LOG_PREFIX} Parsed JSON but response field is not a string:`, typeof parsed.response);
+        telegramResponseText = 'I understood your message but had trouble formatting my response. Could you try again?';
+      }
+
       structuredResponse = {
-        response: parsed.response || aiResponse.content,
+        response: telegramResponseText,
         currentTask: parsed.currentTask || null,
         memoriesToSave: parsed.memoriesToSave,
       };
-      telegramResponseText = structuredResponse.response;
       console.log(`${LOG_PREFIX} Parsed structured response, sending only response field to Telegram`);
-    } catch {
-      console.log(`${LOG_PREFIX} LLM did not return JSON, trying to extract response field`);
+    } catch (parseError) {
+      console.log(`${LOG_PREFIX} Failed to parse JSON response:`, parseError);
 
       // Try to extract just the "response" field from raw JSON if possible
-      try {
-        const rawParsed = JSON.parse(aiResponse.content);
-        telegramResponseText = rawParsed.response || aiResponse.content;
-        console.log(`${LOG_PREFIX} Extracted response field from raw JSON`);
-      } catch {
-        // Ultimate fallback: use full content
-        telegramResponseText = aiResponse.content;
-        console.log(`${LOG_PREFIX} Using full content as fallback`);
+      // This handles cases where JSON might be slightly malformed
+      const responseMatch = aiResponse.content.match(/"response"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+      if (responseMatch) {
+        // Unescape the extracted string
+        telegramResponseText = responseMatch[1].replace(/\\"/g, '"').replace(/\\n/g, '\n').replace(/\\\\/g, '\\');
+        console.log(`${LOG_PREFIX} Extracted response field via regex`);
+      } else {
+        // Check if content looks like JSON (starts with {) - don't send raw JSON to user
+        if (aiResponse.content.trim().startsWith('{')) {
+          console.warn(`${LOG_PREFIX} Content looks like JSON but failed to parse - not sending raw JSON to user`);
+          telegramResponseText = 'I had trouble formatting my response. Could you try again?';
+        } else {
+          // Content doesn't look like JSON, might be plain text response
+          telegramResponseText = aiResponse.content;
+          console.log(`${LOG_PREFIX} Using plain text content`);
+        }
       }
 
       structuredResponse = {
