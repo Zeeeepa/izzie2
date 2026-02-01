@@ -55,14 +55,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check budget
-    const budgetRemaining = session.budgetTotal - session.budgetUsed;
+    // Check discovery budget (use new field if available, fallback to legacy)
+    const budgetTotal = session.discoveryBudgetTotal ?? session.budgetTotal;
+    const budgetUsed = session.discoveryBudgetUsed ?? session.budgetUsed;
+    const budgetRemaining = budgetTotal - budgetUsed;
     if (budgetRemaining <= 0) {
       return NextResponse.json({
         success: true,
         complete: true,
         reason: 'budget_exhausted',
-        message: 'Budget exhausted. Discovery session complete.',
+        message: 'Discovery budget exhausted. Discovery session complete.',
       });
     }
 
@@ -290,11 +292,12 @@ export async function POST(request: NextRequest) {
       console.error(`${LOG_PREFIX} Error processing calendar:`, calendarError);
     }
 
-    // Update session budget
+    // Update session budget (both legacy and new discovery budget fields)
     await db
       .update(trainingSessions)
       .set({
         budgetUsed: sql`${trainingSessions.budgetUsed} + ${Math.round(totalCost)}`,
+        discoveryBudgetUsed: sql`${trainingSessions.discoveryBudgetUsed} + ${Math.round(totalCost)}`,
         updatedAt: new Date(),
       })
       .where(eq(trainingSessions.id, session.id));
@@ -311,7 +314,11 @@ export async function POST(request: NextRequest) {
         itemsFound: itemsFound + calendarItemsFound,
         costUsed: totalCost / 100, // Convert to dollars
       },
+      // Legacy budget field (same as discoveryBudget)
       budget: status.budget,
+      // Separate budgets
+      discoveryBudget: status.discoveryBudget,
+      trainingBudget: status.trainingBudget,
       progress: status.progress,
       nextDaysAgo: daysAgo + 1,
     });

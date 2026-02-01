@@ -1456,9 +1456,17 @@ export const trainingSessions = pgTable(
     status: text('status').notNull().default('collecting'), // 'collecting' | 'training' | 'paused' | 'complete'
     mode: text('mode').notNull().default('collect_feedback'), // 'collect_feedback' | 'auto_train'
 
-    // Budget tracking (in cents)
+    // Legacy budget tracking (in cents) - kept for backward compatibility
     budgetTotal: integer('budget_total').notNull().default(500), // $5 default
     budgetUsed: integer('budget_used').notNull().default(0),
+
+    // Separate budget tracking (in cents)
+    // Discovery budget: For processing emails/calendar to find entities
+    discoveryBudgetTotal: integer('discovery_budget_total').notNull().default(500),
+    discoveryBudgetUsed: integer('discovery_budget_used').notNull().default(0),
+    // Training budget: For user feedback/RLHF
+    trainingBudgetTotal: integer('training_budget_total').notNull().default(500),
+    trainingBudgetUsed: integer('training_budget_used').notNull().default(0),
 
     // Configuration
     sampleSize: integer('sample_size').notNull().default(100),

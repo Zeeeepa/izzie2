@@ -168,16 +168,25 @@ export interface TrainingProgressEntry {
 }
 
 /**
+ * Budget information
+ */
+export interface BudgetInfo {
+  total: number;
+  used: number;
+  remaining: number;
+}
+
+/**
  * Autonomous training run status
  */
 export interface AutonomousTrainingStatus {
   sessionId: string;
   status: TrainingStatus;
-  budget: {
-    total: number;
-    used: number;
-    remaining: number;
-  };
+  // Legacy budget field (for backward compatibility, same as discoveryBudget)
+  budget: BudgetInfo;
+  // Separate budgets
+  discoveryBudget: BudgetInfo;
+  trainingBudget: BudgetInfo;
   progress: {
     daysProcessed: number;
     itemsDiscovered: number;

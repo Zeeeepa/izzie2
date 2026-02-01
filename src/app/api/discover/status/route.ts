@@ -58,7 +58,11 @@ export async function GET(request: NextRequest) {
         mode: session.mode,
         createdAt: session.createdAt,
       },
+      // Legacy budget field (same as discoveryBudget for backward compatibility)
       budget: status.budget,
+      // Separate budgets
+      discoveryBudget: status.discoveryBudget,
+      trainingBudget: status.trainingBudget,
       progress: {
         ...status.progress,
         currentActivity: session.status === 'running' ? 'Processing emails and calendar events...' : undefined,

@@ -28,7 +28,19 @@ interface DiscoverySession {
   createdAt?: string;
 }
 
+interface BudgetInfo {
+  total: number;
+  used: number;
+  remaining: number;
+}
+
 interface DiscoveryBudget {
+  total: number;
+  used: number;
+  remaining: number;
+}
+
+interface TrainingBudget {
   total: number;
   used: number;
   remaining: number;
@@ -103,14 +115,17 @@ export default function DiscoverPage() {
   // ============================================================
   const [session, setSession] = useState<DiscoverySession | null>(null);
   const [budget, setBudget] = useState<DiscoveryBudget | null>(null);
+  const [discoveryBudget, setDiscoveryBudget] = useState<BudgetInfo | null>(null);
+  const [trainingBudget, setTrainingBudget] = useState<TrainingBudget | null>(null);
   const [progress, setProgress] = useState<DiscoveryProgress | null>(null);
   const [feedbackStats, setFeedbackStats] = useState<FeedbackStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState('');
 
-  // Setup form
-  const [setupBudget, setSetupBudget] = useState(10);
+  // Setup form - separate budgets
+  const [setupDiscoveryBudget, setSetupDiscoveryBudget] = useState(10);
+  const [setupTrainingBudget, setSetupTrainingBudget] = useState(5);
 
   // Polling ref for client-driven processing
   const processingRef = useRef(false);
@@ -145,11 +160,15 @@ export default function DiscoverPage() {
         if (data.hasActiveSession) {
           setSession(data.session);
           setBudget(data.budget);
+          setDiscoveryBudget(data.discoveryBudget || data.budget);
+          setTrainingBudget(data.trainingBudget || { total: 500, used: 0, remaining: 500 });
           setProgress(data.progress);
           setFeedbackStats(data.feedbackStats);
         } else {
           setSession(null);
           setBudget(null);
+          setDiscoveryBudget(null);
+          setTrainingBudget(null);
           setProgress(null);
           setFeedbackStats(null);
         }
@@ -169,7 +188,10 @@ export default function DiscoverPage() {
       const res = await fetch('/api/discover/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ budget: setupBudget }),
+        body: JSON.stringify({
+          budget: setupDiscoveryBudget,
+          trainingBudget: setupTrainingBudget,
+        }),
       });
 
       const data = await res.json();
@@ -177,6 +199,8 @@ export default function DiscoverPage() {
       if (data.success) {
         setSession(data.session);
         setBudget(data.budget);
+        setDiscoveryBudget(data.discoveryBudget || data.budget);
+        setTrainingBudget(data.trainingBudget || { total: setupTrainingBudget * 100, used: 0, remaining: setupTrainingBudget * 100 });
         setProgress(data.progress);
         toast.success('Discovery started!');
         // Start client-driven processing
@@ -233,15 +257,21 @@ export default function DiscoverPage() {
     if (!confirmed) return;
 
     stopProcessing();
-    // Use pause then mark complete
     try {
-      await fetch('/api/discover/pause', { method: 'POST' });
-      setSession(null);
-      setBudget(null);
-      setProgress(null);
-      toast.success('Discovery cancelled');
+      const res = await fetch('/api/discover/cancel', { method: 'POST' });
+      const data = await res.json();
+
+      if (data.success) {
+        setSession(null);
+        setBudget(null);
+        setProgress(null);
+        toast.success('Discovery cancelled');
+      } else {
+        toast.error(data.error || 'Failed to cancel discovery');
+      }
     } catch (err) {
       console.error('Failed to cancel:', err);
+      toast.error('Failed to cancel discovery');
     }
   };
 
@@ -260,6 +290,10 @@ export default function DiscoverPage() {
 
       if (data.success) {
         setBudget(data.budget);
+        setDiscoveryBudget(data.discoveryBudget || data.budget);
+        if (data.trainingBudget) {
+          setTrainingBudget(data.trainingBudget);
+        }
         setProgress(data.progress);
 
         if (data.complete) {
@@ -529,7 +563,7 @@ export default function DiscoverPage() {
                 people, companies, topics, and their relationships.
               </p>
 
-              {/* Budget Selection */}
+              {/* Discovery Budget Selection */}
               <div style={{ marginBottom: '1.5rem' }}>
                 <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', color: '#374151', marginBottom: '0.75rem' }}>
                   Discovery Budget
@@ -538,13 +572,13 @@ export default function DiscoverPage() {
                   {BUDGET_OPTIONS.map(({ value, label }) => (
                     <button
                       key={value}
-                      onClick={() => setSetupBudget(value)}
+                      onClick={() => setSetupDiscoveryBudget(value)}
                       style={{
                         padding: '0.625rem 1rem',
                         borderRadius: '8px',
                         border: 'none',
-                        backgroundColor: setupBudget === value ? '#8b5cf6' : '#f3f4f6',
-                        color: setupBudget === value ? '#fff' : '#374151',
+                        backgroundColor: setupDiscoveryBudget === value ? '#8b5cf6' : '#f3f4f6',
+                        color: setupDiscoveryBudget === value ? '#fff' : '#374151',
                         fontSize: '0.875rem',
                         fontWeight: '600',
                         cursor: 'pointer',
@@ -556,7 +590,38 @@ export default function DiscoverPage() {
                   ))}
                 </div>
                 <p style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.5rem' }}>
-                  Controls how much data can be processed. Typical cost: $0.01-0.05 per day of emails.
+                  For processing emails and calendar to find entities. Typical cost: $0.01-0.05 per day.
+                </p>
+              </div>
+
+              {/* Training Budget Selection */}
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', color: '#374151', marginBottom: '0.75rem' }}>
+                  Training Budget
+                </label>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  {BUDGET_OPTIONS.map(({ value, label }) => (
+                    <button
+                      key={value}
+                      onClick={() => setSetupTrainingBudget(value)}
+                      style={{
+                        padding: '0.625rem 1rem',
+                        borderRadius: '8px',
+                        border: 'none',
+                        backgroundColor: setupTrainingBudget === value ? '#10b981' : '#f3f4f6',
+                        color: setupTrainingBudget === value ? '#fff' : '#374151',
+                        fontSize: '0.875rem',
+                        fontWeight: '600',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <p style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.5rem' }}>
+                  For user feedback and model training (RLHF). Separate from discovery budget.
                 </p>
               </div>
 
@@ -725,16 +790,16 @@ export default function DiscoverPage() {
                   </div>
                 </div>
 
-                {/* Budget Meter */}
+                {/* Discovery Budget Meter */}
                 <div style={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '1.5rem' }}>
                   <h3 style={{ fontSize: '0.875rem', fontWeight: '600', color: '#374151', marginBottom: '0.75rem' }}>
-                    Budget
+                    Discovery Budget
                   </h3>
                   <div style={{ backgroundColor: '#e5e7eb', borderRadius: '4px', height: '8px', marginBottom: '0.75rem', overflow: 'hidden' }}>
                     <div
                       style={{
-                        backgroundColor: budget && budget.remaining < budget.total * 0.2 ? '#ef4444' : '#8b5cf6',
-                        width: budget ? `${((budget.total - budget.used) / budget.total) * 100}%` : '100%',
+                        backgroundColor: discoveryBudget && discoveryBudget.remaining < discoveryBudget.total * 0.2 ? '#ef4444' : '#8b5cf6',
+                        width: discoveryBudget ? `${((discoveryBudget.total - discoveryBudget.used) / discoveryBudget.total) * 100}%` : '100%',
                         height: '100%',
                         borderRadius: '4px',
                         transition: 'width 0.3s ease-in-out',
@@ -742,8 +807,30 @@ export default function DiscoverPage() {
                     />
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#6b7280' }}>
-                    <span>Used: ${budget ? (budget.used / 100).toFixed(2) : '0.00'}</span>
-                    <span>Remaining: ${budget ? (budget.remaining / 100).toFixed(2) : '0.00'}</span>
+                    <span>Used: ${discoveryBudget ? (discoveryBudget.used / 100).toFixed(2) : '0.00'}</span>
+                    <span>Remaining: ${discoveryBudget ? (discoveryBudget.remaining / 100).toFixed(2) : '0.00'}</span>
+                  </div>
+                </div>
+
+                {/* Training Budget Meter */}
+                <div style={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '1.5rem' }}>
+                  <h3 style={{ fontSize: '0.875rem', fontWeight: '600', color: '#374151', marginBottom: '0.75rem' }}>
+                    Training Budget
+                  </h3>
+                  <div style={{ backgroundColor: '#e5e7eb', borderRadius: '4px', height: '8px', marginBottom: '0.75rem', overflow: 'hidden' }}>
+                    <div
+                      style={{
+                        backgroundColor: trainingBudget && trainingBudget.remaining < trainingBudget.total * 0.2 ? '#ef4444' : '#10b981',
+                        width: trainingBudget ? `${((trainingBudget.total - trainingBudget.used) / trainingBudget.total) * 100}%` : '100%',
+                        height: '100%',
+                        borderRadius: '4px',
+                        transition: 'width 0.3s ease-in-out',
+                      }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#6b7280' }}>
+                    <span>Used: ${trainingBudget ? (trainingBudget.used / 100).toFixed(2) : '0.00'}</span>
+                    <span>Remaining: ${trainingBudget ? (trainingBudget.remaining / 100).toFixed(2) : '0.00'}</span>
                   </div>
                 </div>
 

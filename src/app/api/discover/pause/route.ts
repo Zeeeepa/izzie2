@@ -58,7 +58,11 @@ export async function POST(request: NextRequest) {
         id: session.id,
         status: 'paused',
       },
+      // Legacy budget field (same as discoveryBudget)
       budget: status.budget,
+      // Separate budgets
+      discoveryBudget: status.discoveryBudget,
+      trainingBudget: status.trainingBudget,
       progress: status.progress,
     });
   } catch (error) {

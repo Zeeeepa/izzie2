@@ -15,7 +15,8 @@ import {
 import type { TrainingMode } from '@/lib/training/types';
 
 interface StartDiscoverRequest {
-  budget: number; // in dollars
+  budget: number; // in dollars (discovery budget)
+  trainingBudget?: number; // in dollars (training budget, optional)
   mode?: TrainingMode;
 }
 
@@ -80,9 +81,10 @@ export async function POST(request: NextRequest) {
       await updateGoogleTokens(userId, newTokens);
     });
 
-    // Start autonomous training session
+    // Start autonomous training session with separate budgets
     const { sessionId, status } = await startAutonomousTraining(userId, oauth2Client, {
-      budget: Math.round(body.budget * 100), // Convert dollars to cents
+      budget: Math.round(body.budget * 100), // Convert dollars to cents (discovery)
+      trainingBudget: body.trainingBudget ? Math.round(body.trainingBudget * 100) : undefined, // Convert dollars to cents (training)
       mode: body.mode || 'collect_feedback',
     });
 
@@ -95,7 +97,11 @@ export async function POST(request: NextRequest) {
         id: sessionId,
         status: status.status,
       },
+      // Legacy budget field (same as discoveryBudget for backward compatibility)
       budget: status.budget,
+      // Separate budgets
+      discoveryBudget: status.discoveryBudget,
+      trainingBudget: status.trainingBudget,
       progress: status.progress,
       startedAt: status.startedAt,
     });

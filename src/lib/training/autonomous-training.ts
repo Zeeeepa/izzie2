@@ -43,7 +43,8 @@ export async function startAutonomousTraining(
   userId: string,
   auth: Auth.OAuth2Client,
   config: {
-    budget: number; // in cents
+    budget: number; // in cents (discovery budget)
+    trainingBudget?: number; // in cents (training budget, optional)
     mode?: TrainingMode;
   }
 ): Promise<{ sessionId: string; status: AutonomousTrainingStatus }> {
@@ -58,15 +59,21 @@ export async function startAutonomousTraining(
     };
   }
 
-  // Create new session
+  // Create new session with separate discovery budget
   const [session] = await db
     .insert(trainingSessions)
     .values({
       userId,
       status: 'running',
       mode: config.mode || 'collect_feedback',
+      // Legacy fields (for backward compatibility)
       budgetTotal: config.budget,
       budgetUsed: 0,
+      // New separate budget fields
+      discoveryBudgetTotal: config.budget,
+      discoveryBudgetUsed: 0,
+      trainingBudgetTotal: config.trainingBudget || 500, // Default $5 for training
+      trainingBudgetUsed: 0,
       sampleSize: 1000, // High limit for autonomous
       autoTrainThreshold: 50,
       sampleTypes: ['entity', 'relationship'],
@@ -142,10 +149,22 @@ export async function getAutonomousStatus(sessionId: string): Promise<Autonomous
   return {
     sessionId,
     status: session.status as TrainingStatus,
+    // Legacy budget (for backward compatibility)
     budget: {
-      total: session.budgetTotal,
-      used: session.budgetUsed,
-      remaining: session.budgetTotal - session.budgetUsed,
+      total: session.discoveryBudgetTotal,
+      used: session.discoveryBudgetUsed,
+      remaining: session.discoveryBudgetTotal - session.discoveryBudgetUsed,
+    },
+    // Separate budgets
+    discoveryBudget: {
+      total: session.discoveryBudgetTotal,
+      used: session.discoveryBudgetUsed,
+      remaining: session.discoveryBudgetTotal - session.discoveryBudgetUsed,
+    },
+    trainingBudget: {
+      total: session.trainingBudgetTotal,
+      used: session.trainingBudgetUsed,
+      remaining: session.trainingBudgetTotal - session.trainingBudgetUsed,
     },
     progress: {
       daysProcessed,
@@ -231,9 +250,9 @@ async function runAutonomousProcessing(
         break;
       }
 
-      const budgetRemaining = session.budgetTotal - session.budgetUsed;
+      const budgetRemaining = session.discoveryBudgetTotal - session.discoveryBudgetUsed;
       if (budgetRemaining <= 0) {
-        console.log(`${LOG_PREFIX} Budget exhausted for session ${sessionId}`);
+        console.log(`${LOG_PREFIX} Discovery budget exhausted for session ${sessionId}`);
         await updateSessionStatus(sessionId, 'budget_exhausted');
         break;
       }
@@ -563,7 +582,7 @@ async function updateSessionStatus(
 }
 
 /**
- * Update session budget used
+ * Update session discovery budget used
  */
 async function updateSessionBudget(
   sessionId: string,
@@ -574,7 +593,27 @@ async function updateSessionBudget(
   await db
     .update(trainingSessions)
     .set({
+      // Update both legacy and new budget columns for discovery
       budgetUsed: sql`${trainingSessions.budgetUsed} + ${Math.round(costIncrement)}`,
+      discoveryBudgetUsed: sql`${trainingSessions.discoveryBudgetUsed} + ${Math.round(costIncrement)}`,
+      updatedAt: new Date(),
+    })
+    .where(eq(trainingSessions.id, sessionId));
+}
+
+/**
+ * Update session training budget used
+ */
+export async function updateTrainingBudget(
+  sessionId: string,
+  costIncrement: number
+): Promise<void> {
+  const db = dbClient.getDb();
+
+  await db
+    .update(trainingSessions)
+    .set({
+      trainingBudgetUsed: sql`${trainingSessions.trainingBudgetUsed} + ${Math.round(costIncrement)}`,
       updatedAt: new Date(),
     })
     .where(eq(trainingSessions.id, sessionId));
