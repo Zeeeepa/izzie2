@@ -8,8 +8,8 @@ import { requireAuthWithTestBypass } from '@/lib/auth/test-auth';
 import { getActiveSession, updateBudget, updateSessionStatus } from '@/lib/training';
 
 interface BudgetRequest {
-  budget: number; // in dollars
-  action?: 'pause' | 'resume';
+  budget?: number; // in dollars
+  action?: 'pause' | 'resume' | 'cancel' | 'restart';
 }
 
 export async function POST(request: NextRequest) {
@@ -42,11 +42,27 @@ export async function POST(request: NextRequest) {
       updatedSession = (await updateBudget(trainingSession.id, budgetInCents)) || trainingSession;
     }
 
-    // Handle pause/resume action
+    // Handle pause/resume/cancel/restart actions
     if (body.action === 'pause') {
       updatedSession = (await updateSessionStatus(trainingSession.id, 'paused')) || updatedSession;
     } else if (body.action === 'resume') {
       updatedSession = (await updateSessionStatus(trainingSession.id, 'collecting')) || updatedSession;
+    } else if (body.action === 'cancel') {
+      // Mark the current session as complete (cancelled)
+      updatedSession = (await updateSessionStatus(trainingSession.id, 'complete')) || updatedSession;
+      return NextResponse.json({
+        success: true,
+        message: 'Training cancelled',
+        session: updatedSession,
+      });
+    } else if (body.action === 'restart') {
+      // Cancel current session and return - user can start a new one
+      await updateSessionStatus(trainingSession.id, 'complete');
+      return NextResponse.json({
+        success: true,
+        message: 'Training cancelled. You can start a new session.',
+        session: null,
+      });
     }
 
     return NextResponse.json({

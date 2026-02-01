@@ -303,6 +303,58 @@ export default function TrainPage() {
     }
   };
 
+  const handleCancel = async () => {
+    if (!session) return;
+
+    if (!confirm('Are you sure you want to cancel this training session? This cannot be undone.')) {
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/train/budget', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'cancel' }),
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        setSession(null);
+        setCurrentSample(null);
+        setExceptions([]);
+      }
+    } catch (err) {
+      console.error('Failed to cancel:', err);
+    }
+  };
+
+  const handleRestart = async () => {
+    if (!session) return;
+
+    if (!confirm('Are you sure you want to restart? This will cancel the current session and let you start fresh.')) {
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/train/budget', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'restart' }),
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        setSession(null);
+        setCurrentSample(null);
+        setExceptions([]);
+      }
+    } catch (err) {
+      console.error('Failed to restart:', err);
+    }
+  };
+
   const handleDismissException = async (exceptionId: string) => {
     try {
       const res = await fetch('/api/train/exceptions', {
@@ -555,21 +607,53 @@ export default function TrainPage() {
                   {session.mode === 'collect_feedback' ? 'Collect Feedback' : 'Auto-Train'} Mode
                 </span>
               </div>
-              <button
-                onClick={handlePauseResume}
-                style={{
-                  padding: '0.5rem 1rem',
-                  borderRadius: '8px',
-                  border: 'none',
-                  backgroundColor: session.status === 'paused' ? '#10b981' : '#f59e0b',
-                  color: '#fff',
-                  fontSize: '0.875rem',
-                  fontWeight: '600',
-                  cursor: 'pointer',
-                }}
-              >
-                {session.status === 'paused' ? 'Resume' : 'Pause'}
-              </button>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button
+                  onClick={handlePauseResume}
+                  style={{
+                    padding: '0.5rem 1rem',
+                    borderRadius: '8px',
+                    border: 'none',
+                    backgroundColor: session.status === 'paused' ? '#10b981' : '#f59e0b',
+                    color: '#fff',
+                    fontSize: '0.875rem',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {session.status === 'paused' ? 'Resume' : 'Pause'}
+                </button>
+                <button
+                  onClick={handleRestart}
+                  style={{
+                    padding: '0.5rem 1rem',
+                    borderRadius: '8px',
+                    border: '1px solid #e5e7eb',
+                    backgroundColor: '#fff',
+                    color: '#374151',
+                    fontSize: '0.875rem',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Restart
+                </button>
+                <button
+                  onClick={handleCancel}
+                  style={{
+                    padding: '0.5rem 1rem',
+                    borderRadius: '8px',
+                    border: 'none',
+                    backgroundColor: '#ef4444',
+                    color: '#fff',
+                    fontSize: '0.875rem',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           </div>
 
