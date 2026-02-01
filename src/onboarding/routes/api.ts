@@ -618,7 +618,8 @@ router.get('/feedback', (_req: Request, res: Response) => {
  */
 router.delete('/feedback/:id', (req: Request, res: Response) => {
   const feedbackService = getFeedbackService();
-  const deleted = feedbackService.deleteRecord(req.params.id);
+  const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const deleted = feedbackService.deleteRecord(id);
 
   if (deleted) {
     res.json({ success: true });
@@ -648,13 +649,14 @@ router.get('/ontology', (_req: Request, res: Response) => {
  */
 router.get('/ontology/topic/:name', (req: Request, res: Response) => {
   const ontologyService = getOntologyService();
-  const hierarchy = ontologyService.getTopicWithHierarchy(req.params.name);
+  const name = Array.isArray(req.params.name) ? req.params.name[0] : req.params.name;
+  const hierarchy = ontologyService.getTopicWithHierarchy(name);
 
   if (hierarchy) {
     res.json({
       success: true,
       topic: hierarchy,
-      path: ontologyService.getHierarchyPath(req.params.name),
+      path: ontologyService.getHierarchyPath(name),
     });
   } else {
     res.status(404).json({ error: 'Topic not found' });
