@@ -3,27 +3,44 @@
  *
  * Fetches sent emails day-by-day (newest first) and processes them
  * through the classifier to discover entities and relationships.
+ *
+ * Automatically syncs action_item entities to Google Tasks during extraction
+ * when autoSyncTasks is enabled.
  */
 
 import { google, Auth } from 'googleapis';
 import { GmailService } from '@/lib/google/gmail';
 import { getClassifierService, ClassifierService } from './classifier';
 import { getProgressService, ProgressService } from './progress';
+import {
+  AutoTaskSyncService,
+  getAutoTaskSyncService,
+  resetAutoTaskSyncService,
+} from './tasks-sync';
 import type { Email } from '@/lib/google/types';
+import type { Entity } from '@/lib/extraction/types';
 import type { ProcessingConfig, DEFAULT_PROCESSING_CONFIG, DayResult } from '../types';
 
 const LOG_PREFIX = '[EmailProcessor]';
 
+export interface EmailProcessorConfig extends ProcessingConfig {
+  autoSyncTasks?: boolean; // Auto-sync action_items to Google Tasks (default: true)
+  taskListName?: string; // Name of the task list for auto-sync
+}
+
 export class EmailProcessorService {
   private gmail: GmailService;
+  private auth: Auth.OAuth2Client;
   private classifier: ClassifierService;
   private progress: ProgressService;
-  private config: ProcessingConfig;
+  private config: EmailProcessorConfig;
+  private autoTaskSync: AutoTaskSyncService | null = null;
 
   constructor(
     auth: Auth.OAuth2Client,
-    config: Partial<ProcessingConfig> = {}
+    config: Partial<EmailProcessorConfig> = {}
   ) {
+    this.auth = auth;
     this.gmail = new GmailService(auth);
     this.classifier = getClassifierService();
     this.progress = getProgressService();
@@ -33,7 +50,15 @@ export class EmailProcessorService {
       maxEmailsPerDay: config.maxEmailsPerDay ?? 100,
       startDate: config.startDate,
       endDate: config.endDate,
+      autoSyncTasks: config.autoSyncTasks ?? true, // Enabled by default
+      taskListName: config.taskListName,
     };
+
+    // Initialize auto-sync if enabled
+    if (this.config.autoSyncTasks) {
+      this.autoTaskSync = new AutoTaskSyncService(auth, this.config.taskListName);
+      console.log(`${LOG_PREFIX} Auto task sync enabled`);
+    }
 
     console.log(`${LOG_PREFIX} Initialized with config:`, this.config);
   }
@@ -100,6 +125,12 @@ export class EmailProcessorService {
       if (i < days.length - 1 && !signal?.aborted) {
         await this.sleep(this.config.delayBetweenBatches);
       }
+    }
+
+    // Log auto-sync stats
+    if (this.autoTaskSync) {
+      const stats = this.autoTaskSync.getStats();
+      console.log(`${LOG_PREFIX} Auto task sync stats:`, stats);
     }
 
     console.log(`${LOG_PREFIX} Completed processing all days`);
@@ -169,6 +200,11 @@ export class EmailProcessorService {
             extraction.spam.spamScore
           );
 
+          // Auto-sync action_items to Google Tasks
+          if (this.autoTaskSync) {
+            await this.syncActionItems(extraction.entities);
+          }
+
           result.emailsProcessed++;
           result.entities.push(...extraction.entities);
           result.relationships.push(...extraction.relationships);
@@ -194,6 +230,36 @@ export class EmailProcessorService {
     );
 
     return result;
+  }
+
+  /**
+   * Sync action_item entities to Google Tasks
+   */
+  private async syncActionItems(entities: Entity[]): Promise<void> {
+    if (!this.autoTaskSync) return;
+
+    const actionItems = entities.filter((e) => e.type === 'action_item');
+    if (actionItems.length === 0) return;
+
+    for (const entity of actionItems) {
+      try {
+        const result = await this.autoTaskSync.syncEntity(entity);
+        if (result.action === 'created') {
+          // Emit task sync event via progress service
+          this.progress.recordTaskSync(
+            entity.value,
+            'created',
+            1, // current
+            1, // total
+            result.taskId,
+            result.taskListId
+          );
+        }
+      } catch (error) {
+        console.error(`${LOG_PREFIX} Failed to auto-sync action_item:`, error);
+        // Don't fail the whole extraction for sync errors
+      }
+    }
   }
 
   /**
@@ -250,7 +316,7 @@ export class EmailProcessorService {
 // Factory function to create processor with auth
 export function createEmailProcessor(
   auth: Auth.OAuth2Client,
-  config?: Partial<ProcessingConfig>
+  config?: Partial<EmailProcessorConfig>
 ): EmailProcessorService {
   return new EmailProcessorService(auth, config);
 }

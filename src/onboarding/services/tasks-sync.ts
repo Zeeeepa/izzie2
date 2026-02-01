@@ -3,6 +3,10 @@
  *
  * Syncs discovered action_item entities from onboarding to Google Tasks.
  * Creates tasks in a dedicated list, checking for duplicates by title.
+ *
+ * Supports both:
+ * - Manual batch sync via syncEntitiesToTasks/syncEntitiesWithProgress
+ * - Automatic real-time sync via AutoTaskSyncService during extraction
  */
 
 import { google, tasks_v1, Auth } from 'googleapis';
@@ -42,6 +46,206 @@ interface TaskList {
 interface Task {
   id: string;
   title: string;
+}
+
+/**
+ * Auto Task Sync Service
+ *
+ * Singleton service that automatically syncs action_item entities to Google Tasks
+ * as they are discovered during extraction. Caches the task list ID and maintains
+ * a set of synced task titles to avoid duplicates.
+ */
+export class AutoTaskSyncService {
+  private auth: Auth.OAuth2Client;
+  private taskListId: string | null = null;
+  private taskListName: string;
+  private syncedTitles: Set<string> = new Set();
+  private initialized = false;
+  private initPromise: Promise<void> | null = null;
+
+  constructor(auth: Auth.OAuth2Client, listName: string = DEFAULT_TASK_LIST_NAME) {
+    this.auth = auth;
+    this.taskListName = listName;
+  }
+
+  /**
+   * Initialize the service (creates/finds task list, loads existing tasks)
+   * Safe to call multiple times - will only initialize once
+   */
+  async initialize(): Promise<void> {
+    if (this.initialized) return;
+
+    // Prevent concurrent initialization
+    if (this.initPromise) {
+      return this.initPromise;
+    }
+
+    this.initPromise = this._doInitialize();
+    return this.initPromise;
+  }
+
+  private async _doInitialize(): Promise<void> {
+    try {
+      console.log(`${LOG_PREFIX} [Auto] Initializing auto-sync service...`);
+
+      // Ensure task list exists
+      const taskList = await ensureTaskList(this.auth, this.taskListName);
+      this.taskListId = taskList.id;
+
+      // Load existing task titles to avoid duplicates
+      await this.loadExistingTasks();
+
+      this.initialized = true;
+      console.log(`${LOG_PREFIX} [Auto] Initialized with ${this.syncedTitles.size} existing tasks`);
+    } catch (error) {
+      console.error(`${LOG_PREFIX} [Auto] Failed to initialize:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Load existing tasks from the task list to avoid duplicates
+   */
+  private async loadExistingTasks(): Promise<void> {
+    if (!this.taskListId) return;
+
+    const tasks = getTasksApi(this.auth);
+
+    try {
+      const response = await tasks.tasks.list({
+        tasklist: this.taskListId,
+        maxResults: 100,
+        showCompleted: true,
+      });
+
+      const taskItems = response.data.items || [];
+      for (const task of taskItems) {
+        if (task.title) {
+          this.syncedTitles.add(task.title.toLowerCase());
+        }
+      }
+    } catch (error) {
+      console.error(`${LOG_PREFIX} [Auto] Failed to load existing tasks:`, error);
+      // Continue anyway - we'll check for duplicates during sync
+    }
+  }
+
+  /**
+   * Sync a single action_item entity immediately
+   * Returns the result of the sync operation
+   */
+  async syncEntity(entity: Entity | DiscoveredEntity): Promise<TaskSyncResult> {
+    // Only sync action_item entities
+    if (entity.type !== 'action_item') {
+      return { action: 'skipped', error: 'Not an action_item entity' };
+    }
+
+    const title = entity.value.trim();
+    if (!title) {
+      return { action: 'skipped', error: 'Empty task title' };
+    }
+
+    // Ensure initialized
+    await this.initialize();
+
+    if (!this.taskListId) {
+      return { action: 'skipped', error: 'Task list not initialized' };
+    }
+
+    // Check local cache for duplicates (fast path)
+    if (this.syncedTitles.has(title.toLowerCase())) {
+      console.log(`${LOG_PREFIX} [Auto] Task already synced (cache): "${title}"`);
+      return { action: 'skipped', taskListId: this.taskListId, error: 'Duplicate task' };
+    }
+
+    const tasks = getTasksApi(this.auth);
+
+    try {
+      // Build task notes
+      const notes = buildTaskNotes(entity);
+
+      // Create the task
+      const response = await tasks.tasks.insert({
+        tasklist: this.taskListId,
+        requestBody: {
+          title,
+          notes,
+        },
+      });
+
+      if (!response.data.id) {
+        throw new Error('Failed to create task - no ID returned');
+      }
+
+      // Add to local cache
+      this.syncedTitles.add(title.toLowerCase());
+
+      console.log(`${LOG_PREFIX} [Auto] Created task: "${title}" (id: ${response.data.id})`);
+
+      return {
+        action: 'created',
+        taskId: response.data.id,
+        taskListId: this.taskListId,
+      };
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error(`${LOG_PREFIX} [Auto] Failed to sync entity "${title}":`, errorMessage);
+      return {
+        action: 'skipped',
+        taskListId: this.taskListId,
+        error: errorMessage,
+      };
+    }
+  }
+
+  /**
+   * Get sync statistics
+   */
+  getStats(): { initialized: boolean; taskListId: string | null; syncedCount: number } {
+    return {
+      initialized: this.initialized,
+      taskListId: this.taskListId,
+      syncedCount: this.syncedTitles.size,
+    };
+  }
+
+  /**
+   * Reset the service (useful for testing or restarting)
+   */
+  reset(): void {
+    this.taskListId = null;
+    this.syncedTitles.clear();
+    this.initialized = false;
+    this.initPromise = null;
+    console.log(`${LOG_PREFIX} [Auto] Service reset`);
+  }
+}
+
+// Singleton instance for auto-sync
+let autoSyncInstance: AutoTaskSyncService | null = null;
+
+/**
+ * Get or create the auto-sync service instance
+ * Call with auth on first use, subsequent calls can omit auth
+ */
+export function getAutoTaskSyncService(
+  auth?: Auth.OAuth2Client,
+  listName?: string
+): AutoTaskSyncService | null {
+  if (auth && !autoSyncInstance) {
+    autoSyncInstance = new AutoTaskSyncService(auth, listName);
+  }
+  return autoSyncInstance;
+}
+
+/**
+ * Reset the auto-sync service (call when processing stops or auth changes)
+ */
+export function resetAutoTaskSyncService(): void {
+  if (autoSyncInstance) {
+    autoSyncInstance.reset();
+    autoSyncInstance = null;
+  }
 }
 
 /**
