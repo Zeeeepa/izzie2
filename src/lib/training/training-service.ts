@@ -23,6 +23,9 @@ import type {
   TrainingStats,
 } from './types';
 import { sendTrainingAlert } from './alerts';
+import { listEntitiesByType } from '@/lib/weaviate/entities';
+import { getAllRelationships } from '@/lib/weaviate/relationships';
+import type { EntityType } from '@/lib/extraction/types';
 
 const LOG_PREFIX = '[TrainingService]';
 
@@ -245,8 +248,8 @@ export async function skipSample(sampleId: string): Promise<TrainingSample | nul
 }
 
 /**
- * Generate training samples from entities/relationships
- * This would be called by the training loop
+ * Generate training samples from real entities/relationships in Weaviate
+ * Queries the knowledge graph and creates samples for human-in-the-loop feedback
  */
 export async function generateSamples(
   sessionId: string,
@@ -254,7 +257,7 @@ export async function generateSamples(
 ): Promise<number> {
   const db = dbClient.getDb();
 
-  // Get session to check sample types
+  // Get session to check sample types and userId
   const session = await getSession(sessionId);
   if (!session) {
     throw new Error('Session not found');
@@ -267,48 +270,84 @@ export async function generateSamples(
     return 0;
   }
 
-  // TODO: In a real implementation, this would:
-  // 1. Query entities/relationships from the graph
-  // 2. Generate predictions using the AI model
-  // 3. Store samples for user feedback
-
-  // For now, create placeholder samples cycling through all sample types
   const sampleTypes = session.config.sampleTypes;
   const samples: Array<typeof trainingSamples.$inferInsert> = [];
+  const userId = session.userId;
 
-  // Sample content and labels for each type
-  const sampleData: Record<SampleType, { contentPrefix: string; labels: string[]; reasoningPrefix: string }> = {
-    entity: {
-      contentPrefix: 'Sample entity',
-      labels: ['Person', 'Organization', 'Location', 'Event'],
-      reasoningPrefix: 'Matched pattern for',
-    },
-    relationship: {
-      contentPrefix: 'Sample relationship',
-      labels: ['Works At', 'Reports To', 'Collaborates With', 'Manages'],
-      reasoningPrefix: 'Detected relationship pattern:',
-    },
-    classification: {
-      contentPrefix: 'Sample classification',
-      labels: ['Meeting', 'Task', 'Decision', 'Question'],
-      reasoningPrefix: 'Classified based on',
-    },
-  };
+  // Entity types to query from Weaviate
+  const entityTypes: EntityType[] = ['person', 'company', 'project', 'topic', 'location', 'tool', 'action_item'];
 
-  for (let i = 0; i < Math.min(count, 10); i++) {
-    // Cycle through sample types to get a mix
-    const type = sampleTypes[i % sampleTypes.length];
-    const typeData = sampleData[type];
-    const label = typeData.labels[i % typeData.labels.length];
+  // Collect entity samples if 'entity' is in sampleTypes
+  if (sampleTypes.includes('entity')) {
+    console.log(`${LOG_PREFIX} Querying entities from Weaviate for user ${userId}...`);
 
+    for (const entityType of entityTypes) {
+      try {
+        const entities = await listEntitiesByType(userId, entityType, Math.ceil(count / entityTypes.length));
+
+        for (const entity of entities) {
+          if (samples.length >= count) break;
+
+          samples.push({
+            sessionId,
+            type: 'entity',
+            contentText: entity.value,
+            contentContext: entity.sourceId ? `Found in source: ${entity.sourceId}` : 'Extracted from user data',
+            sourceId: entity.sourceId,
+            predictionLabel: entity.type,
+            predictionConfidence: Math.round((entity.confidence || 0.8) * 100),
+            predictionReasoning: `Extracted as ${entity.type} based on context: "${entity.context || 'N/A'}"`,
+            status: 'pending',
+          });
+        }
+      } catch (error) {
+        console.warn(`${LOG_PREFIX} Failed to fetch ${entityType} entities:`, error);
+      }
+
+      if (samples.length >= count) break;
+    }
+  }
+
+  // Collect relationship samples if 'relationship' is in sampleTypes
+  if (sampleTypes.includes('relationship') && samples.length < count) {
+    console.log(`${LOG_PREFIX} Querying relationships from Weaviate for user ${userId}...`);
+
+    try {
+      const relationships = await getAllRelationships(userId, count - samples.length);
+
+      for (const rel of relationships) {
+        if (samples.length >= count) break;
+
+        samples.push({
+          sessionId,
+          type: 'relationship',
+          contentText: `${rel.fromEntityValue} → ${rel.toEntityValue}`,
+          contentContext: rel.evidence || `Relationship between ${rel.fromEntityType} and ${rel.toEntityType}`,
+          sourceId: rel.sourceId,
+          predictionLabel: rel.relationshipType,
+          predictionConfidence: Math.round((rel.confidence || 0.8) * 100),
+          predictionReasoning: `${rel.fromEntityValue} ${rel.relationshipType} ${rel.toEntityValue}`,
+          status: 'pending',
+        });
+      }
+    } catch (error) {
+      console.warn(`${LOG_PREFIX} Failed to fetch relationships:`, error);
+    }
+  }
+
+  // Handle empty data case - no entities or relationships found
+  if (samples.length === 0) {
+    console.log(`${LOG_PREFIX} No entities or relationships found in Weaviate. Run Discovery first to extract data.`);
+
+    // Create a single informational sample to guide the user
     samples.push({
       sessionId,
-      type,
-      contentText: `${typeData.contentPrefix} ${i + 1}`,
-      contentContext: 'From email thread about project planning',
-      predictionLabel: label,
-      predictionConfidence: Math.floor(Math.random() * 40) + 60, // 60-100
-      predictionReasoning: `${typeData.reasoningPrefix} ${label.toLowerCase()}`,
+      type: sampleTypes[0] || 'entity',
+      contentText: 'No data available for training',
+      contentContext: 'Run Discovery on your emails or calendar to extract entities and relationships first.',
+      predictionLabel: 'info',
+      predictionConfidence: 100,
+      predictionReasoning: 'Please run the Discovery process to populate your knowledge graph before training.',
       status: 'pending',
     });
   }
@@ -327,7 +366,7 @@ export async function generateSamples(
       .where(eq(trainingSessions.id, sessionId));
   }
 
-  console.log(`${LOG_PREFIX} Generated ${samples.length} samples for session ${sessionId}`);
+  console.log(`${LOG_PREFIX} Generated ${samples.length} samples from Weaviate data for session ${sessionId}`);
 
   return samples.length;
 }
