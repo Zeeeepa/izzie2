@@ -1627,3 +1627,57 @@ export const chatMessages = pgTable(
  */
 export type ChatMessageRecord = typeof chatMessages.$inferSelect;
 export type NewChatMessageRecord = typeof chatMessages.$inferInsert;
+
+/**
+ * Training Progress table - tracks which days have been processed
+ * Enables autonomous training to process data day-by-day without repetition
+ */
+export const trainingProgress = pgTable(
+  'training_progress',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    userId: text('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull(),
+    sessionId: text('session_id')
+      .references(() => trainingSessions.id, { onDelete: 'set null' }),
+
+    // Source tracking
+    sourceType: text('source_type').notNull(), // 'email' | 'calendar'
+    processedDate: date('processed_date').notNull(), // The date that was processed
+
+    // Results
+    itemsFound: integer('items_found').notNull().default(0),
+
+    // Timestamp
+    processedAt: timestamp('processed_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    userIdIdx: index('training_progress_user_id_idx').on(table.userId),
+    sessionIdIdx: index('training_progress_session_id_idx').on(table.sessionId),
+    sourceTypeIdx: index('training_progress_source_type_idx').on(table.sourceType),
+    processedDateIdx: index('training_progress_processed_date_idx').on(table.processedDate),
+    // Unique constraint: one record per user/source/date combination
+    userSourceDateUnique: uniqueIndex('training_progress_user_source_date_unique').on(
+      table.userId,
+      table.sourceType,
+      table.processedDate
+    ),
+  })
+);
+
+/**
+ * Type exports for training progress
+ */
+export type TrainingProgressRecord = typeof trainingProgress.$inferSelect;
+export type NewTrainingProgressRecord = typeof trainingProgress.$inferInsert;
+
+/**
+ * Source type constants for training progress
+ */
+export const TRAINING_SOURCE_TYPE = {
+  EMAIL: 'email',
+  CALENDAR: 'calendar',
+} as const;
+
+export type TrainingSourceType = (typeof TRAINING_SOURCE_TYPE)[keyof typeof TRAINING_SOURCE_TYPE];

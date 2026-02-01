@@ -6,7 +6,12 @@
 /**
  * Training session status
  */
-export type TrainingStatus = 'collecting' | 'training' | 'paused' | 'complete';
+export type TrainingStatus = 'collecting' | 'training' | 'paused' | 'complete' | 'running' | 'budget_exhausted';
+
+/**
+ * Source type for training data
+ */
+export type TrainingSourceType = 'email' | 'calendar';
 
 /**
  * Training mode
@@ -130,3 +135,59 @@ export interface TrainingStats {
     accuracy: number;
   }>;
 }
+
+/**
+ * Discovered item from autonomous training (entity or relationship)
+ */
+export interface DiscoveredItem {
+  id: string;
+  type: 'entity' | 'relationship';
+  value: string;
+  label: string; // entity type or relationship type
+  confidence: number; // 0-100
+  context?: string;
+  sourceId?: string;
+  sourceType?: TrainingSourceType;
+  sourceDate?: string; // ISO date string
+  // For relationships
+  fromEntity?: string;
+  toEntity?: string;
+}
+
+/**
+ * Training progress record for day-based processing
+ */
+export interface TrainingProgressEntry {
+  id: string;
+  userId: string;
+  sessionId?: string;
+  sourceType: TrainingSourceType;
+  processedDate: string; // ISO date string YYYY-MM-DD
+  itemsFound: number;
+  processedAt: Date;
+}
+
+/**
+ * Autonomous training run status
+ */
+export interface AutonomousTrainingStatus {
+  sessionId: string;
+  status: TrainingStatus;
+  budget: {
+    total: number;
+    used: number;
+    remaining: number;
+  };
+  progress: {
+    daysProcessed: number;
+    itemsDiscovered: number;
+    currentDate?: string;
+  };
+  startedAt?: Date;
+  completedAt?: Date;
+}
+
+/**
+ * Auto-train threshold configuration
+ */
+export const MIN_FEEDBACK_FOR_AUTO_TRAIN = 50;
