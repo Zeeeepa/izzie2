@@ -131,6 +131,11 @@ export default function DiscoverPage() {
   const processingRef = useRef(false);
   const pollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Refs to prevent duplicate toasts
+  const budgetExhaustedToastShown = useRef(false);
+  const lastProcessTime = useRef(0);
+  const MIN_PROCESS_INTERVAL = 2000; // 2 seconds minimum between API calls
+
   // ============================================================
   // Review State
   // ============================================================
@@ -183,6 +188,8 @@ export default function DiscoverPage() {
   const startDiscovery = async () => {
     setError('');
     setIsLoading(true);
+    // Reset toast flags for new session
+    budgetExhaustedToastShown.current = false;
 
     try {
       const res = await fetch('/api/discover/start', {
@@ -231,6 +238,9 @@ export default function DiscoverPage() {
   };
 
   const resumeDiscovery = async () => {
+    // Reset toast flag when resuming
+    budgetExhaustedToastShown.current = false;
+
     try {
       const res = await fetch('/api/discover/resume', { method: 'POST' });
       const data = await res.json();
@@ -275,9 +285,41 @@ export default function DiscoverPage() {
     }
   };
 
+  // Stop processing - defined first to avoid circular dependencies
+  const stopProcessing = useCallback(() => {
+    processingRef.current = false;
+    setIsProcessing(false);
+    if (pollTimeoutRef.current) {
+      clearTimeout(pollTimeoutRef.current);
+      pollTimeoutRef.current = null;
+    }
+  }, []);
+
   // Client-driven processing
   const processNextDay = useCallback(async () => {
-    if (!processingRef.current) return;
+    // Guard: Stop if not actively processing
+    if (!processingRef.current) {
+      return;
+    }
+
+    // Guard: Enforce minimum interval between API calls
+    const now = Date.now();
+    if (now - lastProcessTime.current < MIN_PROCESS_INTERVAL) {
+      // Too soon, schedule for later
+      pollTimeoutRef.current = setTimeout(processNextDay, MIN_PROCESS_INTERVAL);
+      return;
+    }
+    lastProcessTime.current = now;
+
+    // Guard: Stop if budget is already exhausted (check local state before API call)
+    if (discoveryBudget && discoveryBudget.remaining <= 0) {
+      if (!budgetExhaustedToastShown.current) {
+        toast.success('Discovery budget exhausted. Discovery session complete.');
+        budgetExhaustedToastShown.current = true;
+      }
+      stopProcessing();
+      return;
+    }
 
     try {
       const res = await fetch('/api/discover/process-day', {
@@ -297,10 +339,15 @@ export default function DiscoverPage() {
         setProgress(data.progress);
 
         if (data.complete) {
-          // Processing complete
+          // Processing complete - show toast only once
           stopProcessing();
+          if (!budgetExhaustedToastShown.current) {
+            toast.success(data.message || 'Discovery complete.');
+            if (data.reason === 'budget_exhausted') {
+              budgetExhaustedToastShown.current = true;
+            }
+          }
           await fetchStatus();
-          toast.success(data.message);
         } else if (processingRef.current) {
           // Continue processing after a short delay
           pollTimeoutRef.current = setTimeout(processNextDay, POLL_INTERVAL);
@@ -313,22 +360,25 @@ export default function DiscoverPage() {
       console.error('Process day error:', err);
       stopProcessing();
     }
-  }, [fetchStatus, toast]);
+  }, [fetchStatus, toast, discoveryBudget, stopProcessing]);
 
   const startProcessing = useCallback(() => {
+    // Guard: Don't start if already processing
+    if (processingRef.current) {
+      return;
+    }
+
+    // Guard: Don't start if budget is exhausted
+    if (discoveryBudget && discoveryBudget.remaining <= 0) {
+      return;
+    }
+
     processingRef.current = true;
     setIsProcessing(true);
+    // Reset toast flag when starting new processing
+    budgetExhaustedToastShown.current = false;
     processNextDay();
-  }, [processNextDay]);
-
-  const stopProcessing = useCallback(() => {
-    processingRef.current = false;
-    setIsProcessing(false);
-    if (pollTimeoutRef.current) {
-      clearTimeout(pollTimeoutRef.current);
-      pollTimeoutRef.current = null;
-    }
-  }, []);
+  }, [processNextDay, discoveryBudget]);
 
   // ============================================================
   // Review API Handlers
@@ -466,14 +516,28 @@ export default function DiscoverPage() {
   }, [activeTab, session, fetchItems]);
 
   // Resume processing if session is running on mount
+  // Using refs to avoid dependency cycles that cause infinite loops
   useEffect(() => {
-    if (session?.status === 'running' && !isProcessing) {
+    // Guard: Only start if session is running, not already processing, and budget available
+    const shouldProcess =
+      session?.status === 'running' &&
+      !processingRef.current &&
+      (!discoveryBudget || discoveryBudget.remaining > 0);
+
+    if (shouldProcess) {
       startProcessing();
     }
+
     return () => {
-      stopProcessing();
+      // Cleanup: stop processing when component unmounts or dependencies change
+      if (pollTimeoutRef.current) {
+        clearTimeout(pollTimeoutRef.current);
+        pollTimeoutRef.current = null;
+      }
+      processingRef.current = false;
     };
-  }, [session?.status, isProcessing, startProcessing, stopProcessing]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.status]); // Intentionally minimal deps - use refs for other checks
 
   // ============================================================
   // Computed
