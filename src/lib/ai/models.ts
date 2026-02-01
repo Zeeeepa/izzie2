@@ -11,7 +11,7 @@ export const MODELS = {
   SCHEDULER: 'anthropic/claude-haiku-4.5',
 
   // STANDARD tier - General purpose tasks (Izzie chat, Telegram)
-  GENERAL: 'anthropic/claude-sonnet-4.5',
+  GENERAL: 'anthropic/claude-opus-4.5',
 
   // PREMIUM tier - Complex reasoning and orchestration
   ORCHESTRATOR: 'anthropic/claude-opus-4.5',
