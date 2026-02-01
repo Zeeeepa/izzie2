@@ -43,13 +43,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { SignOutButton } from '@/components/auth/SignOutButton';
 
 interface AppSidebarProps {
   user: {
     name?: string | null;
     email?: string | null;
+    image?: string | null;
   };
 }
 
@@ -323,6 +324,9 @@ export function AppSidebar({ user }: AppSidebarProps) {
                   className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
                 >
                   <Avatar className="h-8 w-8 rounded-lg">
+                    {user.image && (
+                      <AvatarImage src={user.image} alt={user.name || 'User avatar'} />
+                    )}
                     <AvatarFallback className="rounded-lg text-xs font-medium">
                       {getUserInitials()}
                     </AvatarFallback>
@@ -344,6 +348,26 @@ export function AppSidebar({ user }: AppSidebarProps) {
                 align="end"
                 sideOffset={4}
               >
+                <DropdownMenuLabel className="font-normal">
+                  <div className="flex flex-col space-y-1">
+                    <p className="text-sm font-medium leading-none">{user.name || 'User'}</p>
+                    <p className="text-xs leading-none text-muted-foreground">{user.email}</p>
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link href="/dashboard/settings/preferences" className="cursor-pointer">
+                    <Settings className="mr-2 h-4 w-4 stroke-[1.5]" />
+                    <span className="text-sm">Settings</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href="/dashboard/settings/accounts" className="cursor-pointer">
+                    <Users className="mr-2 h-4 w-4 stroke-[1.5]" />
+                    <span className="text-sm">Connected Accounts</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
                   <SignOutButton variant="ghost" className="w-full justify-start">
                     <LogOut className="mr-2 h-4 w-4 stroke-[1.5]" />
