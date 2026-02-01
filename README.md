@@ -1,104 +1,128 @@
-# Izzie2 - AI Personal Assistant
+# Izzie - Personal AI Assistant
 
-Intelligent personal assistant powered by AI, built with Next.js 15 and TypeScript.
+Izzie is a personal AI assistant with persistent memory, entity/relationship discovery, and deep integration with your Google services, GitHub, and Telegram.
 
-## Architecture
+## Features
 
-Izzie2 uses a multi-agent architecture:
+- **AI Chat** - Natural language interface powered by Claude Opus 4.5
+- **Memory** - Persistent memory across conversations using Mem0 and Neo4j
+- **Entity Extraction** - Automatically discovers people, companies, projects from your emails and calendar
+- **Relationship Discovery** - Builds a knowledge graph of connections between entities
+- **Gmail Integration** - Search, archive, send, filter, and manage emails
+- **Google Tasks** - Create, complete, and manage task lists
+- **Calendar** - View and query your schedule
+- **Google Contacts** - Search and sync contacts
+- **GitHub Issues** - List, create, and manage repository issues
+- **Telegram Bot** - Chat with Izzie from mobile
+- **MCP Server** - Use Izzie tools in Claude Desktop
 
-- **Orchestrator Agent** (Claude Opus 4): Main decision-making agent
-- **Classifier Agent** (Mistral Large): Event classification and routing
-- **Scheduler Agent**: Calendar and scheduling operations
-- **Notifier Agent**: Notifications via Telegram
+See [User Guide](docs/USER_GUIDE.md) for detailed feature documentation.
 
-## Tech Stack
+## Quick Start
 
-- **Framework**: Next.js 15 (App Router)
-- **Language**: TypeScript (strict mode)
-- **AI**: OpenRouter (Claude, Mistral)
-- **Events**: Inngest
-- **Database**: Neon Postgres + Neo4j
-- **Validation**: Zod
-- **Deployment**: Vercel
-
-## Getting Started
-
-1. **Install dependencies**:
+1. **Clone and install**
    ```bash
-   npm install
+   git clone https://github.com/bobmatnyc/izzie2.git
+   cd izzie2
+   pnpm install
    ```
 
-2. **Set up environment variables**:
+2. **Configure environment**
    ```bash
    cp .env.example .env.local
    # Edit .env.local with your API keys
    ```
 
-3. **Run the development server**:
+3. **Set up database**
    ```bash
-   npm run dev
+   pnpm db:migrate
    ```
 
-4. **Open [http://localhost:3000](http://localhost:3000)** in your browser.
+4. **Run development server**
+   ```bash
+   pnpm dev
+   ```
 
-## Project Structure
+5. **Open [http://localhost:3300](http://localhost:3300)** and sign in with Google
 
-```
-src/
-├── app/                    # Next.js App Router
-│   ├── api/               # API routes
-│   │   ├── webhooks/      # Webhook endpoints
-│   │   └── inngest/       # Inngest function endpoint
-│   ├── auth/              # Auth routes
-│   └── layout.tsx         # Root layout
-├── lib/                   # Shared utilities
-│   ├── ai/               # AI/LLM integration
-│   ├── events/           # Inngest event definitions
-│   └── memory/           # Memory layer
-├── agents/               # Agent implementations
-│   ├── orchestrator/     # Main orchestrator
-│   ├── classifier/       # Event classifier
-│   ├── scheduler/        # Calendar scheduler
-│   └── notifier/         # Notification agent
-└── types/                # TypeScript types
-```
+## Tech Stack
 
-## Available Scripts
+| Component | Technology |
+|-----------|------------|
+| Framework | Next.js 16 (App Router, Turbopack) |
+| Language | TypeScript (strict mode) |
+| AI | Claude Opus 4.5 via Anthropic SDK |
+| Vector DB | Weaviate |
+| Graph DB | Neo4j |
+| SQL DB | Neon Postgres + Drizzle ORM |
+| Memory | Mem0 |
+| Events | Inngest |
+| Auth | Better Auth + Google OAuth |
+| UI | React 19, Tailwind CSS, Radix UI |
+| Validation | Zod |
 
-- `npm run dev` - Start development server
-- `npm run build` - Build for production
-- `npm run start` - Start production server
-- `npm run lint` - Run ESLint
-- `npm run format` - Format code with Prettier
-- `npm run type-check` - Check TypeScript types
+## Scripts
 
-## API Endpoints
+### Development
+| Command | Description |
+|---------|-------------|
+| `pnpm dev` | Start dev server (port 3300) |
+| `pnpm build` | Build for production |
+| `pnpm start` | Start production server |
+| `pnpm lint` | Run ESLint |
+| `pnpm format` | Format code with Prettier |
+| `pnpm type-check` | Check TypeScript types |
 
-- `/api/health` - Health check endpoint
-- `/api/webhooks/github` - GitHub webhook handler
-- `/api/webhooks/linear` - Linear webhook handler
-- `/api/webhooks/google` - Google Calendar webhook handler
-- `/api/inngest` - Inngest function endpoint
+### Testing
+| Command | Description |
+|---------|-------------|
+| `pnpm test` | Run all tests |
+| `pnpm test:unit` | Run unit tests |
+| `pnpm test:integration` | Run integration tests |
+| `pnpm test:e2e:playwright` | Run Playwright E2E tests |
+| `pnpm test:regression` | Run regression tests |
+
+### Database
+| Command | Description |
+|---------|-------------|
+| `pnpm db:generate` | Generate migrations |
+| `pnpm db:migrate` | Run migrations |
+| `pnpm db:studio` | Open Drizzle Studio |
+| `pnpm db:push` | Push schema changes |
+
+### Services
+| Command | Description |
+|---------|-------------|
+| `pnpm mcp-server` | Start MCP server for Claude Desktop |
+| `pnpm onboarding` | Start onboarding server |
+| `pnpm onboarding:train` | Run training pipeline |
+
+### Utilities
+| Command | Description |
+|---------|-------------|
+| `pnpm benchmark` | Run performance benchmarks |
+| `pnpm env:validate` | Validate environment variables |
+| `pnpm check:relationships` | Check relationship graph |
 
 ## Environment Variables
 
-See `.env.example` for required environment variables:
+Required variables (see `.env.example`):
 
-- `OPENROUTER_API_KEY` - OpenRouter API key
+- `ANTHROPIC_API_KEY` - Anthropic API key for Claude
 - `DATABASE_URL` - Neon Postgres connection string
 - `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD` - Neo4j credentials
-- `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY` - Inngest credentials
+- `WEAVIATE_URL`, `WEAVIATE_API_KEY` - Weaviate credentials
+- `MEM0_API_KEY` - Mem0 API key
 - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` - Google OAuth
-- `TELEGRAM_BOT_TOKEN` - Telegram bot token
+- `TELEGRAM_BOT_TOKEN` - Telegram bot token (optional)
+- `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY` - Inngest credentials
 
-## Development Roadmap
+## Documentation
 
-- [x] **POC-0**: Project setup (Issue #7)
-- [ ] **POC-1**: Basic AI orchestration (Issue #8)
-- [ ] **POC-2**: Database integration
-- [ ] **POC-3**: Authentication (Better Auth)
-- [ ] **POC-4**: Event processing (Inngest)
-- [ ] **POC-5**: Memory layer (Mem0)
+- [User Guide](docs/USER_GUIDE.md) - End-user documentation
+- [Architecture](docs/architecture/izzie-architecture.md) - System architecture
+- [Auth Setup](docs/AUTH_SETUP.md) - Authentication configuration
+- [Quick Start Guides](docs/guides/) - Feature-specific guides
 
 ## License
 
