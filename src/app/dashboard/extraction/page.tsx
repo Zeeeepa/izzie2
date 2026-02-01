@@ -9,6 +9,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useConfirmModal } from '@/components/ui/confirm-modal';
 
 // ============================================================
 // Types
@@ -101,6 +102,8 @@ function formatEta(seconds: number): string {
 // ============================================================
 
 export default function ExtractionPage() {
+  const { showConfirmation } = useConfirmModal();
+
   // Entity Extraction State
   const [entityStatus, setEntityStatus] = useState('');
   const [sources, setSources] = useState({
@@ -225,7 +228,15 @@ export default function ExtractionPage() {
   };
 
   const handleResetEntity = async (source: ExtractionSource) => {
-    if (!confirm(`Are you sure you want to reset ${SOURCE_LABELS[source]} extraction progress? This will clear the error state.`)) {
+    const confirmed = await showConfirmation({
+      title: `Reset ${SOURCE_LABELS[source]} Extraction?`,
+      message: `Are you sure you want to reset ${SOURCE_LABELS[source]} extraction progress? This will clear the error state.`,
+      confirmText: 'Reset',
+      cancelText: 'Cancel',
+      variant: 'destructive',
+    });
+
+    if (!confirmed) {
       return;
     }
 

@@ -9,6 +9,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { SignOutButton } from '@/components/auth/SignOutButton';
+import { useConfirmModal } from '@/components/ui/confirm-modal';
 
 type PageState = 'loading' | 'loaded' | 'error';
 
@@ -138,6 +139,8 @@ const GoogleIcon = () => (
 );
 
 export default function AccountsSettingsPage() {
+  const { showConfirmation } = useConfirmModal();
+
   // Page state
   const [pageState, setPageState] = useState<PageState>('loading');
   const [pageError, setPageError] = useState<string | null>(null);
@@ -232,7 +235,14 @@ export default function AccountsSettingsPage() {
 
   // Disconnect account
   const handleDisconnect = async (accountId: string) => {
-    if (!confirm('Are you sure you want to disconnect this account?')) return;
+    const confirmed = await showConfirmation({
+      title: 'Disconnect Account?',
+      message: 'Are you sure you want to disconnect this account?',
+      confirmText: 'Disconnect',
+      cancelText: 'Cancel',
+      variant: 'destructive',
+    });
+    if (!confirmed) return;
 
     try {
       const response = await fetch('/api/user/accounts', {

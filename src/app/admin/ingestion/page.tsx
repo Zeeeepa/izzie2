@@ -11,6 +11,8 @@ import { GraphStats } from '@/components/admin/GraphStats';
 import { ControlButton } from '@/components/admin/ControlButton';
 import { SignOutButton } from '@/components/auth/SignOutButton';
 import Link from 'next/link';
+import { useToast } from '@/components/ui/toast';
+import { useConfirmModal } from '@/components/ui/confirm-modal';
 
 interface IngestionStatus {
   userId: string;
@@ -37,6 +39,9 @@ interface GraphStatsData {
 }
 
 export default function IngestionDashboard() {
+  const toast = useToast();
+  const { showConfirmation } = useConfirmModal();
+
   const [status, setStatus] = useState<IngestionStatus | null>(null);
   const [graphStats, setGraphStats] = useState<GraphStatsData | null>(null);
   const [isLoadingStatus, setIsLoadingStatus] = useState(true);
@@ -99,9 +104,12 @@ export default function IngestionDashboard() {
   const handleSyncEmail = async () => {
     if (isSyncingEmail) return;
 
-    const confirmed = window.confirm(
-      'Start email sync? This will process new emails from Gmail.'
-    );
+    const confirmed = await showConfirmation({
+      title: 'Start Email Sync?',
+      message: 'This will process new emails from Gmail.',
+      confirmText: 'Start Sync',
+      cancelText: 'Cancel',
+    });
     if (!confirmed) return;
 
     setIsSyncingEmail(true);
@@ -111,7 +119,7 @@ export default function IngestionDashboard() {
       });
 
       if (response.ok) {
-        alert('Email sync started successfully');
+        toast.success('Email sync started successfully');
         // Wait a bit then refresh
         setTimeout(() => {
           fetchStatus();
@@ -119,11 +127,11 @@ export default function IngestionDashboard() {
         }, 2000);
       } else {
         const error = await response.json();
-        alert(`Email sync failed: ${error.error || 'Unknown error'}`);
+        toast.error(`Email sync failed: ${error.error || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Email sync error:', error);
-      alert('Email sync failed');
+      toast.error('Email sync failed');
     } finally {
       setIsSyncingEmail(false);
     }
@@ -133,9 +141,12 @@ export default function IngestionDashboard() {
   const handleSyncDrive = async () => {
     if (isSyncingDrive) return;
 
-    const confirmed = window.confirm(
-      'Start Drive sync? This will process new files from Google Drive.'
-    );
+    const confirmed = await showConfirmation({
+      title: 'Start Drive Sync?',
+      message: 'This will process new files from Google Drive.',
+      confirmText: 'Start Sync',
+      cancelText: 'Cancel',
+    });
     if (!confirmed) return;
 
     setIsSyncingDrive(true);
@@ -145,7 +156,7 @@ export default function IngestionDashboard() {
       });
 
       if (response.ok) {
-        alert('Drive sync started successfully');
+        toast.success('Drive sync started successfully');
         // Wait a bit then refresh
         setTimeout(() => {
           fetchStatus();
@@ -153,11 +164,11 @@ export default function IngestionDashboard() {
         }, 2000);
       } else {
         const error = await response.json();
-        alert(`Drive sync failed: ${error.error || 'Unknown error'}`);
+        toast.error(`Drive sync failed: ${error.error || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Drive sync error:', error);
-      alert('Drive sync failed');
+      toast.error('Drive sync failed');
     } finally {
       setIsSyncingDrive(false);
     }
@@ -167,14 +178,22 @@ export default function IngestionDashboard() {
   const handleReset = async () => {
     if (isResetting) return;
 
-    const confirmed = window.confirm(
-      'Reset all sync state? This will clear sync progress and start fresh. Are you sure?'
-    );
+    const confirmed = await showConfirmation({
+      title: 'Reset Sync State?',
+      message: 'This will clear sync progress and start fresh. Are you sure?',
+      confirmText: 'Continue',
+      cancelText: 'Cancel',
+      variant: 'destructive',
+    });
     if (!confirmed) return;
 
-    const doubleConfirm = window.confirm(
-      'This action cannot be undone. All sync progress will be lost. Continue?'
-    );
+    const doubleConfirm = await showConfirmation({
+      title: 'Final Confirmation',
+      message: 'This action cannot be undone. All sync progress will be lost. Continue?',
+      confirmText: 'Reset Everything',
+      cancelText: 'Cancel',
+      variant: 'destructive',
+    });
     if (!doubleConfirm) return;
 
     setIsResetting(true);
@@ -184,16 +203,16 @@ export default function IngestionDashboard() {
       });
 
       if (response.ok) {
-        alert('Sync state reset successfully');
+        toast.success('Sync state reset successfully');
         fetchStatus();
         fetchGraphStats();
       } else {
         const error = await response.json();
-        alert(`Reset failed: ${error.error || 'Unknown error'}`);
+        toast.error(`Reset failed: ${error.error || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Reset error:', error);
-      alert('Reset failed');
+      toast.error('Reset failed');
     } finally {
       setIsResetting(false);
     }

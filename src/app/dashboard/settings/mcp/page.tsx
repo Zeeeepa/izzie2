@@ -6,6 +6,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useConfirmModal } from '@/components/ui/confirm-modal';
 
 type MCPTransport = 'stdio' | 'sse' | 'http';
 
@@ -52,6 +53,8 @@ interface ServerStatus {
 }
 
 export default function MCPSettingsPage() {
+  const { showConfirmation } = useConfirmModal();
+
   const [servers, setServers] = useState<MCPServer[]>([]);
   const [serverStatuses, setServerStatuses] = useState<Record<string, ServerStatus>>({});
   const [loading, setLoading] = useState(true);
@@ -156,7 +159,15 @@ export default function MCPSettingsPage() {
 
   // Revoke API key
   const revokeApiKey = async (keyId: string, keyName: string) => {
-    if (!confirm(`Are you sure you want to revoke the API key "${keyName}"? This action cannot be undone.`)) {
+    const confirmed = await showConfirmation({
+      title: 'Revoke API Key?',
+      message: `Are you sure you want to revoke the API key "${keyName}"? This action cannot be undone.`,
+      confirmText: 'Revoke Key',
+      cancelText: 'Cancel',
+      variant: 'destructive',
+    });
+
+    if (!confirmed) {
       return;
     }
 
@@ -315,7 +326,14 @@ export default function MCPSettingsPage() {
 
   // Delete server
   const deleteServer = async (serverId: string) => {
-    if (!confirm('Are you sure you want to delete this server?')) return;
+    const confirmed = await showConfirmation({
+      title: 'Delete Server?',
+      message: 'Are you sure you want to delete this server?',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      variant: 'destructive',
+    });
+    if (!confirmed) return;
 
     try {
       const response = await fetch(`/api/mcp/servers/${serverId}`, {

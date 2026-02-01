@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
+import { ToastProvider } from '@/components/ui/toast';
+import { ConfirmModalProvider } from '@/components/ui/confirm-modal';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -24,7 +26,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={inter.variable}>
-      <body className="font-sans antialiased">{children}</body>
+      <body className="font-sans antialiased">
+        <ToastProvider>
+          <ConfirmModalProvider>
+            {children}
+          </ConfirmModalProvider>
+        </ToastProvider>
+      </body>
     </html>
   );
 }

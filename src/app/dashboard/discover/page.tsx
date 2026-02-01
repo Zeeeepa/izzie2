@@ -7,6 +7,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { useToast } from '@/components/ui/toast';
+import { useConfirmModal } from '@/components/ui/confirm-modal';
 
 // ============================================================
 // Types
@@ -108,6 +110,9 @@ const DATE_RANGE_OPTIONS = [
 // ============================================================
 
 export default function DiscoverPage() {
+  const toast = useToast();
+  const { showConfirmation } = useConfirmModal();
+
   // Mode state
   const [mode, setMode] = useState<DiscoverMode>('discovery');
 
@@ -376,7 +381,15 @@ export default function DiscoverPage() {
   const handleCancelTraining = async () => {
     if (!trainingSession) return;
 
-    if (!confirm('Are you sure you want to cancel this training session? This cannot be undone.')) {
+    const confirmed = await showConfirmation({
+      title: 'Cancel Training?',
+      message: 'Are you sure you want to cancel this training session? This cannot be undone.',
+      confirmText: 'Cancel Training',
+      cancelText: 'Keep Going',
+      variant: 'destructive',
+    });
+
+    if (!confirmed) {
       return;
     }
 
