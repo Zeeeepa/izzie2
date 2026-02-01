@@ -63,7 +63,7 @@ export function ConfirmModalProvider({ children }: { children: React.ReactNode }
           <Dialog.Content
             className={cn(
               'fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2',
-              'bg-background rounded-lg border shadow-lg p-6',
+              'bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 shadow-lg p-6',
               'data-[state=open]:animate-in data-[state=closed]:animate-out',
               'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
               'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',

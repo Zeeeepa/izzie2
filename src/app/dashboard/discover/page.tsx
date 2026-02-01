@@ -9,6 +9,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useToast } from '@/components/ui/toast';
 import { useConfirmModal } from '@/components/ui/confirm-modal';
+import { ThumbsUp, ThumbsDown, MessageSquare, X } from 'lucide-react';
 
 // ============================================================
 // Types
@@ -58,6 +59,7 @@ interface TrainingSample {
     reasoning?: string;
   };
   status: 'pending' | 'reviewed' | 'skipped';
+  feedbackStatus?: 'correct' | 'incorrect' | null;
 }
 
 interface TrainingException {
@@ -138,9 +140,16 @@ export default function DiscoverPage() {
   const [trainingLoading, setTrainingLoading] = useState(true);
   const [trainingError, setTrainingError] = useState('');
 
-  // Current sample for feedback
+  // Samples list for feedback
+  const [samples, setSamples] = useState<TrainingSample[]>([]);
   const [currentSample, setCurrentSample] = useState<TrainingSample | null>(null);
   const [pendingSamples, setPendingSamples] = useState(0);
+
+  // Note dialog state
+  const [noteDialogOpen, setNoteDialogOpen] = useState(false);
+  const [selectedSampleForNote, setSelectedSampleForNote] = useState<TrainingSample | null>(null);
+  const [noteDialogFeedback, setNoteDialogFeedback] = useState<boolean | null>(null);
+  const [noteDialogText, setNoteDialogText] = useState('');
 
   // Exceptions
   const [exceptions, setExceptions] = useState<TrainingException[]>([]);
@@ -228,7 +237,7 @@ export default function DiscoverPage() {
     }
   }, []);
 
-  const fetchNextSample = useCallback(async () => {
+  const fetchSamples = useCallback(async () => {
     if (!trainingSession) return;
 
     try {
@@ -236,10 +245,22 @@ export default function DiscoverPage() {
       const data = await res.json();
 
       if (data.success) {
-        setCurrentSample(data.sample);
+        // If we get a single sample, add it to the list if not already present
+        if (data.sample) {
+          setSamples(prev => {
+            const exists = prev.some(s => s.id === data.sample.id);
+            if (exists) return prev;
+            return [...prev, data.sample];
+          });
+          setCurrentSample(data.sample);
+        }
+        // If we get multiple samples
+        if (data.samples) {
+          setSamples(data.samples);
+        }
       }
     } catch (err) {
-      console.error('Failed to fetch sample:', err);
+      console.error('Failed to fetch samples:', err);
     }
   }, [trainingSession]);
 
@@ -264,10 +285,10 @@ export default function DiscoverPage() {
 
   useEffect(() => {
     if (trainingSession) {
-      fetchNextSample();
+      fetchSamples();
       fetchExceptions();
     }
-  }, [trainingSession, fetchNextSample, fetchExceptions]);
+  }, [trainingSession, fetchSamples, fetchExceptions]);
 
   // ============================================================
   // Training Action Handlers
@@ -293,7 +314,7 @@ export default function DiscoverPage() {
 
       if (data.success) {
         setTrainingSession(data.session);
-        fetchNextSample();
+        fetchSamples();
       } else {
         setTrainingError(data.error || 'Failed to start training');
       }
@@ -304,19 +325,17 @@ export default function DiscoverPage() {
     }
   };
 
-  const handleSubmitFeedback = async (isCorrect: boolean) => {
-    if (!currentSample) return;
-
+  const handleSubmitFeedback = async (sampleId: string, isCorrect: boolean, notes?: string) => {
     try {
       const res = await fetch('/api/train/feedback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          sampleId: currentSample.id,
+          sampleId,
           action: 'feedback',
           isCorrect,
           correctedLabel: !isCorrect ? correctedLabel : undefined,
-          notes: feedbackNotes || undefined,
+          notes: notes || feedbackNotes || undefined,
         }),
       });
 
@@ -325,7 +344,12 @@ export default function DiscoverPage() {
       if (data.success) {
         setFeedbackNotes('');
         setCorrectedLabel('');
-        fetchNextSample();
+        // Update the sample in the list to show feedback status
+        setSamples(prev => prev.map(s =>
+          s.id === sampleId
+            ? { ...s, status: 'reviewed' as const, feedbackStatus: isCorrect ? 'correct' : 'incorrect' }
+            : s
+        ));
         fetchTrainingStatus();
       }
     } catch (err) {
@@ -333,15 +357,36 @@ export default function DiscoverPage() {
     }
   };
 
-  const handleSkipSample = async () => {
-    if (!currentSample) return;
+  // Quick feedback (thumbs up/down without dialog)
+  const handleQuickFeedback = async (sampleId: string, isCorrect: boolean) => {
+    await handleSubmitFeedback(sampleId, isCorrect);
+  };
 
+  // Open note dialog for a sample
+  const openNoteDialog = (sample: TrainingSample) => {
+    setSelectedSampleForNote(sample);
+    setNoteDialogFeedback(null);
+    setNoteDialogText('');
+    setNoteDialogOpen(true);
+  };
+
+  // Submit feedback from note dialog
+  const submitNoteDialogFeedback = async () => {
+    if (!selectedSampleForNote || noteDialogFeedback === null) return;
+    await handleSubmitFeedback(selectedSampleForNote.id, noteDialogFeedback, noteDialogText);
+    setNoteDialogOpen(false);
+    setSelectedSampleForNote(null);
+    setNoteDialogText('');
+    setNoteDialogFeedback(null);
+  };
+
+  const handleSkipSample = async (sampleId: string) => {
     try {
       const res = await fetch('/api/train/feedback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          sampleId: currentSample.id,
+          sampleId,
           action: 'skip',
         }),
       });
@@ -349,7 +394,9 @@ export default function DiscoverPage() {
       const data = await res.json();
 
       if (data.success) {
-        fetchNextSample();
+        setSamples(prev => prev.map(s =>
+          s.id === sampleId ? { ...s, status: 'skipped' as const } : s
+        ));
       }
     } catch (err) {
       console.error('Failed to skip sample:', err);
@@ -405,6 +452,7 @@ export default function DiscoverPage() {
       if (data.success) {
         setTrainingSession(null);
         setCurrentSample(null);
+        setSamples([]);
         setExceptions([]);
       }
     } catch (err) {
@@ -1051,85 +1099,329 @@ export default function DiscoverPage() {
                 </div>
               </div>
 
-              {/* Sample Feedback Card */}
-              {currentSample && trainingSession.status === 'collecting' && (
-                <div style={{ backgroundColor: '#fff', border: '2px solid #10b981', borderRadius: '12px', padding: '1.5rem', marginBottom: '1.5rem' }}>
+              {/* Samples List View */}
+              {trainingSession.status === 'collecting' && (
+                <div style={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '1.5rem', marginBottom: '1.5rem' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
-                    <h3 style={{ fontSize: '1.125rem', fontWeight: '600', color: '#111' }}>Review Prediction</h3>
-                    <span style={{ padding: '0.25rem 0.75rem', borderRadius: '9999px', backgroundColor: '#f3f4f6', color: '#374151', fontSize: '0.75rem', fontWeight: '600', textTransform: 'capitalize' }}>
-                      {currentSample.type}
+                    <h3 style={{ fontSize: '1.125rem', fontWeight: '600', color: '#111' }}>Review Samples</h3>
+                    <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+                      {samples.filter(s => s.status === 'pending').length} pending
                     </span>
                   </div>
 
-                  {/* Sample Content */}
-                  <div style={{ backgroundColor: '#f9fafb', borderRadius: '8px', padding: '1rem', marginBottom: '1rem' }}>
-                    <div style={{ fontSize: '0.875rem', color: '#111', marginBottom: '0.5rem' }}>{currentSample.content.text}</div>
-                    {currentSample.content.context && (
-                      <div style={{ fontSize: '0.75rem', color: '#6b7280', fontStyle: 'italic' }}>Context: {currentSample.content.context}</div>
-                    )}
-                  </div>
+                  {samples.length > 0 ? (
+                    <div style={{ maxHeight: '60vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      {samples.map((sample) => {
+                        // Determine border color based on feedback status
+                        let borderColor = '#e5e7eb'; // default gray
+                        let bgColor = '#fff';
+                        if (sample.feedbackStatus === 'correct') {
+                          borderColor = '#22c55e';
+                          bgColor = '#f0fdf4';
+                        } else if (sample.feedbackStatus === 'incorrect') {
+                          borderColor = '#ef4444';
+                          bgColor = '#fef2f2';
+                        } else if (sample.status === 'skipped') {
+                          borderColor = '#9ca3af';
+                          bgColor = '#f9fafb';
+                        }
 
-                  {/* Prediction */}
-                  <div style={{ backgroundColor: '#ecfdf5', border: '1px solid #6ee7b7', borderRadius: '8px', padding: '1rem', marginBottom: '1rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                      <span style={{ fontSize: '0.75rem', fontWeight: '600', color: '#065f46' }}>Predicted Label</span>
-                      <span style={{ padding: '0.25rem 0.5rem', borderRadius: '4px', backgroundColor: currentSample.prediction.confidence >= 80 ? '#d1fae5' : currentSample.prediction.confidence >= 60 ? '#fef3c7' : '#fee2e2', color: currentSample.prediction.confidence >= 80 ? '#065f46' : currentSample.prediction.confidence >= 60 ? '#92400e' : '#991b1b', fontSize: '0.75rem', fontWeight: '600' }}>
-                        {currentSample.prediction.confidence}% confident
-                      </span>
+                        return (
+                          <div
+                            key={sample.id}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              padding: '0.75rem',
+                              backgroundColor: bgColor,
+                              borderRadius: '8px',
+                              border: `2px solid ${borderColor}`,
+                              transition: 'all 0.2s',
+                            }}
+                          >
+                            {/* Left: Content */}
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                                <span
+                                  style={{
+                                    fontSize: '0.75rem',
+                                    padding: '0.125rem 0.5rem',
+                                    borderRadius: '4px',
+                                    backgroundColor: '#dbeafe',
+                                    color: '#1e40af',
+                                    fontWeight: '500',
+                                    textTransform: 'capitalize',
+                                  }}
+                                >
+                                  {sample.type}
+                                </span>
+                                <span
+                                  style={{
+                                    fontWeight: '500',
+                                    fontSize: '0.875rem',
+                                    color: '#111',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap',
+                                  }}
+                                >
+                                  {sample.content.text}
+                                </span>
+                              </div>
+                              {sample.content.context && (
+                                <p
+                                  style={{
+                                    fontSize: '0.75rem',
+                                    color: '#6b7280',
+                                    margin: 0,
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap',
+                                  }}
+                                >
+                                  {sample.content.context}
+                                </p>
+                              )}
+                              <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '0.25rem' }}>
+                                {sample.prediction.label} &bull; {sample.prediction.confidence}% confidence
+                              </div>
+                            </div>
+
+                            {/* Right: Actions */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', marginLeft: '1rem', flexShrink: 0 }}>
+                              {sample.status === 'pending' ? (
+                                <>
+                                  <button
+                                    onClick={() => handleQuickFeedback(sample.id, true)}
+                                    style={{
+                                      padding: '0.5rem',
+                                      borderRadius: '6px',
+                                      border: 'none',
+                                      backgroundColor: 'transparent',
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      transition: 'background-color 0.2s',
+                                    }}
+                                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#dcfce7'}
+                                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                    title="Mark as correct"
+                                  >
+                                    <ThumbsUp style={{ width: '16px', height: '16px', color: '#22c55e' }} />
+                                  </button>
+                                  <button
+                                    onClick={() => handleQuickFeedback(sample.id, false)}
+                                    style={{
+                                      padding: '0.5rem',
+                                      borderRadius: '6px',
+                                      border: 'none',
+                                      backgroundColor: 'transparent',
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      transition: 'background-color 0.2s',
+                                    }}
+                                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#fee2e2'}
+                                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                    title="Mark as incorrect"
+                                  >
+                                    <ThumbsDown style={{ width: '16px', height: '16px', color: '#ef4444' }} />
+                                  </button>
+                                  <button
+                                    onClick={() => openNoteDialog(sample)}
+                                    style={{
+                                      padding: '0.5rem',
+                                      borderRadius: '6px',
+                                      border: 'none',
+                                      backgroundColor: 'transparent',
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      transition: 'background-color 0.2s',
+                                    }}
+                                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#dbeafe'}
+                                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                    title="Add note and feedback"
+                                  >
+                                    <MessageSquare style={{ width: '16px', height: '16px', color: '#3b82f6' }} />
+                                  </button>
+                                </>
+                              ) : (
+                                <span
+                                  style={{
+                                    fontSize: '0.75rem',
+                                    fontWeight: '500',
+                                    color: sample.feedbackStatus === 'correct' ? '#22c55e' : sample.feedbackStatus === 'incorrect' ? '#ef4444' : '#9ca3af',
+                                    textTransform: 'capitalize',
+                                  }}
+                                >
+                                  {sample.feedbackStatus || sample.status}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-                    <div style={{ fontSize: '1rem', fontWeight: '600', color: '#111' }}>{currentSample.prediction.label}</div>
-                    {currentSample.prediction.reasoning && (
-                      <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.5rem' }}>{currentSample.prediction.reasoning}</div>
-                    )}
-                  </div>
-
-                  {/* Correction Input */}
-                  <div style={{ marginBottom: '1rem' }}>
-                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '600', color: '#374151', marginBottom: '0.5rem' }}>
-                      Correct label (if prediction is wrong)
-                    </label>
-                    <input
-                      type="text"
-                      value={correctedLabel}
-                      onChange={(e) => setCorrectedLabel(e.target.value)}
-                      placeholder="Enter correct label..."
-                      style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #e5e7eb', fontSize: '0.875rem' }}
-                    />
-                  </div>
-
-                  {/* Notes Input */}
-                  <div style={{ marginBottom: '1rem' }}>
-                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '600', color: '#374151', marginBottom: '0.5rem' }}>Notes (optional)</label>
-                    <textarea
-                      value={feedbackNotes}
-                      onChange={(e) => setFeedbackNotes(e.target.value)}
-                      placeholder="Add any notes about this sample..."
-                      rows={2}
-                      style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #e5e7eb', fontSize: '0.875rem', resize: 'vertical' }}
-                    />
-                  </div>
-
-                  {/* Feedback Buttons */}
-                  <div style={{ display: 'flex', gap: '0.75rem' }}>
-                    <button onClick={() => handleSubmitFeedback(true)} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', backgroundColor: '#10b981', color: '#fff', padding: '0.875rem 1.5rem', borderRadius: '8px', border: 'none', fontSize: '1rem', fontWeight: '600', cursor: 'pointer' }}>
-                      Correct
-                    </button>
-                    <button onClick={() => handleSubmitFeedback(false)} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', backgroundColor: '#ef4444', color: '#fff', padding: '0.875rem 1.5rem', borderRadius: '8px', border: 'none', fontSize: '1rem', fontWeight: '600', cursor: 'pointer' }}>
-                      Incorrect
-                    </button>
-                    <button onClick={handleSkipSample} style={{ padding: '0.875rem 1rem', borderRadius: '8px', border: '1px solid #e5e7eb', backgroundColor: '#fff', color: '#6b7280', fontSize: '0.875rem', fontWeight: '600', cursor: 'pointer' }}>
-                      Skip
-                    </button>
-                  </div>
+                  ) : (
+                    <div style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
+                      <p style={{ fontSize: '0.875rem', margin: 0 }}>No samples to review. Check back later or generate more samples.</p>
+                    </div>
+                  )}
                 </div>
               )}
 
-              {/* No More Samples */}
-              {!currentSample && trainingSession.status === 'collecting' && (
-                <div style={{ backgroundColor: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '2rem', textAlign: 'center', marginBottom: '1.5rem' }}>
-                  <h3 style={{ fontSize: '1.125rem', fontWeight: '600', color: '#111', marginBottom: '0.5rem' }}>All caught up!</h3>
-                  <p style={{ fontSize: '0.875rem', color: '#6b7280' }}>No more samples to review. Check back later or generate more samples.</p>
-                </div>
+              {/* Note Dialog */}
+              {noteDialogOpen && selectedSampleForNote && (
+                <>
+                  {/* Backdrop */}
+                  <div
+                    style={{
+                      position: 'fixed',
+                      inset: 0,
+                      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                      zIndex: 50,
+                    }}
+                    onClick={() => setNoteDialogOpen(false)}
+                  />
+                  {/* Dialog */}
+                  <div
+                    style={{
+                      position: 'fixed',
+                      left: '50%',
+                      top: '50%',
+                      transform: 'translate(-50%, -50%)',
+                      zIndex: 51,
+                      width: '100%',
+                      maxWidth: '28rem',
+                      backgroundColor: '#fff',
+                      borderRadius: '12px',
+                      boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+                      padding: '1.5rem',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                      <h3 style={{ fontSize: '1.125rem', fontWeight: '600', color: '#111', margin: 0 }}>Add Feedback</h3>
+                      <button
+                        onClick={() => setNoteDialogOpen(false)}
+                        style={{
+                          padding: '0.25rem',
+                          borderRadius: '4px',
+                          border: 'none',
+                          backgroundColor: 'transparent',
+                          cursor: 'pointer',
+                          color: '#6b7280',
+                        }}
+                      >
+                        <X style={{ width: '20px', height: '20px' }} />
+                      </button>
+                    </div>
+
+                    {/* Sample preview */}
+                    <div
+                      style={{
+                        padding: '0.75rem',
+                        backgroundColor: '#f9fafb',
+                        borderRadius: '8px',
+                        marginBottom: '1rem',
+                      }}
+                    >
+                      <p style={{ fontWeight: '500', fontSize: '0.875rem', color: '#111', margin: 0, marginBottom: '0.25rem' }}>
+                        {selectedSampleForNote.content.text}
+                      </p>
+                      <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0 }}>
+                        {selectedSampleForNote.prediction.label}
+                      </p>
+                    </div>
+
+                    {/* Notes textarea */}
+                    <textarea
+                      placeholder="Add notes or corrections..."
+                      value={noteDialogText}
+                      onChange={(e) => setNoteDialogText(e.target.value)}
+                      rows={3}
+                      style={{
+                        width: '100%',
+                        padding: '0.75rem',
+                        borderRadius: '8px',
+                        border: '1px solid #e5e7eb',
+                        fontSize: '0.875rem',
+                        resize: 'vertical',
+                        marginBottom: '1rem',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+
+                    {/* Feedback buttons */}
+                    <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+                      <button
+                        onClick={() => setNoteDialogFeedback(true)}
+                        style={{
+                          flex: 1,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '0.5rem',
+                          padding: '0.75rem',
+                          borderRadius: '8px',
+                          border: noteDialogFeedback === true ? '2px solid #22c55e' : '1px solid #e5e7eb',
+                          backgroundColor: noteDialogFeedback === true ? '#f0fdf4' : '#fff',
+                          color: noteDialogFeedback === true ? '#166534' : '#374151',
+                          fontSize: '0.875rem',
+                          fontWeight: '600',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <ThumbsUp style={{ width: '16px', height: '16px' }} />
+                        Correct
+                      </button>
+                      <button
+                        onClick={() => setNoteDialogFeedback(false)}
+                        style={{
+                          flex: 1,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '0.5rem',
+                          padding: '0.75rem',
+                          borderRadius: '8px',
+                          border: noteDialogFeedback === false ? '2px solid #ef4444' : '1px solid #e5e7eb',
+                          backgroundColor: noteDialogFeedback === false ? '#fef2f2' : '#fff',
+                          color: noteDialogFeedback === false ? '#991b1b' : '#374151',
+                          fontSize: '0.875rem',
+                          fontWeight: '600',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <ThumbsDown style={{ width: '16px', height: '16px' }} />
+                        Incorrect
+                      </button>
+                    </div>
+
+                    {/* Submit button */}
+                    <button
+                      onClick={submitNoteDialogFeedback}
+                      disabled={noteDialogFeedback === null}
+                      style={{
+                        width: '100%',
+                        padding: '0.75rem',
+                        borderRadius: '8px',
+                        border: 'none',
+                        backgroundColor: noteDialogFeedback === null ? '#e5e7eb' : '#3b82f6',
+                        color: noteDialogFeedback === null ? '#9ca3af' : '#fff',
+                        fontSize: '0.875rem',
+                        fontWeight: '600',
+                        cursor: noteDialogFeedback === null ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      Submit Feedback
+                    </button>
+                  </div>
+                </>
               )}
 
               {/* Exceptions List */}
