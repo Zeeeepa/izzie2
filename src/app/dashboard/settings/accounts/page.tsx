@@ -270,21 +270,34 @@ export default function AccountsSettingsPage() {
   };
 
   // Reconnect account to refresh OAuth scopes
-  // Uses login_hint to pre-select the account and forces consent screen
-  const handleReconnect = (accountEmail: string | null) => {
+  // Deletes existing tokens BEFORE redirecting to OAuth to force full consent screen
+  const handleReconnect = async (accountEmail: string | null) => {
     if (!accountEmail) {
       showMessage('error', 'Cannot reconnect: account email not found');
       return;
     }
 
-    // Build OAuth URL with login_hint to pre-select the account
-    // The prompt=consent is already set in Better Auth config, which forces re-consent
-    const params = new URLSearchParams({
-      login_hint: accountEmail,
-      link: 'true', // Add to existing account
-    });
+    try {
+      // Call the reconnect API to delete existing tokens before OAuth redirect
+      // This ensures Google shows the FULL consent screen with ALL scopes
+      const response = await fetch('/api/auth/reconnect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountEmail }),
+      });
 
-    window.location.href = `/api/auth/google?${params.toString()}`;
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to initiate reconnect');
+      }
+
+      const data = await response.json();
+
+      // Redirect to OAuth with login_hint pre-filled
+      window.location.href = data.redirectUrl;
+    } catch (error) {
+      showMessage('error', error instanceof Error ? error.message : 'Failed to reconnect');
+    }
   };
 
   // Format date
