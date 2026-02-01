@@ -22,6 +22,7 @@ import type {
 import { WINDOW_SIZE } from './types';
 import { SessionStorage, getSessionStorage } from './storage';
 import { incrementalCompress } from './compression';
+import { storeMessage } from '../conversation-search';
 
 const LOG_PREFIX = '[SessionManager]';
 
@@ -156,6 +157,12 @@ export class ChatSessionManager {
     session.recentMessages.push(userMsg, assistantMsg);
     session.messageCount += 2;
 
+    // Store messages in chat_messages table for semantic search
+    // Do this in the background to not block the response
+    this.storeMessagesAsync(session.id, session.userId, userMsg, assistantMsg, metadata).catch(
+      (error) => console.error(`${LOG_PREFIX} Failed to store messages for search:`, error)
+    );
+
     // Check if compression is needed (window exceeded)
     const maxMessages = WINDOW_SIZE * 2; // 5 pairs = 10 messages
     if (session.recentMessages.length > maxMessages) {
@@ -182,6 +189,30 @@ export class ChatSessionManager {
     );
 
     return session;
+  }
+
+  /**
+   * Store messages in chat_messages table asynchronously for semantic search
+   */
+  private async storeMessagesAsync(
+    sessionId: string,
+    userId: string,
+    userMsg: ChatMessage,
+    assistantMsg: ChatMessage,
+    metadata?: { tokensUsed?: number; model?: string }
+  ): Promise<void> {
+    try {
+      // Store user message
+      await storeMessage(sessionId, userId, 'user', userMsg.content);
+
+      // Store assistant message with metadata
+      await storeMessage(sessionId, userId, 'assistant', assistantMsg.content, metadata);
+
+      console.log(`${LOG_PREFIX} Messages stored for semantic search`);
+    } catch (error) {
+      // Log but don't throw - this is a non-critical operation
+      console.error(`${LOG_PREFIX} Failed to store messages for search:`, error);
+    }
   }
 
   /**

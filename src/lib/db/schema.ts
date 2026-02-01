@@ -1580,3 +1580,50 @@ export type NewTrainingSample = typeof trainingSamples.$inferInsert;
 
 export type TrainingException = typeof trainingExceptions.$inferSelect;
 export type NewTrainingException = typeof trainingExceptions.$inferInsert;
+
+/**
+ * Chat Messages table - stores all chat messages with embeddings for semantic search
+ * Enables Izzie to recall past conversations and search conversation history
+ */
+export const chatMessages = pgTable(
+  'chat_messages',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    sessionId: uuid('session_id')
+      .references(() => chatSessions.id, { onDelete: 'cascade' })
+      .notNull(),
+    userId: text('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull(),
+    role: text('role').notNull(), // 'user' | 'assistant'
+    content: text('content').notNull(),
+
+    // Vector embedding (1536 dimensions for text-embedding-3-small)
+    // Enables semantic search across conversation history
+    embedding: vector('embedding'),
+
+    // Timestamps
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+
+    // Metadata (model used, tokens, etc.)
+    metadata: jsonb('metadata').$type<{
+      tokensUsed?: number;
+      model?: string;
+      [key: string]: unknown;
+    }>(),
+  },
+  (table) => ({
+    sessionIdIdx: index('chat_messages_session_id_idx').on(table.sessionId),
+    userIdIdx: index('chat_messages_user_id_idx').on(table.userId),
+    roleIdx: index('chat_messages_role_idx').on(table.role),
+    createdAtIdx: index('chat_messages_created_at_idx').on(table.createdAt),
+    // Vector index will be created via migration SQL:
+    // CREATE INDEX ON chat_messages USING ivfflat (embedding vector_cosine_ops)
+  })
+);
+
+/**
+ * Type exports for chat messages
+ */
+export type ChatMessageRecord = typeof chatMessages.$inferSelect;
+export type NewChatMessageRecord = typeof chatMessages.$inferInsert;

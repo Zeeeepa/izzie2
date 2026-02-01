@@ -37,6 +37,11 @@ import {
   getContactDetailsTool,
   syncContactsTool,
 } from './contacts';
+import {
+  searchConversationsTool,
+  getConversationHistoryTool,
+  getRecentConversationsTool,
+} from './conversation-history';
 
 /**
  * All available chat tools
@@ -73,6 +78,10 @@ export const chatTools = {
   search_contacts: searchContactsTool,
   get_contact_details: getContactDetailsTool,
   sync_contacts: syncContactsTool,
+  // Conversation history tools
+  search_conversations: searchConversationsTool,
+  get_conversation_history: getConversationHistoryTool,
+  get_recent_conversations: getRecentConversationsTool,
 };
 
 /**
