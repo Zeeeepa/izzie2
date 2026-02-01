@@ -8,7 +8,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useToast } from '@/components/ui/toast';
 import { useConfirmModal } from '@/components/ui/confirm-modal';
-import { ThumbsUp, ThumbsDown, MessageSquare, X, Play, Pause, Square, RefreshCw } from 'lucide-react';
+import { ThumbsUp, ThumbsDown, MessageSquare, X, Play, Pause, Square, RefreshCw, DollarSign, AlertCircle } from 'lucide-react';
 
 // ============================================================
 // Types
@@ -382,11 +382,58 @@ export default function DiscoverPage() {
             ? { ...item, status: 'reviewed' as const, feedback: { isCorrect, notes } }
             : item
         ));
+
+        // Update training budget if returned
+        if (data.trainingBudget) {
+          setTrainingBudget(data.trainingBudget);
+        }
+
+        // Check for budget exhaustion
+        if (data.budgetExhausted) {
+          toast.warning(data.message || 'Training budget exhausted');
+          // Update session status locally
+          if (session) {
+            setSession({ ...session, status: 'paused' });
+          }
+        }
+
         // Refresh stats
         await fetchStatus();
       }
     } catch (err) {
       console.error('Failed to submit feedback:', err);
+    }
+  };
+
+  // Add budget top-up handler
+  const addTrainingBudget = async (amount: number) => {
+    try {
+      const res = await fetch('/api/train/budget', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          addTrainingBudget: amount,
+          action: 'resume', // Resume session after adding budget
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        if (data.trainingBudget) {
+          setTrainingBudget(data.trainingBudget);
+        }
+        if (data.session) {
+          setSession(data.session);
+        }
+        toast.success(`Added $${amount} to training budget`);
+        await fetchStatus();
+      } else {
+        toast.error(data.error || 'Failed to add budget');
+      }
+    } catch (err) {
+      console.error('Failed to add budget:', err);
+      toast.error('Failed to add budget');
     }
   };
 
@@ -435,6 +482,7 @@ export default function DiscoverPage() {
   const feedbackCount = feedbackStats?.reviewed || 0;
   const canAutoTrain = feedbackCount >= MIN_FEEDBACK_FOR_AUTO_TRAIN;
   const feedbackNeeded = MIN_FEEDBACK_FOR_AUTO_TRAIN - feedbackCount;
+  const trainingBudgetExhausted = trainingBudget ? trainingBudget.remaining <= 0 : false;
 
   // ============================================================
   // Render
@@ -885,6 +933,76 @@ export default function DiscoverPage() {
       {/* ============================================================ */}
       {activeTab === 'review' && (
         <>
+          {/* Budget Exhausted Banner */}
+          {trainingBudgetExhausted && (
+            <div
+              style={{
+                backgroundColor: '#fef2f2',
+                border: '1px solid #fecaca',
+                borderRadius: '12px',
+                padding: '1rem 1.5rem',
+                marginBottom: '1rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '1rem',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <AlertCircle style={{ width: '20px', height: '20px', color: '#dc2626' }} />
+                <div>
+                  <h3 style={{ fontSize: '0.875rem', fontWeight: '600', color: '#991b1b', marginBottom: '0.25rem', margin: 0 }}>
+                    Training Budget Exhausted
+                  </h3>
+                  <p style={{ fontSize: '0.75rem', color: '#991b1b', margin: 0 }}>
+                    Add more budget to continue providing feedback.
+                  </p>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button
+                  onClick={() => addTrainingBudget(5)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.375rem',
+                    padding: '0.625rem 1rem',
+                    borderRadius: '8px',
+                    border: 'none',
+                    backgroundColor: '#10b981',
+                    color: '#fff',
+                    fontSize: '0.875rem',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <DollarSign style={{ width: '14px', height: '14px' }} />
+                  Add $5
+                </button>
+                <button
+                  onClick={() => addTrainingBudget(10)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.375rem',
+                    padding: '0.625rem 1rem',
+                    borderRadius: '8px',
+                    border: 'none',
+                    backgroundColor: '#059669',
+                    color: '#fff',
+                    fontSize: '0.875rem',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <DollarSign style={{ width: '14px', height: '14px' }} />
+                  Add $10
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Auto-Train Status */}
           <div
             style={{
@@ -1093,6 +1211,18 @@ export default function DiscoverPage() {
                       {/* Right: Actions */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', marginLeft: '1rem', flexShrink: 0 }}>
                         {item.status === 'pending' ? (
+                          trainingBudgetExhausted ? (
+                            <span
+                              style={{
+                                fontSize: '0.75rem',
+                                fontWeight: '500',
+                                color: '#9ca3af',
+                                fontStyle: 'italic',
+                              }}
+                            >
+                              Add budget to review
+                            </span>
+                          ) : (
                           <>
                             <button
                               onClick={() => submitFeedback(item.id, true)}
@@ -1152,6 +1282,7 @@ export default function DiscoverPage() {
                               <MessageSquare style={{ width: '16px', height: '16px', color: '#3b82f6' }} />
                             </button>
                           </>
+                          )
                         ) : (
                           <span
                             style={{
