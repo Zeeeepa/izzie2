@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, MessageSquare, Users, GitBranch, GraduationCap } from 'lucide-react';
+import { Home, MessageSquare, Users, GitBranch, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const navItems = [
@@ -10,7 +10,7 @@ const navItems = [
   { href: '/dashboard/chat', icon: MessageSquare, label: 'Chat' },
   { href: '/dashboard/entities', icon: Users, label: 'Entities' },
   { href: '/dashboard/relationships', icon: GitBranch, label: 'Relations' },
-  { href: '/dashboard/train', icon: GraduationCap, label: 'Train' },
+  { href: '/dashboard/discover', icon: Sparkles, label: 'Discover' },
 ];
 
 export function BottomNav() {

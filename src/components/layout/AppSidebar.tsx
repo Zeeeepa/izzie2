@@ -20,7 +20,7 @@ import {
   Cable,
   RefreshCw,
   Contact,
-  GraduationCap,
+  Sparkles,
 } from 'lucide-react';
 import { BUILD_INFO } from '@/lib/build-info';
 import {
@@ -82,9 +82,9 @@ const mainNavItems = [
     icon: Network,
   },
   {
-    href: '/dashboard/train',
-    label: 'Train',
-    icon: GraduationCap,
+    href: '/dashboard/discover',
+    label: 'Discover',
+    icon: Sparkles,
   },
 ];
 

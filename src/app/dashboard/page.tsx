@@ -7,7 +7,7 @@
 
 import { useSession } from '@/lib/auth/client';
 import Link from 'next/link';
-import { MessageSquare, Users, GitBranch, GraduationCap } from 'lucide-react';
+import { MessageSquare, Users, GitBranch, Sparkles } from 'lucide-react';
 
 const quickActions = [
   {
@@ -32,10 +32,10 @@ const quickActions = [
     color: 'text-purple-500',
   },
   {
-    href: '/dashboard/train',
-    icon: GraduationCap,
-    label: 'Train',
-    description: 'Improve Izzie',
+    href: '/dashboard/discover',
+    icon: Sparkles,
+    label: 'Discover',
+    description: 'Find new entities & relationships',
     color: 'text-orange-500',
   },
 ];
