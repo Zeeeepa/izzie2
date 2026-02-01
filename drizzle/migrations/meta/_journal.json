@@ -155,6 +155,27 @@
       "when": 1738281600000,
       "tag": "0021_add_usage_tracking",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1738368000000,
+      "tag": "0022_drop_digest_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1738454400000,
+      "tag": "0023_add_chat_messages",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1738540800000,
+      "tag": "0024_add_training_tables",
+      "breakpoints": true
     }
   ]
 }

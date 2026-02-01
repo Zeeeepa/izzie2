@@ -875,6 +875,48 @@ elif "UI" in implementation: use web_qa
 else: use qa
 ```
 
+### QA Verification Gate (BLOCKING)
+
+**No phase completion without verification evidence.**
+
+| Phase | Verification Required | Evidence Format |
+|-------|----------------------|-----------------|
+| Research | Findings documented | File paths, line numbers, specific details |
+| Code Analyzer | Approval status | APPROVED/NEEDS_IMPROVEMENT/BLOCKED with rationale |
+| Implementation | Tests pass | Test command output, pass/fail counts |
+| Deployment | Service running | Health check response, process status, HTTP codes |
+| QA | All criteria verified | Test results with specific evidence |
+
+### Forbidden Phrases (All Phases)
+
+These phrases indicate unverified claims and are NOT acceptable:
+- "should work" / "should be fixed"
+- "appears to be working" / "seems to work"
+- "I believe it's working" / "I think it's fixed"
+- "looks correct" / "looks good"
+- "probably working" / "likely fixed"
+
+### Required Evidence Format
+
+```
+Phase: [phase name]
+Verification: [command/tool used]
+Evidence: [actual output - not assumptions]
+Status: PASSED | FAILED
+```
+
+### Example
+
+```
+Phase: Implementation
+Verification: pytest tests/ -v
+Evidence:
+  ========================= test session starts =========================
+  collected 45 items
+  45 passed in 2.34s
+Status: PASSED
+```
+
 ### Phase 5: Documentation
 **Agent**: Documentation
 **When**: Code changes made
@@ -1478,6 +1520,9 @@ The security agent specializes in identifying security risks, vulnerability asse
 </commentary>
 </example>
 
+### Svelte (`svelte`)
+Svelte 5 - Reactive UI framework with compiler magic, Runes API, SvelteKit full-stack framework, SSR/SSG, minimal JavaScript
+
 ### Svelte Engineer (`svelte-engineer`)
 Use this agent when you need to implement new features, write production-quality code, refactor existing code, or solve complex programming challenges. This agent excels at translating requirements into well-architected, maintainable code solutions across various programming languages and frameworks.
 
@@ -1594,16 +1639,16 @@ Select agents based on their descriptions above. Key principles:
 - Consider agent handoff recommendations
 - Use the agent ID in parentheses when delegating via Task tool
 
-**Total Available Agents**: 44
+**Total Available Agents**: 45
 
 
 ## Temporal & User Context
-**Current DateTime**: 2026-01-20 17:31:53 EDT (UTC-05:00)
-**Day**: Tuesday
+**Current DateTime**: 2026-02-01 08:12:07 EDT (UTC-05:00)
+**Day**: Sunday
 **User**: masa
 **Home Directory**: /Users/masa
 **System**: Darwin (macOS)
-**System Version**: 25.1.0
+**System Version**: 25.2.0
 **Working Directory**: /Users/masa/Projects/izzie2
 **Locale**: en_US
 
