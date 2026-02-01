@@ -13,6 +13,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { signOut } from '@/lib/auth-client';
 import { useState } from 'react';
+import { BUILD_INFO } from '@/lib/build-info';
 
 interface MobileHeaderProps {
   user?: {
@@ -50,7 +51,38 @@ export function MobileHeader({ user }: MobileHeaderProps) {
           <span className="sr-only">Menu</span>
         </Button>
 
-        <h1 className="text-lg font-semibold">Izzie</h1>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="flex items-center gap-1.5 hover:opacity-80 transition-opacity">
+              <h1 className="text-lg font-semibold">Izzie</h1>
+              <span className="text-[10px] text-muted-foreground">v{BUILD_INFO.version}</span>
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="center" className="w-56">
+            <DropdownMenuLabel className="text-xs font-medium">Build Info</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <div className="px-2 py-1.5 text-xs">
+              <div className="grid gap-1">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Version</span>
+                  <span className="font-mono">{BUILD_INFO.version}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Commit</span>
+                  <span className="font-mono">{BUILD_INFO.gitHash}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Branch</span>
+                  <span className="font-mono">{BUILD_INFO.gitBranch}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Built</span>
+                  <span className="font-mono">{new Date(BUILD_INFO.buildTime).toLocaleDateString()}</span>
+                </div>
+              </div>
+            </div>
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

@@ -22,6 +22,7 @@ import {
   Contact,
   GraduationCap,
 } from 'lucide-react';
+import { BUILD_INFO } from '@/lib/build-info';
 import {
   Sidebar,
   SidebarContent,
@@ -38,6 +39,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -169,7 +172,40 @@ export function AppSidebar({ user }: AppSidebarProps) {
                   <span className="text-xl">🤖</span>
                 </div>
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold tracking-tight">Izzie</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="truncate font-semibold tracking-tight">Izzie</span>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild onClick={(e) => e.preventDefault()}>
+                        <button className="inline-flex items-center text-[10px] text-muted-foreground hover:text-foreground transition-colors">
+                          v{BUILD_INFO.version}
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" className="w-56">
+                        <DropdownMenuLabel className="text-xs font-medium">Build Info</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        <div className="px-2 py-1.5 text-xs">
+                          <div className="grid gap-1">
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Version</span>
+                              <span className="font-mono">{BUILD_INFO.version}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Commit</span>
+                              <span className="font-mono">{BUILD_INFO.gitHash}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Branch</span>
+                              <span className="font-mono">{BUILD_INFO.gitBranch}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Built</span>
+                              <span className="font-mono">{new Date(BUILD_INFO.buildTime).toLocaleDateString()}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                   <span className="truncate text-xs text-muted-foreground">AI Assistant</span>
                 </div>
               </Link>
