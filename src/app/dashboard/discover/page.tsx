@@ -52,6 +52,27 @@ interface DiscoveryProgress {
   currentActivity?: string;
 }
 
+// Processing status details for the current day
+interface ProcessingDetails {
+  currentDay: string; // Date string like "2026-01-15"
+  phase: 'fetching' | 'extracting' | 'complete';
+  emailCount?: number;
+  calendarCount?: number;
+  entitiesFound?: number;
+  relationshipsFound?: number;
+  lastItemsFound?: number;
+}
+
+// Helper to format date nicely (e.g., "January 15, 2026")
+function formatDateNicely(dateStr: string): string {
+  const date = new Date(dateStr + 'T00:00:00');
+  return date.toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
 interface FeedbackStats {
   total: number;
   reviewed: number;
@@ -121,6 +142,7 @@ export default function DiscoverPage() {
   const [feedbackStats, setFeedbackStats] = useState<FeedbackStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [processingDetails, setProcessingDetails] = useState<ProcessingDetails | null>(null);
   const [error, setError] = useState('');
 
   // Setup form - separate budgets
@@ -328,6 +350,18 @@ export default function DiscoverPage() {
       return;
     }
 
+    // Set initial processing details with the current day being processed
+    const today = new Date();
+    const estimatedDaysAgo = progress?.daysProcessed || 0;
+    const estimatedDate = new Date(today);
+    estimatedDate.setDate(estimatedDate.getDate() - estimatedDaysAgo);
+    const estimatedDateStr = estimatedDate.toISOString().split('T')[0];
+
+    setProcessingDetails({
+      currentDay: estimatedDateStr,
+      phase: 'fetching',
+    });
+
     try {
       const res = await fetch('/api/discover/process-day', {
         method: 'POST',
@@ -345,9 +379,42 @@ export default function DiscoverPage() {
         }
         setProgress(data.progress);
 
+        // Update processing details with results
+        if (data.processedDay) {
+          setProcessingDetails({
+            currentDay: data.processedDay,
+            phase: 'complete',
+            lastItemsFound: data.results?.itemsFound || 0,
+          });
+        }
+
+        // Refresh items after each day is processed (for real-time updates)
+        if (data.results?.itemsFound > 0) {
+          // Fetch new items and prepend to list (most recent first)
+          try {
+            const params = new URLSearchParams({
+              page: '1',
+              limit: '50',
+            });
+            if (filterType !== 'all') params.set('type', filterType);
+            if (filterStatus !== 'all') params.set('status', filterStatus);
+
+            const itemsRes = await fetch(`/api/discover/items?${params}`);
+            const itemsData = await itemsRes.json();
+
+            if (itemsData.success) {
+              setItems(itemsData.items);
+              setTotalPages(itemsData.pagination.totalPages);
+            }
+          } catch (err) {
+            console.error('Failed to refresh items:', err);
+          }
+        }
+
         if (data.complete) {
           // Processing complete - show toast only once
           stopProcessing();
+          setProcessingDetails(null);
           if (!budgetExhaustedToastShown.current) {
             toast.success(data.message || 'Discovery complete.');
             if (data.reason === 'budget_exhausted') {
@@ -357,17 +424,28 @@ export default function DiscoverPage() {
           await fetchStatus();
         } else if (processingRef.current) {
           // Continue processing after a short delay
+          // Update phase to show we're moving to next day
+          if (data.processedDay) {
+            const nextDate = new Date(data.processedDay + 'T00:00:00');
+            nextDate.setDate(nextDate.getDate() - 1);
+            setProcessingDetails({
+              currentDay: nextDate.toISOString().split('T')[0],
+              phase: 'fetching',
+            });
+          }
           pollTimeoutRef.current = setTimeout(processNextDay, POLL_INTERVAL);
         }
       } else {
         console.error('Process day failed:', data.error);
         stopProcessing();
+        setProcessingDetails(null);
       }
     } catch (err) {
       console.error('Process day error:', err);
       stopProcessing();
+      setProcessingDetails(null);
     }
-  }, [fetchStatus, toast, discoveryBudget, stopProcessing]);
+  }, [fetchStatus, toast, discoveryBudget, stopProcessing, progress, filterType, filterStatus]);
 
   const startProcessing = useCallback(() => {
     // Guard: Don't start if already processing
@@ -591,10 +669,11 @@ export default function DiscoverPage() {
   }, [fetchStatus]);
 
   useEffect(() => {
-    if (activeTab === 'review' && session) {
+    // Fetch items for both discovery and review tabs when session exists
+    if (session) {
       fetchItems();
     }
-  }, [activeTab, session, fetchItems]);
+  }, [session, fetchItems]);
 
   // Resume processing if session is running on mount
   // Using refs to avoid dependency cycles that cause infinite loops
@@ -876,9 +955,26 @@ export default function DiscoverPage() {
                       {isProcessing && (
                         <RefreshCw style={{ width: '14px', height: '14px', animation: 'spin 1s linear infinite' }} />
                       )}
-                      {isProcessing ? 'Processing...' : session.status === 'paused' ? 'Paused' : 'Complete'}
+                      {isProcessing ? (
+                        processingDetails ? (
+                          processingDetails.phase === 'complete' && processingDetails.lastItemsFound !== undefined
+                            ? `Found ${processingDetails.lastItemsFound} items`
+                            : 'Processing...'
+                        ) : 'Processing...'
+                      ) : session.status === 'paused' ? 'Paused' : 'Complete'}
                     </div>
-                    {progress?.currentActivity && (
+                    {isProcessing && processingDetails && (
+                      <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+                        {processingDetails.phase === 'fetching' ? (
+                          <>Fetching emails &amp; calendar for {formatDateNicely(processingDetails.currentDay)}...</>
+                        ) : processingDetails.phase === 'complete' ? (
+                          <>Processed {formatDateNicely(processingDetails.currentDay)}</>
+                        ) : (
+                          <>Extracting entities from {formatDateNicely(processingDetails.currentDay)}...</>
+                        )}
+                      </span>
+                    )}
+                    {!isProcessing && progress?.currentActivity && (
                       <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>
                         {progress.currentActivity}
                       </span>
@@ -1044,6 +1140,339 @@ export default function DiscoverPage() {
                 </div>
               </div>
 
+              {/* Current Activity - shown when processing */}
+              {isProcessing && processingDetails && (
+                <div
+                  style={{
+                    backgroundColor: '#f0f9ff',
+                    border: '1px solid #bae6fd',
+                    borderRadius: '12px',
+                    padding: '1.25rem 1.5rem',
+                    marginBottom: '1.5rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '1rem',
+                  }}
+                >
+                  <RefreshCw
+                    style={{
+                      width: '24px',
+                      height: '24px',
+                      color: '#0284c7',
+                      animation: 'spin 1s linear infinite',
+                      flexShrink: 0,
+                    }}
+                  />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '0.9375rem', fontWeight: '600', color: '#0369a1', marginBottom: '0.25rem' }}>
+                      {processingDetails.phase === 'fetching' ? (
+                        <>Processing emails and calendar for {formatDateNicely(processingDetails.currentDay)}...</>
+                      ) : processingDetails.phase === 'complete' ? (
+                        <>Completed {formatDateNicely(processingDetails.currentDay)}</>
+                      ) : (
+                        <>Extracting entities from {formatDateNicely(processingDetails.currentDay)}...</>
+                      )}
+                    </div>
+                    <div style={{ fontSize: '0.8125rem', color: '#0284c7' }}>
+                      {processingDetails.phase === 'complete' && processingDetails.lastItemsFound !== undefined ? (
+                        processingDetails.lastItemsFound > 0 ? (
+                          <>Found {processingDetails.lastItemsFound} {processingDetails.lastItemsFound === 1 ? 'item' : 'items'} (people, companies, topics, relationships)</>
+                        ) : (
+                          <>No new items found for this day</>
+                        )
+                      ) : (
+                        <>Searching for people, companies, topics, and relationships...</>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Real-time discovered items list */}
+              {items.length > 0 && (
+                <div
+                  style={{
+                    backgroundColor: '#fff',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '12px',
+                    padding: '1.5rem',
+                    marginBottom: '1.5rem',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                    <h3 style={{ fontSize: '1.125rem', fontWeight: '600', color: '#111', margin: 0 }}>
+                      Recently Discovered
+                      {isProcessing && (
+                        <span
+                          style={{
+                            marginLeft: '0.75rem',
+                            fontSize: '0.75rem',
+                            fontWeight: '500',
+                            color: '#059669',
+                            backgroundColor: '#d1fae5',
+                            padding: '0.25rem 0.5rem',
+                            borderRadius: '9999px',
+                          }}
+                        >
+                          Live updating
+                        </span>
+                      )}
+                    </h3>
+                    <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+                      {items.length} items - Provide feedback below
+                    </span>
+                  </div>
+
+                  <div style={{ maxHeight: '400px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    {items.slice(0, 20).map((item) => {
+                      // Get local pending feedback for this item
+                      const localFeedback = pendingFeedback.get(item.id);
+                      const localIsCorrect = localFeedback?.isCorrect;
+
+                      // Determine border color based on feedback status
+                      let borderColor = '#e5e7eb';
+                      let bgColor = '#fff';
+
+                      if (item.feedback?.isCorrect === true) {
+                        borderColor = '#22c55e';
+                        bgColor = '#f0fdf4';
+                      } else if (item.feedback?.isCorrect === false) {
+                        borderColor = '#ef4444';
+                        bgColor = '#fef2f2';
+                      } else if (localIsCorrect === true) {
+                        borderColor = '#86efac';
+                        bgColor = '#f0fdf4';
+                      } else if (localIsCorrect === false) {
+                        borderColor = '#fca5a5';
+                        bgColor = '#fef2f2';
+                      }
+
+                      return (
+                        <div
+                          key={item.id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: '0.75rem',
+                            backgroundColor: bgColor,
+                            borderRadius: '8px',
+                            border: `2px solid ${borderColor}`,
+                            transition: 'all 0.2s',
+                          }}
+                        >
+                          {/* Left: Content */}
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                              <span
+                                style={{
+                                  fontSize: '0.75rem',
+                                  padding: '0.125rem 0.5rem',
+                                  borderRadius: '4px',
+                                  backgroundColor: item.type === 'entity' ? '#dbeafe' : '#fce7f3',
+                                  color: item.type === 'entity' ? '#1e40af' : '#9d174d',
+                                  fontWeight: '500',
+                                  textTransform: 'capitalize',
+                                }}
+                              >
+                                {item.type}
+                              </span>
+                              <span
+                                style={{
+                                  fontWeight: '500',
+                                  fontSize: '0.875rem',
+                                  color: '#111',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                {item.content.text}
+                              </span>
+                              {localIsCorrect !== null && localIsCorrect !== undefined && item.status === 'pending' && (
+                                <span
+                                  style={{
+                                    fontSize: '0.625rem',
+                                    padding: '0.125rem 0.375rem',
+                                    borderRadius: '4px',
+                                    backgroundColor: '#fef3c7',
+                                    color: '#92400e',
+                                    fontWeight: '600',
+                                  }}
+                                >
+                                  Pending
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '0.25rem' }}>
+                              {item.prediction.label} &bull; {item.prediction.confidence}% confidence
+                            </div>
+                          </div>
+
+                          {/* Right: Actions - always enabled even during processing */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', marginLeft: '1rem', flexShrink: 0 }}>
+                            {item.status === 'pending' ? (
+                              trainingBudgetExhausted ? (
+                                <span
+                                  style={{
+                                    fontSize: '0.75rem',
+                                    fontWeight: '500',
+                                    color: '#9ca3af',
+                                    fontStyle: 'italic',
+                                  }}
+                                >
+                                  Add budget
+                                </span>
+                              ) : (
+                                <>
+                                  <button
+                                    onClick={() => markFeedback(item.id, true)}
+                                    style={{
+                                      padding: '0.5rem',
+                                      borderRadius: '6px',
+                                      border: 'none',
+                                      backgroundColor: localIsCorrect === true ? '#dcfce7' : 'transparent',
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      transition: 'background-color 0.2s',
+                                    }}
+                                    onMouseEnter={(e) => {
+                                      if (localIsCorrect !== true) e.currentTarget.style.backgroundColor = '#dcfce7';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      if (localIsCorrect !== true) e.currentTarget.style.backgroundColor = 'transparent';
+                                    }}
+                                    title="Mark as correct"
+                                  >
+                                    <ThumbsUp style={{ width: '16px', height: '16px', color: '#22c55e' }} />
+                                  </button>
+                                  <button
+                                    onClick={() => markFeedback(item.id, false)}
+                                    style={{
+                                      padding: '0.5rem',
+                                      borderRadius: '6px',
+                                      border: 'none',
+                                      backgroundColor: localIsCorrect === false ? '#fee2e2' : 'transparent',
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      transition: 'background-color 0.2s',
+                                    }}
+                                    onMouseEnter={(e) => {
+                                      if (localIsCorrect !== false) e.currentTarget.style.backgroundColor = '#fee2e2';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      if (localIsCorrect !== false) e.currentTarget.style.backgroundColor = 'transparent';
+                                    }}
+                                    title="Mark as incorrect"
+                                  >
+                                    <ThumbsDown style={{ width: '16px', height: '16px', color: '#ef4444' }} />
+                                  </button>
+                                  <button
+                                    onClick={() => openNoteDialog(item)}
+                                    style={{
+                                      padding: '0.5rem',
+                                      borderRadius: '6px',
+                                      border: 'none',
+                                      backgroundColor: localFeedback?.note ? '#dbeafe' : 'transparent',
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      transition: 'background-color 0.2s',
+                                    }}
+                                    onMouseEnter={(e) => {
+                                      if (!localFeedback?.note) e.currentTarget.style.backgroundColor = '#dbeafe';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      if (!localFeedback?.note) e.currentTarget.style.backgroundColor = 'transparent';
+                                    }}
+                                    title="Add note"
+                                  >
+                                    <MessageSquare style={{ width: '16px', height: '16px', color: '#3b82f6' }} />
+                                  </button>
+                                </>
+                              )
+                            ) : (
+                              <span
+                                style={{
+                                  fontSize: '0.75rem',
+                                  fontWeight: '500',
+                                  color: item.feedback?.isCorrect ? '#22c55e' : '#ef4444',
+                                }}
+                              >
+                                {item.feedback?.isCorrect ? 'Correct' : 'Incorrect'}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Show pending feedback banner in discovery tab too */}
+                  {pendingFeedbackCount > 0 && (
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '0.75rem 1rem',
+                        backgroundColor: '#eff6ff',
+                        border: '1px solid #bfdbfe',
+                        borderRadius: '8px',
+                        marginTop: '1rem',
+                      }}
+                    >
+                      <span style={{ fontSize: '0.875rem', color: '#1e40af', fontWeight: '500' }}>
+                        {pendingFeedbackCount} item{pendingFeedbackCount !== 1 ? 's' : ''} marked for feedback
+                      </span>
+                      <button
+                        onClick={submitAllFeedback}
+                        disabled={isSubmittingFeedback}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.5rem',
+                          padding: '0.5rem 1rem',
+                          borderRadius: '6px',
+                          border: 'none',
+                          backgroundColor: isSubmittingFeedback ? '#93c5fd' : '#3b82f6',
+                          color: '#fff',
+                          fontSize: '0.875rem',
+                          fontWeight: '600',
+                          cursor: isSubmittingFeedback ? 'not-allowed' : 'pointer',
+                          transition: 'background-color 0.2s',
+                        }}
+                      >
+                        {isSubmittingFeedback ? 'Submitting...' : 'Submit All Feedback'}
+                      </button>
+                    </div>
+                  )}
+
+                  {items.length > 20 && (
+                    <div style={{ textAlign: 'center', marginTop: '1rem' }}>
+                      <button
+                        onClick={() => setActiveTab('review')}
+                        style={{
+                          fontSize: '0.875rem',
+                          color: '#3b82f6',
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          textDecoration: 'underline',
+                        }}
+                      >
+                        View all {items.length} items in Review tab
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* How It Works Info */}
               <div
                 style={{
@@ -1067,7 +1496,7 @@ export default function DiscoverPage() {
                     - Creating review items for you to provide feedback
                   </li>
                   <li style={{ fontSize: '0.875rem', color: '#1e40af' }}>
-                    - Switch to the <strong>Review</strong> tab to provide feedback on discovered items
+                    - You can provide feedback on items above while discovery is running
                   </li>
                 </ul>
               </div>
