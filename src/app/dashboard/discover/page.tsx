@@ -8,7 +8,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useToast } from '@/components/ui/toast';
 import { useConfirmModal } from '@/components/ui/confirm-modal';
-import { ThumbsUp, ThumbsDown, MessageSquare, X, Play, Pause, Square, RefreshCw, DollarSign, AlertCircle, Mail, Calendar, Loader2 } from 'lucide-react';
+import { FeedbackDialog } from '@/components/feedback/FeedbackDialog';
+import { ThumbsUp, ThumbsDown, MessageSquare, X, Play, Pause, Square, RefreshCw, DollarSign, AlertCircle, Mail, Calendar, Loader2, Send, CheckCircle2 } from 'lucide-react';
 
 // ============================================================
 // Types
@@ -169,20 +170,18 @@ export default function DiscoverPage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
 
-  // Note dialog state
-  const [noteDialogOpen, setNoteDialogOpen] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<DiscoveredItem | null>(null);
-  const [noteDialogFeedback, setNoteDialogFeedback] = useState<boolean | null>(null);
-  const [noteDialogText, setNoteDialogText] = useState('');
+  // Feedback dialog state (new context-aware dialog)
+  const [feedbackDialogOpen, setFeedbackDialogOpen] = useState(false);
+  const [feedbackDialogItem, setFeedbackDialogItem] = useState<DiscoveredItem | null>(null);
 
-  // Local pending feedback state (for notes before voting)
+  // Local pending feedback state (batch mode - not submitted until user clicks submit)
   const [pendingFeedback, setPendingFeedback] = useState<Map<string, {
-    isCorrect: boolean | null;
+    isCorrect: boolean;
     note: string;
   }>>(new Map());
 
-  // Track which items are currently being submitted (for one-click voting)
-  const [submittingItems, setSubmittingItems] = useState<Set<string>>(new Set());
+  // Track which items are currently being submitted (for batch submission)
+  const [isSubmittingBatch, setIsSubmittingBatch] = useState(false);
 
   // ============================================================
   // Discovery API Handlers
@@ -498,111 +497,148 @@ export default function DiscoverPage() {
     }
   }, [session, page, filterType, filterStatus]);
 
-  // Submit feedback immediately on vote click (one-click voting)
-  const markFeedback = async (itemId: string, isCorrect: boolean) => {
+  // Save feedback locally (batch mode - not submitted until user clicks submit)
+  const markFeedback = (itemId: string, isCorrect: boolean) => {
     // Find the current item to check its status
     const item = items.find(i => i.id === itemId);
     if (!item) return;
 
-    // Check if clicking same vote on an already-reviewed item (toggle off / un-vote)
-    if (item.status === 'reviewed' && item.feedback?.isCorrect === isCorrect) {
-      // Un-voting: Set back to pending by calling API with null/skip
-      // For now, we don't support un-voting on already submitted items
-      toast.info('Item already reviewed. Cannot un-vote.');
+    // Check if clicking same vote on an already-reviewed item
+    if (item.status === 'reviewed') {
+      toast.info('Item already reviewed. Cannot change feedback.');
       return;
     }
 
-    // Check if we have pending local feedback with the same vote (toggle off before submit)
+    // Check if we have pending local feedback with the same vote (toggle off)
     const existingLocal = pendingFeedback.get(itemId);
-    if (existingLocal?.isCorrect === isCorrect && item.status === 'pending') {
-      // Toggle off local state
+    if (existingLocal?.isCorrect === isCorrect) {
+      // Toggle off local state - remove pending feedback
       setPendingFeedback(prev => {
         const updated = new Map(prev);
-        updated.set(itemId, { ...existingLocal, isCorrect: null });
-        return updated;
-      });
-      return;
-    }
-
-    // Add to submitting set for loading state
-    setSubmittingItems(prev => new Set(prev).add(itemId));
-
-    // Get any existing note for this item
-    const existingNote = pendingFeedback.get(itemId)?.note || '';
-
-    try {
-      const res = await fetch('/api/train/feedback', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sampleId: itemId,
-          action: 'feedback',
-          isCorrect,
-          notes: existingNote || undefined,
-        }),
-      });
-
-      const data = await res.json();
-
-      if (data.success) {
-        // Update the item in local state to show as reviewed
-        setItems(prev => prev.map(i => {
-          if (i.id === itemId) {
-            return {
-              ...i,
-              status: 'reviewed' as const,
-              feedback: { isCorrect, notes: existingNote || undefined }
-            };
-          }
-          return i;
-        }));
-
-        // Update training budget if returned
-        if (data.trainingBudget) {
-          setTrainingBudget(data.trainingBudget);
-        }
-
-        // Check for budget exhaustion
-        if (data.budgetExhausted) {
-          toast.warning('Training budget exhausted');
-          if (session) {
-            setSession({ ...session, status: 'paused' });
-          }
-        }
-
-        // Clear from pending feedback map
-        setPendingFeedback(prev => {
-          const updated = new Map(prev);
-          updated.delete(itemId);
-          return updated;
-        });
-
-        // Refresh feedback stats
-        await fetchStatus();
-      } else {
-        toast.error(data.error || 'Failed to submit feedback');
-      }
-    } catch (err) {
-      console.error('Failed to submit feedback:', err);
-      toast.error('Failed to submit feedback');
-    } finally {
-      // Remove from submitting set
-      setSubmittingItems(prev => {
-        const updated = new Set(prev);
         updated.delete(itemId);
         return updated;
       });
+      return;
+    }
+
+    // Save feedback locally (with any existing note)
+    setPendingFeedback(prev => {
+      const updated = new Map(prev);
+      updated.set(itemId, {
+        isCorrect,
+        note: existingLocal?.note || '',
+      });
+      return updated;
+    });
+  };
+
+  // Save feedback from dialog (includes note)
+  const saveFeedbackFromDialog = (itemId: string, isCorrect: boolean, note: string) => {
+    const item = items.find(i => i.id === itemId);
+    if (!item || item.status === 'reviewed') return;
+
+    setPendingFeedback(prev => {
+      const updated = new Map(prev);
+      updated.set(itemId, { isCorrect, note });
+      return updated;
+    });
+  };
+
+  // Submit all pending feedback to server (batch submission)
+  const submitAllFeedback = async () => {
+    if (pendingFeedback.size === 0) {
+      toast.info('No pending feedback to submit');
+      return;
+    }
+
+    setIsSubmittingBatch(true);
+    let successCount = 0;
+    let errorCount = 0;
+
+    try {
+      // Submit each pending feedback item
+      const feedbackEntries = Array.from(pendingFeedback.entries());
+
+      for (const [itemId, feedback] of feedbackEntries) {
+        try {
+          const res = await fetch('/api/train/feedback', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sampleId: itemId,
+              action: 'feedback',
+              isCorrect: feedback.isCorrect,
+              notes: feedback.note || undefined,
+            }),
+          });
+
+          const data = await res.json();
+
+          if (data.success) {
+            successCount++;
+
+            // Update the item in local state to show as reviewed
+            setItems(prev => prev.map(i => {
+              if (i.id === itemId) {
+                return {
+                  ...i,
+                  status: 'reviewed' as const,
+                  feedback: { isCorrect: feedback.isCorrect, notes: feedback.note || undefined }
+                };
+              }
+              return i;
+            }));
+
+            // Update training budget if returned
+            if (data.trainingBudget) {
+              setTrainingBudget(data.trainingBudget);
+            }
+
+            // Check for budget exhaustion
+            if (data.budgetExhausted) {
+              toast.warning('Training budget exhausted');
+              if (session) {
+                setSession({ ...session, status: 'paused' });
+              }
+              // Stop submitting if budget is exhausted
+              break;
+            }
+          } else {
+            errorCount++;
+            console.error(`Failed to submit feedback for ${itemId}:`, data.error);
+          }
+        } catch (err) {
+          errorCount++;
+          console.error(`Failed to submit feedback for ${itemId}:`, err);
+        }
+      }
+
+      // Clear successfully submitted feedback
+      setPendingFeedback(new Map());
+
+      // Show result toast
+      if (errorCount === 0) {
+        toast.success(`Submitted ${successCount} feedback item${successCount !== 1 ? 's' : ''}`);
+      } else if (successCount > 0) {
+        toast.warning(`Submitted ${successCount} item${successCount !== 1 ? 's' : ''}, ${errorCount} failed`);
+      } else {
+        toast.error('Failed to submit feedback');
+      }
+
+      // Refresh feedback stats
+      await fetchStatus();
+    } catch (err) {
+      console.error('Failed to submit batch feedback:', err);
+      toast.error('Failed to submit feedback');
+    } finally {
+      setIsSubmittingBatch(false);
     }
   };
 
-  // Update note locally
-  const updateNote = (itemId: string, note: string) => {
-    setPendingFeedback(prev => {
-      const updated = new Map(prev);
-      const existing = updated.get(itemId) || { isCorrect: null, note: '' };
-      updated.set(itemId, { ...existing, note });
-      return updated;
-    });
+  // Open the feedback dialog for an item
+  const openFeedbackDialog = (item: DiscoveredItem) => {
+    setFeedbackDialogItem(item);
+    setFeedbackDialogOpen(true);
   };
 
   // Add budget top-up handler
@@ -637,109 +673,6 @@ export default function DiscoverPage() {
     }
   };
 
-  const openNoteDialog = (item: DiscoveredItem) => {
-    setSelectedItem(item);
-    // Initialize from pending feedback if exists
-    const existing = pendingFeedback.get(item.id);
-    setNoteDialogFeedback(existing?.isCorrect ?? null);
-    setNoteDialogText(existing?.note ?? '');
-    setNoteDialogOpen(true);
-  };
-
-  // Save note dialog and submit immediately
-  const saveNoteDialogFeedback = async () => {
-    if (!selectedItem) return;
-
-    // If no feedback selected and no note, just close
-    if (noteDialogFeedback === null && !noteDialogText) {
-      setNoteDialogOpen(false);
-      setSelectedItem(null);
-      return;
-    }
-
-    // If feedback is selected, submit immediately
-    if (noteDialogFeedback !== null) {
-      // Add to submitting set for loading state
-      setSubmittingItems(prev => new Set(prev).add(selectedItem.id));
-
-      try {
-        const res = await fetch('/api/train/feedback', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            sampleId: selectedItem.id,
-            action: 'feedback',
-            isCorrect: noteDialogFeedback,
-            notes: noteDialogText || undefined,
-          }),
-        });
-
-        const data = await res.json();
-
-        if (data.success) {
-          // Update the item in local state to show as reviewed
-          setItems(prev => prev.map(i => {
-            if (i.id === selectedItem.id) {
-              return {
-                ...i,
-                status: 'reviewed' as const,
-                feedback: { isCorrect: noteDialogFeedback, notes: noteDialogText || undefined }
-              };
-            }
-            return i;
-          }));
-
-          // Update training budget if returned
-          if (data.trainingBudget) {
-            setTrainingBudget(data.trainingBudget);
-          }
-
-          // Check for budget exhaustion
-          if (data.budgetExhausted) {
-            toast.warning('Training budget exhausted');
-            if (session) {
-              setSession({ ...session, status: 'paused' });
-            }
-          }
-
-          // Clear from pending feedback map
-          setPendingFeedback(prev => {
-            const updated = new Map(prev);
-            updated.delete(selectedItem.id);
-            return updated;
-          });
-
-          // Refresh feedback stats
-          await fetchStatus();
-        } else {
-          toast.error(data.error || 'Failed to submit feedback');
-        }
-      } catch (err) {
-        console.error('Failed to submit feedback:', err);
-        toast.error('Failed to submit feedback');
-      } finally {
-        // Remove from submitting set
-        setSubmittingItems(prev => {
-          const updated = new Set(prev);
-          updated.delete(selectedItem.id);
-          return updated;
-        });
-      }
-    } else {
-      // Just store the note locally (no feedback selected yet)
-      setPendingFeedback(prev => {
-        const updated = new Map(prev);
-        updated.set(selectedItem.id, {
-          isCorrect: null,
-          note: noteDialogText,
-        });
-        return updated;
-      });
-    }
-
-    setNoteDialogOpen(false);
-    setSelectedItem(null);
-  };
 
   // ============================================================
   // Effects
@@ -1306,7 +1239,8 @@ export default function DiscoverPage() {
                       // Get local pending feedback for this item
                       const localFeedback = pendingFeedback.get(item.id);
                       const localIsCorrect = localFeedback?.isCorrect;
-                      const isSubmitting = submittingItems.has(item.id);
+                      // isSubmitting is true when batch submission is in progress and this item has pending feedback
+                      const isSubmitting = isSubmittingBatch && localFeedback !== undefined;
 
                       // Determine border color based on feedback status
                       let borderColor = '#e5e7eb';
@@ -1431,9 +1365,7 @@ export default function DiscoverPage() {
 
                           {/* Right: Actions - always enabled even during processing */}
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', marginLeft: '1rem', flexShrink: 0 }}>
-                            {isSubmitting ? (
-                              <Loader2 style={{ width: '16px', height: '16px', color: '#6b7280', animation: 'spin 1s linear infinite' }} />
-                            ) : item.status === 'pending' ? (
+                            {item.status === 'pending' ? (
                               trainingBudgetExhausted ? (
                                 <span
                                   style={{
@@ -1445,77 +1377,99 @@ export default function DiscoverPage() {
                                 >
                                   Add budget
                                 </span>
+                              ) : localFeedback ? (
+                                // Show pending feedback badge
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                  <span
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '0.25rem',
+                                      fontSize: '0.75rem',
+                                      fontWeight: '600',
+                                      padding: '0.25rem 0.5rem',
+                                      borderRadius: '4px',
+                                      backgroundColor: localFeedback.isCorrect ? '#dcfce7' : '#fee2e2',
+                                      color: localFeedback.isCorrect ? '#166534' : '#991b1b',
+                                    }}
+                                  >
+                                    <CheckCircle2 style={{ width: '12px', height: '12px' }} />
+                                    {localFeedback.isCorrect ? 'Correct' : 'Incorrect'}
+                                    {localFeedback.note && ' + Note'}
+                                  </span>
+                                  <button
+                                    onClick={() => openFeedbackDialog(item)}
+                                    style={{
+                                      padding: '0.25rem',
+                                      borderRadius: '4px',
+                                      border: 'none',
+                                      backgroundColor: 'transparent',
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                    }}
+                                    title="Edit feedback"
+                                  >
+                                    <MessageSquare style={{ width: '14px', height: '14px', color: '#6b7280' }} />
+                                  </button>
+                                </div>
                               ) : (
                                 <>
                                   <button
                                     onClick={() => markFeedback(item.id, true)}
-                                    disabled={isSubmitting}
                                     style={{
                                       padding: '0.5rem',
                                       borderRadius: '6px',
                                       border: 'none',
-                                      backgroundColor: localIsCorrect === true ? '#dcfce7' : 'transparent',
-                                      cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                                      backgroundColor: 'transparent',
+                                      cursor: 'pointer',
                                       display: 'flex',
                                       alignItems: 'center',
                                       justifyContent: 'center',
                                       transition: 'background-color 0.2s',
                                     }}
-                                    onMouseEnter={(e) => {
-                                      if (localIsCorrect !== true && !isSubmitting) e.currentTarget.style.backgroundColor = '#dcfce7';
-                                    }}
-                                    onMouseLeave={(e) => {
-                                      if (localIsCorrect !== true) e.currentTarget.style.backgroundColor = 'transparent';
-                                    }}
+                                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#dcfce7'; }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
                                     title="Mark as correct"
                                   >
                                     <ThumbsUp style={{ width: '16px', height: '16px', color: '#22c55e' }} />
                                   </button>
                                   <button
                                     onClick={() => markFeedback(item.id, false)}
-                                    disabled={isSubmitting}
                                     style={{
                                       padding: '0.5rem',
                                       borderRadius: '6px',
                                       border: 'none',
-                                      backgroundColor: localIsCorrect === false ? '#fee2e2' : 'transparent',
-                                      cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                                      backgroundColor: 'transparent',
+                                      cursor: 'pointer',
                                       display: 'flex',
                                       alignItems: 'center',
                                       justifyContent: 'center',
                                       transition: 'background-color 0.2s',
                                     }}
-                                    onMouseEnter={(e) => {
-                                      if (localIsCorrect !== false && !isSubmitting) e.currentTarget.style.backgroundColor = '#fee2e2';
-                                    }}
-                                    onMouseLeave={(e) => {
-                                      if (localIsCorrect !== false) e.currentTarget.style.backgroundColor = 'transparent';
-                                    }}
+                                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#fee2e2'; }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
                                     title="Mark as incorrect"
                                   >
                                     <ThumbsDown style={{ width: '16px', height: '16px', color: '#ef4444' }} />
                                   </button>
                                   <button
-                                    onClick={() => openNoteDialog(item)}
-                                    disabled={isSubmitting}
+                                    onClick={() => openFeedbackDialog(item)}
                                     style={{
                                       padding: '0.5rem',
                                       borderRadius: '6px',
                                       border: 'none',
-                                      backgroundColor: localFeedback?.note ? '#dbeafe' : 'transparent',
-                                      cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                                      backgroundColor: 'transparent',
+                                      cursor: 'pointer',
                                       display: 'flex',
                                       alignItems: 'center',
                                       justifyContent: 'center',
                                       transition: 'background-color 0.2s',
                                     }}
-                                    onMouseEnter={(e) => {
-                                      if (!localFeedback?.note && !isSubmitting) e.currentTarget.style.backgroundColor = '#dbeafe';
-                                    }}
-                                    onMouseLeave={(e) => {
-                                      if (!localFeedback?.note) e.currentTarget.style.backgroundColor = 'transparent';
-                                    }}
-                                    title="Add note"
+                                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#dbeafe'; }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                                    title="Add note with context"
                                   >
                                     <MessageSquare style={{ width: '16px', height: '16px', color: '#3b82f6' }} />
                                   </button>
@@ -1537,6 +1491,51 @@ export default function DiscoverPage() {
                       );
                     })}
                   </div>
+
+                  {/* Submit All Feedback Button */}
+                  {pendingFeedback.size > 0 && (
+                    <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: '#f0fdf4', borderRadius: '8px', border: '1px solid #86efac' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
+                        <div>
+                          <span style={{ fontSize: '0.875rem', fontWeight: '600', color: '#166534' }}>
+                            {pendingFeedback.size} item{pendingFeedback.size !== 1 ? 's' : ''} ready to submit
+                          </span>
+                          <p style={{ fontSize: '0.75rem', color: '#15803d', margin: '0.25rem 0 0 0' }}>
+                            Click &quot;Submit All Feedback&quot; to save to database
+                          </p>
+                        </div>
+                        <button
+                          onClick={submitAllFeedback}
+                          disabled={isSubmittingBatch}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                            padding: '0.625rem 1.25rem',
+                            borderRadius: '8px',
+                            border: 'none',
+                            backgroundColor: isSubmittingBatch ? '#86efac' : '#22c55e',
+                            color: '#fff',
+                            fontSize: '0.875rem',
+                            fontWeight: '600',
+                            cursor: isSubmittingBatch ? 'not-allowed' : 'pointer',
+                          }}
+                        >
+                          {isSubmittingBatch ? (
+                            <>
+                              <Loader2 style={{ width: '16px', height: '16px', animation: 'spin 1s linear infinite' }} />
+                              Submitting...
+                            </>
+                          ) : (
+                            <>
+                              <Send style={{ width: '16px', height: '16px' }} />
+                              Submit All Feedback
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
                   {items.length > 20 && (
                     <div style={{ textAlign: 'center', marginTop: '1rem' }}>
@@ -1799,8 +1798,6 @@ export default function DiscoverPage() {
                 {items.map((item) => {
                   // Get local pending feedback for this item
                   const localFeedback = pendingFeedback.get(item.id);
-                  const localIsCorrect = localFeedback?.isCorrect;
-                  const isSubmitting = submittingItems.has(item.id);
 
                   // Determine border color based on feedback status (local pending or already submitted)
                   let borderColor = '#e5e7eb';
@@ -1815,10 +1812,10 @@ export default function DiscoverPage() {
                     bgColor = '#fef2f2';
                   }
                   // Local pending feedback (not yet submitted)
-                  else if (localIsCorrect === true) {
+                  else if (localFeedback?.isCorrect === true) {
                     borderColor = '#86efac';
                     bgColor = '#f0fdf4';
-                  } else if (localIsCorrect === false) {
+                  } else if (localFeedback?.isCorrect === false) {
                     borderColor = '#fca5a5';
                     bgColor = '#fef2f2';
                   }
@@ -1838,7 +1835,6 @@ export default function DiscoverPage() {
                         borderRadius: '8px',
                         border: `2px solid ${borderColor}`,
                         transition: 'all 0.2s',
-                        opacity: isSubmitting ? 0.7 : 1,
                       }}
                     >
                       {/* Left: Content */}
@@ -1933,9 +1929,7 @@ export default function DiscoverPage() {
 
                       {/* Right: Actions */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', marginLeft: '1rem', flexShrink: 0 }}>
-                        {isSubmitting ? (
-                          <Loader2 style={{ width: '16px', height: '16px', color: '#6b7280', animation: 'spin 1s linear infinite' }} />
-                        ) : item.status === 'pending' ? (
+                        {item.status === 'pending' ? (
                           trainingBudgetExhausted ? (
                             <span
                               style={{
@@ -1947,77 +1941,99 @@ export default function DiscoverPage() {
                             >
                               Add budget to review
                             </span>
+                          ) : localFeedback ? (
+                            // Show pending feedback badge
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                              <span
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.25rem',
+                                  fontSize: '0.75rem',
+                                  fontWeight: '600',
+                                  padding: '0.25rem 0.5rem',
+                                  borderRadius: '4px',
+                                  backgroundColor: localFeedback.isCorrect ? '#dcfce7' : '#fee2e2',
+                                  color: localFeedback.isCorrect ? '#166534' : '#991b1b',
+                                }}
+                              >
+                                <CheckCircle2 style={{ width: '12px', height: '12px' }} />
+                                {localFeedback.isCorrect ? 'Correct' : 'Incorrect'}
+                                {localFeedback.note && ' + Note'}
+                              </span>
+                              <button
+                                onClick={() => openFeedbackDialog(item)}
+                                style={{
+                                  padding: '0.25rem',
+                                  borderRadius: '4px',
+                                  border: 'none',
+                                  backgroundColor: 'transparent',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                                title="Edit feedback"
+                              >
+                                <MessageSquare style={{ width: '14px', height: '14px', color: '#6b7280' }} />
+                              </button>
+                            </div>
                           ) : (
                           <>
                             <button
                               onClick={() => markFeedback(item.id, true)}
-                              disabled={isSubmitting}
                               style={{
                                 padding: '0.5rem',
                                 borderRadius: '6px',
                                 border: 'none',
-                                backgroundColor: localIsCorrect === true ? '#dcfce7' : 'transparent',
-                                cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                                backgroundColor: 'transparent',
+                                cursor: 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 transition: 'background-color 0.2s',
                               }}
-                              onMouseEnter={(e) => {
-                                if (localIsCorrect !== true && !isSubmitting) e.currentTarget.style.backgroundColor = '#dcfce7';
-                              }}
-                              onMouseLeave={(e) => {
-                                if (localIsCorrect !== true) e.currentTarget.style.backgroundColor = 'transparent';
-                              }}
+                              onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#dcfce7'; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
                               title="Mark as correct"
                             >
                               <ThumbsUp style={{ width: '16px', height: '16px', color: '#22c55e' }} />
                             </button>
                             <button
                               onClick={() => markFeedback(item.id, false)}
-                              disabled={isSubmitting}
                               style={{
                                 padding: '0.5rem',
                                 borderRadius: '6px',
                                 border: 'none',
-                                backgroundColor: localIsCorrect === false ? '#fee2e2' : 'transparent',
-                                cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                                backgroundColor: 'transparent',
+                                cursor: 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 transition: 'background-color 0.2s',
                               }}
-                              onMouseEnter={(e) => {
-                                if (localIsCorrect !== false && !isSubmitting) e.currentTarget.style.backgroundColor = '#fee2e2';
-                              }}
-                              onMouseLeave={(e) => {
-                                if (localIsCorrect !== false) e.currentTarget.style.backgroundColor = 'transparent';
-                              }}
+                              onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#fee2e2'; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
                               title="Mark as incorrect"
                             >
                               <ThumbsDown style={{ width: '16px', height: '16px', color: '#ef4444' }} />
                             </button>
                             <button
-                              onClick={() => openNoteDialog(item)}
-                              disabled={isSubmitting}
+                              onClick={() => openFeedbackDialog(item)}
                               style={{
                                 padding: '0.5rem',
                                 borderRadius: '6px',
                                 border: 'none',
-                                backgroundColor: localFeedback?.note ? '#dbeafe' : 'transparent',
-                                cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                                backgroundColor: 'transparent',
+                                cursor: 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 transition: 'background-color 0.2s',
                               }}
-                              onMouseEnter={(e) => {
-                                if (!localFeedback?.note && !isSubmitting) e.currentTarget.style.backgroundColor = '#dbeafe';
-                              }}
-                              onMouseLeave={(e) => {
-                                if (!localFeedback?.note) e.currentTarget.style.backgroundColor = 'transparent';
-                              }}
-                              title="Add note"
+                              onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#dbeafe'; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                              title="Add note with context"
                             >
                               <MessageSquare style={{ width: '16px', height: '16px', color: '#3b82f6' }} />
                             </button>
@@ -2038,6 +2054,51 @@ export default function DiscoverPage() {
                     </div>
                   );
                 })}
+              </div>
+            )}
+
+            {/* Submit All Feedback Button */}
+            {pendingFeedback.size > 0 && (
+              <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: '#f0fdf4', borderRadius: '8px', border: '1px solid #86efac' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
+                  <div>
+                    <span style={{ fontSize: '0.875rem', fontWeight: '600', color: '#166534' }}>
+                      {pendingFeedback.size} item{pendingFeedback.size !== 1 ? 's' : ''} ready to submit
+                    </span>
+                    <p style={{ fontSize: '0.75rem', color: '#15803d', margin: '0.25rem 0 0 0' }}>
+                      Click &quot;Submit All Feedback&quot; to save to database
+                    </p>
+                  </div>
+                  <button
+                    onClick={submitAllFeedback}
+                    disabled={isSubmittingBatch}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      padding: '0.625rem 1.25rem',
+                      borderRadius: '8px',
+                      border: 'none',
+                      backgroundColor: isSubmittingBatch ? '#86efac' : '#22c55e',
+                      color: '#fff',
+                      fontSize: '0.875rem',
+                      fontWeight: '600',
+                      cursor: isSubmittingBatch ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {isSubmittingBatch ? (
+                      <>
+                        <Loader2 style={{ width: '16px', height: '16px', animation: 'spin 1s linear infinite' }} />
+                        Submitting...
+                      </>
+                    ) : (
+                      <>
+                        <Send style={{ width: '16px', height: '16px' }} />
+                        Submit All Feedback
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             )}
 
@@ -2083,174 +2144,14 @@ export default function DiscoverPage() {
         </>
       )}
 
-      {/* Note Dialog */}
-      {noteDialogOpen && selectedItem && (
-        <>
-          {/* Backdrop */}
-          <div
-            style={{
-              position: 'fixed',
-              inset: 0,
-              backgroundColor: 'rgba(0, 0, 0, 0.5)',
-              zIndex: 50,
-            }}
-            onClick={() => setNoteDialogOpen(false)}
-          />
-          {/* Dialog */}
-          <div
-            style={{
-              position: 'fixed',
-              left: '50%',
-              top: '50%',
-              transform: 'translate(-50%, -50%)',
-              zIndex: 51,
-              width: '100%',
-              maxWidth: '28rem',
-              backgroundColor: '#fff',
-              borderRadius: '12px',
-              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
-              padding: '1.5rem',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
-              <h3 style={{ fontSize: '1.125rem', fontWeight: '600', color: '#111', margin: 0 }}>Add Feedback</h3>
-              <button
-                onClick={() => setNoteDialogOpen(false)}
-                style={{
-                  padding: '0.25rem',
-                  borderRadius: '4px',
-                  border: 'none',
-                  backgroundColor: 'transparent',
-                  cursor: 'pointer',
-                  color: '#6b7280',
-                }}
-              >
-                <X style={{ width: '20px', height: '20px' }} />
-              </button>
-            </div>
-
-            {/* Item preview */}
-            <div
-              style={{
-                padding: '0.75rem',
-                backgroundColor: '#f9fafb',
-                borderRadius: '8px',
-                marginBottom: '1rem',
-              }}
-            >
-              <p style={{ fontWeight: '500', fontSize: '0.875rem', color: '#111', margin: 0, marginBottom: '0.25rem' }}>
-                {selectedItem.content.text}
-              </p>
-              <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0 }}>
-                {selectedItem.prediction.label}
-              </p>
-            </div>
-
-            {/* Notes textarea */}
-            <textarea
-              placeholder="Add notes or corrections..."
-              value={noteDialogText}
-              onChange={(e) => setNoteDialogText(e.target.value)}
-              rows={3}
-              style={{
-                width: '100%',
-                padding: '0.75rem',
-                borderRadius: '8px',
-                border: '1px solid #e5e7eb',
-                fontSize: '0.875rem',
-                resize: 'vertical',
-                marginBottom: '1rem',
-                boxSizing: 'border-box',
-              }}
-            />
-
-            {/* Feedback buttons */}
-            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-              <button
-                onClick={() => setNoteDialogFeedback(true)}
-                style={{
-                  flex: 1,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '0.5rem',
-                  padding: '0.75rem',
-                  borderRadius: '8px',
-                  border: noteDialogFeedback === true ? '2px solid #22c55e' : '1px solid #e5e7eb',
-                  backgroundColor: noteDialogFeedback === true ? '#f0fdf4' : '#fff',
-                  color: noteDialogFeedback === true ? '#166534' : '#374151',
-                  fontSize: '0.875rem',
-                  fontWeight: '600',
-                  cursor: 'pointer',
-                }}
-              >
-                <ThumbsUp style={{ width: '16px', height: '16px' }} />
-                Correct
-              </button>
-              <button
-                onClick={() => setNoteDialogFeedback(false)}
-                style={{
-                  flex: 1,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '0.5rem',
-                  padding: '0.75rem',
-                  borderRadius: '8px',
-                  border: noteDialogFeedback === false ? '2px solid #ef4444' : '1px solid #e5e7eb',
-                  backgroundColor: noteDialogFeedback === false ? '#fef2f2' : '#fff',
-                  color: noteDialogFeedback === false ? '#991b1b' : '#374151',
-                  fontSize: '0.875rem',
-                  fontWeight: '600',
-                  cursor: 'pointer',
-                }}
-              >
-                <ThumbsDown style={{ width: '16px', height: '16px' }} />
-                Incorrect
-              </button>
-            </div>
-
-            {/* Save button */}
-            <button
-              onClick={saveNoteDialogFeedback}
-              disabled={selectedItem && submittingItems.has(selectedItem.id)}
-              style={{
-                width: '100%',
-                padding: '0.75rem',
-                borderRadius: '8px',
-                border: 'none',
-                backgroundColor: selectedItem && submittingItems.has(selectedItem.id) ? '#93c5fd' : '#3b82f6',
-                color: '#fff',
-                fontSize: '0.875rem',
-                fontWeight: '600',
-                cursor: selectedItem && submittingItems.has(selectedItem.id) ? 'not-allowed' : 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '0.5rem',
-              }}
-            >
-              {selectedItem && submittingItems.has(selectedItem.id) ? (
-                <>
-                  <Loader2 style={{ width: '16px', height: '16px', animation: 'spin 1s linear infinite' }} />
-                  Submitting...
-                </>
-              ) : noteDialogFeedback !== null ? (
-                'Submit Feedback'
-              ) : noteDialogText ? (
-                'Save Note'
-              ) : (
-                'Close'
-              )}
-            </button>
-            {noteDialogFeedback !== null && (
-              <p style={{ fontSize: '0.75rem', color: '#6b7280', textAlign: 'center', marginTop: '0.5rem', marginBottom: 0 }}>
-                Feedback will be submitted immediately
-              </p>
-            )}
-          </div>
-        </>
-      )}
+      {/* Feedback Dialog Component */}
+      <FeedbackDialog
+        open={feedbackDialogOpen}
+        onOpenChange={setFeedbackDialogOpen}
+        item={feedbackDialogItem}
+        pendingFeedback={feedbackDialogItem ? pendingFeedback.get(feedbackDialogItem.id) : null}
+        onSaveFeedback={saveFeedbackFromDialog}
+      />
 
       <style jsx global>{`
         @keyframes spin { to { transform: rotate(360deg); } }
