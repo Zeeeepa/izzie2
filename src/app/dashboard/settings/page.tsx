@@ -12,10 +12,11 @@ import { cn } from '@/lib/utils';
 // Types
 type PageState = 'loading' | 'loaded' | 'error';
 type SaveState = 'idle' | 'saving' | 'success' | 'error';
-type SettingsTab = 'writing' | 'alerts' | 'notifications' | 'integrations' | 'usage';
+type SettingsTab = 'identity' | 'writing' | 'alerts' | 'notifications' | 'integrations' | 'usage';
 
 // Tab configuration
 const TABS: { value: SettingsTab; label: string; description: string }[] = [
+  { value: 'identity', label: 'My Identity', description: 'Your identity and linked entities' },
   { value: 'writing', label: 'Writing', description: 'Writing style and tone' },
   { value: 'alerts', label: 'Alerts', description: 'Alert classification and quiet hours' },
   { value: 'notifications', label: 'Notifications', description: 'Digest and Telegram' },
@@ -96,13 +97,47 @@ const DEFAULT_WRITING_PREFERENCES = {
   customInstructions: '' as string,
 };
 
+// Identity entity interface
+interface IdentityEntity {
+  id: string;
+  entityType: string;
+  entityValue: string;
+  isPrimary: boolean;
+  createdAt: string;
+}
+
+// Identity interface
+interface UserIdentity {
+  id: string;
+  userId: string;
+  displayName: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Entity type options for identity
+const IDENTITY_ENTITY_TYPES = [
+  { value: 'email', label: 'Email Address', description: 'Email addresses you use' },
+  { value: 'phone', label: 'Phone Number', description: 'Phone numbers associated with you' },
+  { value: 'name', label: 'Name/Alias', description: 'Names and nicknames you go by' },
+  { value: 'company', label: 'Company', description: 'Companies you are affiliated with' },
+  { value: 'title', label: 'Job Title', description: 'Your professional titles' },
+] as const;
+
 export default function SettingsPage() {
   // Tab state
-  const [activeTab, setActiveTab] = useState<SettingsTab>('writing');
+  const [activeTab, setActiveTab] = useState<SettingsTab>('identity');
 
   // Page state
   const [pageState, setPageState] = useState<PageState>('loading');
   const [pageError, setPageError] = useState<string | null>(null);
+
+  // Identity state
+  const [identity, setIdentity] = useState<UserIdentity | null>(null);
+  const [identityEntities, setIdentityEntities] = useState<IdentityEntity[]>([]);
+  const [displayName, setDisplayName] = useState('');
+  const [newEntityType, setNewEntityType] = useState<string>('email');
+  const [newEntityValue, setNewEntityValue] = useState('');
 
   // Writing preferences state
   const [writingStyle, setWritingStyle] = useState<WritingStyle>(DEFAULT_WRITING_PREFERENCES.writingStyle);
@@ -130,6 +165,19 @@ export default function SettingsPage() {
   const fetchPreferences = useCallback(async () => {
     try {
       setPageState('loading');
+
+      // Fetch identity
+      const identityRes = await fetch('/api/user/identity');
+      if (identityRes.ok) {
+        const data = await identityRes.json();
+        if (data.identity) {
+          setIdentity(data.identity);
+          setDisplayName(data.identity.displayName ?? '');
+        }
+        if (data.entities) {
+          setIdentityEntities(data.entities);
+        }
+      }
 
       // Fetch writing preferences
       const writingRes = await fetch('/api/user/preferences');
@@ -175,6 +223,138 @@ export default function SettingsPage() {
   useEffect(() => {
     fetchPreferences();
   }, [fetchPreferences]);
+
+  // Save identity display name
+  const saveIdentityDisplayName = async () => {
+    setSaveState('saving');
+    setSaveError(null);
+
+    try {
+      const response = await fetch('/api/user/identity', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ displayName: displayName.trim() || null }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to save display name');
+      }
+
+      const data = await response.json();
+      if (data.identity) {
+        setIdentity(data.identity);
+      }
+
+      setSaveState('success');
+      setTimeout(() => setSaveState('idle'), 3000);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Failed to save');
+      setSaveState('error');
+    }
+  };
+
+  // Add identity entity
+  const addIdentityEntity = async () => {
+    if (!newEntityValue.trim()) return;
+
+    setSaveState('saving');
+    setSaveError(null);
+
+    try {
+      const response = await fetch('/api/user/identity/entities', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          entityType: newEntityType,
+          entityValue: newEntityValue.trim(),
+          isPrimary: false,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to add entity');
+      }
+
+      const data = await response.json();
+      if (data.entity) {
+        setIdentityEntities((prev) => [...prev, data.entity]);
+        setNewEntityValue('');
+      }
+
+      setSaveState('success');
+      setTimeout(() => setSaveState('idle'), 3000);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Failed to add entity');
+      setSaveState('error');
+    }
+  };
+
+  // Remove identity entity
+  const removeIdentityEntity = async (entityId: string) => {
+    setSaveState('saving');
+    setSaveError(null);
+
+    try {
+      const response = await fetch(`/api/user/identity/entities/${entityId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to remove entity');
+      }
+
+      setIdentityEntities((prev) => prev.filter((e) => e.id !== entityId));
+      setSaveState('success');
+      setTimeout(() => setSaveState('idle'), 3000);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Failed to remove entity');
+      setSaveState('error');
+    }
+  };
+
+  // Set entity as primary
+  const setEntityAsPrimary = async (entityId: string) => {
+    setSaveState('saving');
+    setSaveError(null);
+
+    try {
+      const response = await fetch(`/api/user/identity/entities/${entityId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isPrimary: true }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to update entity');
+      }
+
+      const data = await response.json();
+      if (data.entity) {
+        // Update local state: unset other primaries of same type, set this one
+        setIdentityEntities((prev) =>
+          prev.map((e) => {
+            if (e.id === entityId) {
+              return { ...e, isPrimary: true };
+            }
+            if (e.entityType === data.entity.entityType) {
+              return { ...e, isPrimary: false };
+            }
+            return e;
+          })
+        );
+      }
+
+      setSaveState('success');
+      setTimeout(() => setSaveState('idle'), 3000);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Failed to update entity');
+      setSaveState('error');
+    }
+  };
 
   // Save writing preferences
   const saveWritingPreferences = async () => {
@@ -743,9 +923,183 @@ export default function SettingsPage() {
     </div>
   );
 
+  // Render identity tab
+  const renderIdentityTab = () => (
+    <div className="space-y-6">
+      {/* Display Name */}
+      <div className="rounded-lg border bg-card shadow-sm">
+        <div className="p-6 space-y-4">
+          <div>
+            <h3 className="font-medium text-foreground">Display Name</h3>
+            <p className="text-sm text-muted-foreground">
+              How Izzie should refer to you
+            </p>
+          </div>
+
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="Enter your preferred name"
+              className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+            <Button onClick={saveIdentityDisplayName} disabled={saveState === 'saving'}>
+              Save
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Linked Entities */}
+      <div className="rounded-lg border bg-card shadow-sm">
+        <div className="p-6 space-y-4">
+          <div>
+            <h3 className="font-medium text-foreground">Linked Entities</h3>
+            <p className="text-sm text-muted-foreground">
+              Information that identifies you (emails, names, companies). Izzie uses this to distinguish "you" from other people.
+            </p>
+          </div>
+
+          {/* Add new entity */}
+          <div className="flex gap-2">
+            <select
+              value={newEntityType}
+              onChange={(e) => setNewEntityType(e.target.value)}
+              className="rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            >
+              {IDENTITY_ENTITY_TYPES.map((type) => (
+                <option key={type.value} value={type.value}>
+                  {type.label}
+                </option>
+              ))}
+            </select>
+            <input
+              type="text"
+              value={newEntityValue}
+              onChange={(e) => setNewEntityValue(e.target.value)}
+              placeholder={
+                newEntityType === 'email'
+                  ? 'email@example.com'
+                  : newEntityType === 'phone'
+                  ? '+1 234 567 8900'
+                  : newEntityType === 'name'
+                  ? 'John Doe'
+                  : newEntityType === 'company'
+                  ? 'Acme Inc.'
+                  : 'Software Engineer'
+              }
+              onKeyDown={(e) => e.key === 'Enter' && addIdentityEntity()}
+              className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+            <Button onClick={addIdentityEntity} variant="outline" disabled={saveState === 'saving'}>
+              Add
+            </Button>
+          </div>
+
+          {/* Entity list grouped by type */}
+          {IDENTITY_ENTITY_TYPES.map((type) => {
+            const entitiesOfType = identityEntities.filter((e) => e.entityType === type.value);
+            if (entitiesOfType.length === 0) return null;
+
+            return (
+              <div key={type.value} className="space-y-2">
+                <h4 className="text-sm font-medium text-muted-foreground">{type.label}s</h4>
+                <div className="flex flex-wrap gap-2">
+                  {entitiesOfType.map((entity) => (
+                    <span
+                      key={entity.id}
+                      className={cn(
+                        'inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm',
+                        entity.isPrimary
+                          ? 'bg-primary/10 text-primary border border-primary/30'
+                          : 'bg-muted text-muted-foreground'
+                      )}
+                    >
+                      {entity.isPrimary && (
+                        <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clipRule="evenodd" />
+                        </svg>
+                      )}
+                      {entity.entityValue}
+                      <span className="flex items-center gap-1 ml-1">
+                        {!entity.isPrimary && (
+                          <button
+                            onClick={() => setEntityAsPrimary(entity.id)}
+                            className="hover:text-primary"
+                            title="Set as primary"
+                          >
+                            <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+                            </svg>
+                          </button>
+                        )}
+                        <button
+                          onClick={() => removeIdentityEntity(entity.id)}
+                          className="hover:text-destructive"
+                          title="Remove"
+                        >
+                          <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+
+          {identityEntities.length === 0 && (
+            <div className="text-center py-4 text-muted-foreground text-sm">
+              No entities linked yet. Add your email addresses, names, and other identifying information.
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Save status */}
+      <div className="rounded-lg border bg-card shadow-sm p-6">
+        {saveState === 'error' && saveError && (
+          <div className="mb-4 flex items-center gap-2 text-destructive text-sm">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+            <span>{saveError}</span>
+          </div>
+        )}
+
+        {saveState === 'success' && (
+          <div className="flex items-center gap-2 text-green-600 dark:text-green-400 text-sm">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clipRule="evenodd" />
+            </svg>
+            <span>Changes saved!</span>
+          </div>
+        )}
+
+        {saveState === 'saving' && (
+          <div className="flex items-center gap-2 text-muted-foreground text-sm">
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+            <span>Saving...</span>
+          </div>
+        )}
+
+        {saveState === 'idle' && (
+          <p className="text-sm text-muted-foreground">
+            Your identity helps Izzie understand context like "my company" vs other companies, or distinguish emails you sent vs emails from others.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+
   // Render active tab content
   const renderTabContent = () => {
     switch (activeTab) {
+      case 'identity':
+        return renderIdentityTab();
       case 'writing':
         return renderPreferencesTab();
       case 'alerts':

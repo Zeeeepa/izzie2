@@ -1776,6 +1776,91 @@ export const LLM_OPERATION_TYPE = {
 export type LlmOperationType = (typeof LLM_OPERATION_TYPE)[keyof typeof LLM_OPERATION_TYPE];
 
 /**
+ * User Identity table - represents the user themselves
+ * Each user has ONE identity which can have multiple linked entities
+ */
+export const userIdentity = pgTable(
+  'user_identity',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    userId: text('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull()
+      .unique(),
+
+    // How the user wants to be called
+    displayName: text('display_name'),
+
+    // Timestamps
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    userIdIdx: index('user_identity_user_id_idx').on(table.userId),
+  })
+);
+
+/**
+ * Identity Entities table - links entities to the user's identity
+ * Stores email addresses, phone numbers, names, companies, titles that belong to the user
+ */
+export const identityEntities = pgTable(
+  'identity_entities',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    userId: text('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull(),
+    identityId: text('identity_id')
+      .references(() => userIdentity.id, { onDelete: 'cascade' })
+      .notNull(),
+
+    // Entity classification
+    entityType: text('entity_type').notNull(), // 'email' | 'phone' | 'name' | 'company' | 'title'
+    entityValue: text('entity_value').notNull(), // The actual value
+
+    // Primary marker (e.g., primary email, primary name)
+    isPrimary: boolean('is_primary').default(false).notNull(),
+
+    // Timestamps
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    userIdIdx: index('identity_entities_user_id_idx').on(table.userId),
+    identityIdIdx: index('identity_entities_identity_id_idx').on(table.identityId),
+    entityTypeIdx: index('identity_entities_entity_type_idx').on(table.entityType),
+    // Unique constraint: one entity value per user/type combination
+    userTypeValueUnique: uniqueIndex('identity_entities_user_type_value_unique').on(
+      table.userId,
+      table.entityType,
+      table.entityValue
+    ),
+  })
+);
+
+/**
+ * Type exports for user identity
+ */
+export type UserIdentity = typeof userIdentity.$inferSelect;
+export type NewUserIdentity = typeof userIdentity.$inferInsert;
+
+export type IdentityEntity = typeof identityEntities.$inferSelect;
+export type NewIdentityEntity = typeof identityEntities.$inferInsert;
+
+/**
+ * Identity entity type constants
+ */
+export const IDENTITY_ENTITY_TYPE = {
+  EMAIL: 'email',
+  PHONE: 'phone',
+  NAME: 'name',
+  COMPANY: 'company',
+  TITLE: 'title',
+} as const;
+
+export type IdentityEntityType = (typeof IDENTITY_ENTITY_TYPE)[keyof typeof IDENTITY_ENTITY_TYPE];
+
+/**
  * Entity Aliases table - stores nicknames/aliases for entities
  * Helps with deduplication by recognizing different names for the same entity
  */
