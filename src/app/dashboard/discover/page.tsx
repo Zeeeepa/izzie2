@@ -8,7 +8,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useToast } from '@/components/ui/toast';
 import { useConfirmModal } from '@/components/ui/confirm-modal';
-import { ThumbsUp, ThumbsDown, MessageSquare, X, Play, Pause, Square, RefreshCw, DollarSign, AlertCircle } from 'lucide-react';
+import { ThumbsUp, ThumbsDown, MessageSquare, X, Play, Pause, Square, RefreshCw, DollarSign, AlertCircle, Mail, Calendar, Loader2 } from 'lucide-react';
 
 // ============================================================
 // Types
@@ -103,6 +103,7 @@ interface DiscoveredItem {
     notes?: string;
   };
   createdAt: string;
+  occurrenceCount?: number; // How many times this entity was found
 }
 
 // ============================================================
@@ -174,12 +175,14 @@ export default function DiscoverPage() {
   const [noteDialogFeedback, setNoteDialogFeedback] = useState<boolean | null>(null);
   const [noteDialogText, setNoteDialogText] = useState('');
 
-  // Local pending feedback state (not yet submitted)
+  // Local pending feedback state (for notes before voting)
   const [pendingFeedback, setPendingFeedback] = useState<Map<string, {
     isCorrect: boolean | null;
     note: string;
   }>>(new Map());
-  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
+
+  // Track which items are currently being submitted (for one-click voting)
+  const [submittingItems, setSubmittingItems] = useState<Set<string>>(new Set());
 
   // ============================================================
   // Discovery API Handlers
@@ -495,19 +498,101 @@ export default function DiscoverPage() {
     }
   }, [session, page, filterType, filterStatus]);
 
-  // Mark item locally (no API call yet)
-  const markFeedback = (itemId: string, isCorrect: boolean) => {
-    setPendingFeedback(prev => {
-      const updated = new Map(prev);
-      const existing = updated.get(itemId) || { isCorrect: null, note: '' };
-      // Toggle off if clicking the same feedback
-      if (existing.isCorrect === isCorrect) {
-        updated.set(itemId, { ...existing, isCorrect: null });
+  // Submit feedback immediately on vote click (one-click voting)
+  const markFeedback = async (itemId: string, isCorrect: boolean) => {
+    // Find the current item to check its status
+    const item = items.find(i => i.id === itemId);
+    if (!item) return;
+
+    // Check if clicking same vote on an already-reviewed item (toggle off / un-vote)
+    if (item.status === 'reviewed' && item.feedback?.isCorrect === isCorrect) {
+      // Un-voting: Set back to pending by calling API with null/skip
+      // For now, we don't support un-voting on already submitted items
+      toast.info('Item already reviewed. Cannot un-vote.');
+      return;
+    }
+
+    // Check if we have pending local feedback with the same vote (toggle off before submit)
+    const existingLocal = pendingFeedback.get(itemId);
+    if (existingLocal?.isCorrect === isCorrect && item.status === 'pending') {
+      // Toggle off local state
+      setPendingFeedback(prev => {
+        const updated = new Map(prev);
+        updated.set(itemId, { ...existingLocal, isCorrect: null });
+        return updated;
+      });
+      return;
+    }
+
+    // Add to submitting set for loading state
+    setSubmittingItems(prev => new Set(prev).add(itemId));
+
+    // Get any existing note for this item
+    const existingNote = pendingFeedback.get(itemId)?.note || '';
+
+    try {
+      const res = await fetch('/api/train/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sampleId: itemId,
+          action: 'feedback',
+          isCorrect,
+          notes: existingNote || undefined,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        // Update the item in local state to show as reviewed
+        setItems(prev => prev.map(i => {
+          if (i.id === itemId) {
+            return {
+              ...i,
+              status: 'reviewed' as const,
+              feedback: { isCorrect, notes: existingNote || undefined }
+            };
+          }
+          return i;
+        }));
+
+        // Update training budget if returned
+        if (data.trainingBudget) {
+          setTrainingBudget(data.trainingBudget);
+        }
+
+        // Check for budget exhaustion
+        if (data.budgetExhausted) {
+          toast.warning('Training budget exhausted');
+          if (session) {
+            setSession({ ...session, status: 'paused' });
+          }
+        }
+
+        // Clear from pending feedback map
+        setPendingFeedback(prev => {
+          const updated = new Map(prev);
+          updated.delete(itemId);
+          return updated;
+        });
+
+        // Refresh feedback stats
+        await fetchStatus();
       } else {
-        updated.set(itemId, { ...existing, isCorrect });
+        toast.error(data.error || 'Failed to submit feedback');
       }
-      return updated;
-    });
+    } catch (err) {
+      console.error('Failed to submit feedback:', err);
+      toast.error('Failed to submit feedback');
+    } finally {
+      // Remove from submitting set
+      setSubmittingItems(prev => {
+        const updated = new Set(prev);
+        updated.delete(itemId);
+        return updated;
+      });
+    }
   };
 
   // Update note locally
@@ -518,88 +603,6 @@ export default function DiscoverPage() {
       updated.set(itemId, { ...existing, note });
       return updated;
     });
-  };
-
-  // Submit all pending feedback at once
-  const submitAllFeedback = async () => {
-    const feedbackItems = Array.from(pendingFeedback.entries())
-      .filter(([_, feedback]) => feedback.isCorrect !== null);
-
-    if (feedbackItems.length === 0) {
-      toast.info('No feedback to submit');
-      return;
-    }
-
-    setIsSubmittingFeedback(true);
-
-    let lastTrainingBudget = null;
-    let budgetExhausted = false;
-
-    try {
-      // Submit each item
-      for (const [itemId, feedback] of feedbackItems) {
-        const res = await fetch('/api/train/feedback', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            sampleId: itemId,
-            action: 'feedback',
-            isCorrect: feedback.isCorrect,
-            notes: feedback.note || undefined,
-          }),
-        });
-
-        const data = await res.json();
-
-        if (data.success) {
-          // Track training budget updates
-          if (data.trainingBudget) {
-            lastTrainingBudget = data.trainingBudget;
-          }
-          if (data.budgetExhausted) {
-            budgetExhausted = true;
-          }
-        }
-      }
-
-      // Update items in local state to show as reviewed
-      setItems(prev => prev.map(item => {
-        const feedback = pendingFeedback.get(item.id);
-        if (feedback && feedback.isCorrect !== null) {
-          return {
-            ...item,
-            status: 'reviewed' as const,
-            feedback: { isCorrect: feedback.isCorrect, notes: feedback.note || undefined }
-          };
-        }
-        return item;
-      }));
-
-      // Update training budget if returned
-      if (lastTrainingBudget) {
-        setTrainingBudget(lastTrainingBudget);
-      }
-
-      // Check for budget exhaustion
-      if (budgetExhausted) {
-        toast.warning('Training budget exhausted');
-        if (session) {
-          setSession({ ...session, status: 'paused' });
-        }
-      }
-
-      // Clear pending feedback
-      setPendingFeedback(new Map());
-      toast.success(`Submitted feedback for ${feedbackItems.length} items`);
-
-      // Refresh stats
-      await fetchStatus();
-    } catch (err) {
-      console.error('Failed to submit feedback:', err);
-      toast.error('Failed to submit some feedback');
-    } finally {
-      setIsSubmittingFeedback(false);
-    }
   };
 
   // Add budget top-up handler
@@ -643,18 +646,96 @@ export default function DiscoverPage() {
     setNoteDialogOpen(true);
   };
 
-  // Save note dialog to local state (no API call)
-  const saveNoteDialogFeedback = () => {
+  // Save note dialog and submit immediately
+  const saveNoteDialogFeedback = async () => {
     if (!selectedItem) return;
 
-    setPendingFeedback(prev => {
-      const updated = new Map(prev);
-      updated.set(selectedItem.id, {
-        isCorrect: noteDialogFeedback,
-        note: noteDialogText,
+    // If no feedback selected and no note, just close
+    if (noteDialogFeedback === null && !noteDialogText) {
+      setNoteDialogOpen(false);
+      setSelectedItem(null);
+      return;
+    }
+
+    // If feedback is selected, submit immediately
+    if (noteDialogFeedback !== null) {
+      // Add to submitting set for loading state
+      setSubmittingItems(prev => new Set(prev).add(selectedItem.id));
+
+      try {
+        const res = await fetch('/api/train/feedback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sampleId: selectedItem.id,
+            action: 'feedback',
+            isCorrect: noteDialogFeedback,
+            notes: noteDialogText || undefined,
+          }),
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+          // Update the item in local state to show as reviewed
+          setItems(prev => prev.map(i => {
+            if (i.id === selectedItem.id) {
+              return {
+                ...i,
+                status: 'reviewed' as const,
+                feedback: { isCorrect: noteDialogFeedback, notes: noteDialogText || undefined }
+              };
+            }
+            return i;
+          }));
+
+          // Update training budget if returned
+          if (data.trainingBudget) {
+            setTrainingBudget(data.trainingBudget);
+          }
+
+          // Check for budget exhaustion
+          if (data.budgetExhausted) {
+            toast.warning('Training budget exhausted');
+            if (session) {
+              setSession({ ...session, status: 'paused' });
+            }
+          }
+
+          // Clear from pending feedback map
+          setPendingFeedback(prev => {
+            const updated = new Map(prev);
+            updated.delete(selectedItem.id);
+            return updated;
+          });
+
+          // Refresh feedback stats
+          await fetchStatus();
+        } else {
+          toast.error(data.error || 'Failed to submit feedback');
+        }
+      } catch (err) {
+        console.error('Failed to submit feedback:', err);
+        toast.error('Failed to submit feedback');
+      } finally {
+        // Remove from submitting set
+        setSubmittingItems(prev => {
+          const updated = new Set(prev);
+          updated.delete(selectedItem.id);
+          return updated;
+        });
+      }
+    } else {
+      // Just store the note locally (no feedback selected yet)
+      setPendingFeedback(prev => {
+        const updated = new Map(prev);
+        updated.set(selectedItem.id, {
+          isCorrect: null,
+          note: noteDialogText,
+        });
+        return updated;
       });
-      return updated;
-    });
+    }
 
     setNoteDialogOpen(false);
     setSelectedItem(null);
@@ -707,9 +788,6 @@ export default function DiscoverPage() {
   const canAutoTrain = feedbackCount >= MIN_FEEDBACK_FOR_AUTO_TRAIN;
   const feedbackNeeded = MIN_FEEDBACK_FOR_AUTO_TRAIN - feedbackCount;
   const trainingBudgetExhausted = trainingBudget ? trainingBudget.remaining <= 0 : false;
-
-  // Count pending feedback items that have been marked
-  const pendingFeedbackCount = Array.from(pendingFeedback.values()).filter(f => f.isCorrect !== null).length;
 
   // ============================================================
   // Render
@@ -1228,6 +1306,7 @@ export default function DiscoverPage() {
                       // Get local pending feedback for this item
                       const localFeedback = pendingFeedback.get(item.id);
                       const localIsCorrect = localFeedback?.isCorrect;
+                      const isSubmitting = submittingItems.has(item.id);
 
                       // Determine border color based on feedback status
                       let borderColor = '#e5e7eb';
@@ -1247,23 +1326,35 @@ export default function DiscoverPage() {
                         bgColor = '#fef2f2';
                       }
 
+                      // Source type icon
+                      const SourceIcon = item.source?.type === 'email' ? Mail : item.source?.type === 'calendar' ? Calendar : null;
+
                       return (
                         <div
                           key={item.id}
                           style={{
                             display: 'flex',
-                            alignItems: 'center',
+                            alignItems: 'flex-start',
                             justifyContent: 'space-between',
                             padding: '0.75rem',
                             backgroundColor: bgColor,
                             borderRadius: '8px',
                             border: `2px solid ${borderColor}`,
                             transition: 'all 0.2s',
+                            opacity: isSubmitting ? 0.7 : 1,
                           }}
                         >
                           {/* Left: Content */}
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem', flexWrap: 'wrap' }}>
+                              {/* Source type icon */}
+                              {SourceIcon && (
+                                <span title={item.source?.type === 'email' ? 'From email' : 'From calendar'}>
+                                  <SourceIcon
+                                    style={{ width: '14px', height: '14px', color: '#6b7280', flexShrink: 0 }}
+                                  />
+                                </span>
+                              )}
                               <span
                                 style={{
                                   fontSize: '0.75rem',
@@ -1289,29 +1380,60 @@ export default function DiscoverPage() {
                               >
                                 {item.content.text}
                               </span>
-                              {localIsCorrect !== null && localIsCorrect !== undefined && item.status === 'pending' && (
+                              {/* Occurrence count badge */}
+                              {item.occurrenceCount && item.occurrenceCount > 1 && (
                                 <span
                                   style={{
                                     fontSize: '0.625rem',
                                     padding: '0.125rem 0.375rem',
-                                    borderRadius: '4px',
-                                    backgroundColor: '#fef3c7',
-                                    color: '#92400e',
+                                    borderRadius: '9999px',
+                                    backgroundColor: '#e0e7ff',
+                                    color: '#4338ca',
                                     fontWeight: '600',
                                   }}
+                                  title={`Found ${item.occurrenceCount} times`}
                                 >
-                                  Pending
+                                  x{item.occurrenceCount}
                                 </span>
                               )}
                             </div>
-                            <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '0.25rem' }}>
+                            {/* Context preview */}
+                            {item.content.context && (
+                              <p
+                                style={{
+                                  fontSize: '0.75rem',
+                                  color: '#6b7280',
+                                  margin: '0.25rem 0 0 0',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                  maxWidth: '100%',
+                                }}
+                                title={item.content.context}
+                              >
+                                {item.content.context.length > 100
+                                  ? `${item.content.context.substring(0, 100)}...`
+                                  : item.content.context}
+                              </p>
+                            )}
+                            <div
+                              style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '0.25rem' }}
+                              title={item.prediction.reasoning || undefined}
+                            >
                               {item.prediction.label} &bull; {item.prediction.confidence}% confidence
+                              {item.prediction.reasoning && (
+                                <span style={{ marginLeft: '0.25rem', cursor: 'help' }} title={item.prediction.reasoning}>
+                                  (?)
+                                </span>
+                              )}
                             </div>
                           </div>
 
                           {/* Right: Actions - always enabled even during processing */}
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', marginLeft: '1rem', flexShrink: 0 }}>
-                            {item.status === 'pending' ? (
+                            {isSubmitting ? (
+                              <Loader2 style={{ width: '16px', height: '16px', color: '#6b7280', animation: 'spin 1s linear infinite' }} />
+                            ) : item.status === 'pending' ? (
                               trainingBudgetExhausted ? (
                                 <span
                                   style={{
@@ -1327,19 +1449,20 @@ export default function DiscoverPage() {
                                 <>
                                   <button
                                     onClick={() => markFeedback(item.id, true)}
+                                    disabled={isSubmitting}
                                     style={{
                                       padding: '0.5rem',
                                       borderRadius: '6px',
                                       border: 'none',
                                       backgroundColor: localIsCorrect === true ? '#dcfce7' : 'transparent',
-                                      cursor: 'pointer',
+                                      cursor: isSubmitting ? 'not-allowed' : 'pointer',
                                       display: 'flex',
                                       alignItems: 'center',
                                       justifyContent: 'center',
                                       transition: 'background-color 0.2s',
                                     }}
                                     onMouseEnter={(e) => {
-                                      if (localIsCorrect !== true) e.currentTarget.style.backgroundColor = '#dcfce7';
+                                      if (localIsCorrect !== true && !isSubmitting) e.currentTarget.style.backgroundColor = '#dcfce7';
                                     }}
                                     onMouseLeave={(e) => {
                                       if (localIsCorrect !== true) e.currentTarget.style.backgroundColor = 'transparent';
@@ -1350,19 +1473,20 @@ export default function DiscoverPage() {
                                   </button>
                                   <button
                                     onClick={() => markFeedback(item.id, false)}
+                                    disabled={isSubmitting}
                                     style={{
                                       padding: '0.5rem',
                                       borderRadius: '6px',
                                       border: 'none',
                                       backgroundColor: localIsCorrect === false ? '#fee2e2' : 'transparent',
-                                      cursor: 'pointer',
+                                      cursor: isSubmitting ? 'not-allowed' : 'pointer',
                                       display: 'flex',
                                       alignItems: 'center',
                                       justifyContent: 'center',
                                       transition: 'background-color 0.2s',
                                     }}
                                     onMouseEnter={(e) => {
-                                      if (localIsCorrect !== false) e.currentTarget.style.backgroundColor = '#fee2e2';
+                                      if (localIsCorrect !== false && !isSubmitting) e.currentTarget.style.backgroundColor = '#fee2e2';
                                     }}
                                     onMouseLeave={(e) => {
                                       if (localIsCorrect !== false) e.currentTarget.style.backgroundColor = 'transparent';
@@ -1373,19 +1497,20 @@ export default function DiscoverPage() {
                                   </button>
                                   <button
                                     onClick={() => openNoteDialog(item)}
+                                    disabled={isSubmitting}
                                     style={{
                                       padding: '0.5rem',
                                       borderRadius: '6px',
                                       border: 'none',
                                       backgroundColor: localFeedback?.note ? '#dbeafe' : 'transparent',
-                                      cursor: 'pointer',
+                                      cursor: isSubmitting ? 'not-allowed' : 'pointer',
                                       display: 'flex',
                                       alignItems: 'center',
                                       justifyContent: 'center',
                                       transition: 'background-color 0.2s',
                                     }}
                                     onMouseEnter={(e) => {
-                                      if (!localFeedback?.note) e.currentTarget.style.backgroundColor = '#dbeafe';
+                                      if (!localFeedback?.note && !isSubmitting) e.currentTarget.style.backgroundColor = '#dbeafe';
                                     }}
                                     onMouseLeave={(e) => {
                                       if (!localFeedback?.note) e.currentTarget.style.backgroundColor = 'transparent';
@@ -1412,46 +1537,6 @@ export default function DiscoverPage() {
                       );
                     })}
                   </div>
-
-                  {/* Show pending feedback banner in discovery tab too */}
-                  {pendingFeedbackCount > 0 && (
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: '0.75rem 1rem',
-                        backgroundColor: '#eff6ff',
-                        border: '1px solid #bfdbfe',
-                        borderRadius: '8px',
-                        marginTop: '1rem',
-                      }}
-                    >
-                      <span style={{ fontSize: '0.875rem', color: '#1e40af', fontWeight: '500' }}>
-                        {pendingFeedbackCount} item{pendingFeedbackCount !== 1 ? 's' : ''} marked for feedback
-                      </span>
-                      <button
-                        onClick={submitAllFeedback}
-                        disabled={isSubmittingFeedback}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '0.5rem',
-                          padding: '0.5rem 1rem',
-                          borderRadius: '6px',
-                          border: 'none',
-                          backgroundColor: isSubmittingFeedback ? '#93c5fd' : '#3b82f6',
-                          color: '#fff',
-                          fontSize: '0.875rem',
-                          fontWeight: '600',
-                          cursor: isSubmittingFeedback ? 'not-allowed' : 'pointer',
-                          transition: 'background-color 0.2s',
-                        }}
-                      >
-                        {isSubmittingFeedback ? 'Submitting...' : 'Submit All Feedback'}
-                      </button>
-                    </div>
-                  )}
 
                   {items.length > 20 && (
                     <div style={{ textAlign: 'center', marginTop: '1rem' }}>
@@ -1678,46 +1763,6 @@ export default function DiscoverPage() {
             </div>
           </div>
 
-          {/* Pending Feedback Banner */}
-          {pendingFeedbackCount > 0 && (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '0.75rem 1rem',
-                backgroundColor: '#eff6ff',
-                border: '1px solid #bfdbfe',
-                borderRadius: '8px',
-                marginBottom: '1rem',
-              }}
-            >
-              <span style={{ fontSize: '0.875rem', color: '#1e40af', fontWeight: '500' }}>
-                {pendingFeedbackCount} item{pendingFeedbackCount !== 1 ? 's' : ''} marked for feedback
-              </span>
-              <button
-                onClick={submitAllFeedback}
-                disabled={isSubmittingFeedback}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                  padding: '0.5rem 1rem',
-                  borderRadius: '6px',
-                  border: 'none',
-                  backgroundColor: isSubmittingFeedback ? '#93c5fd' : '#3b82f6',
-                  color: '#fff',
-                  fontSize: '0.875rem',
-                  fontWeight: '600',
-                  cursor: isSubmittingFeedback ? 'not-allowed' : 'pointer',
-                  transition: 'background-color 0.2s',
-                }}
-              >
-                {isSubmittingFeedback ? 'Submitting...' : 'Submit All Feedback'}
-              </button>
-            </div>
-          )}
-
           {/* Items List */}
           <div
             style={{
@@ -1755,6 +1800,7 @@ export default function DiscoverPage() {
                   // Get local pending feedback for this item
                   const localFeedback = pendingFeedback.get(item.id);
                   const localIsCorrect = localFeedback?.isCorrect;
+                  const isSubmitting = submittingItems.has(item.id);
 
                   // Determine border color based on feedback status (local pending or already submitted)
                   let borderColor = '#e5e7eb';
@@ -1777,23 +1823,35 @@ export default function DiscoverPage() {
                     bgColor = '#fef2f2';
                   }
 
+                  // Source type icon
+                  const SourceIcon = item.source?.type === 'email' ? Mail : item.source?.type === 'calendar' ? Calendar : null;
+
                   return (
                     <div
                       key={item.id}
                       style={{
                         display: 'flex',
-                        alignItems: 'center',
+                        alignItems: 'flex-start',
                         justifyContent: 'space-between',
                         padding: '0.75rem',
                         backgroundColor: bgColor,
                         borderRadius: '8px',
                         border: `2px solid ${borderColor}`,
                         transition: 'all 0.2s',
+                        opacity: isSubmitting ? 0.7 : 1,
                       }}
                     >
                       {/* Left: Content */}
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem', flexWrap: 'wrap' }}>
+                          {/* Source type icon */}
+                          {SourceIcon && (
+                            <span title={item.source?.type === 'email' ? 'From email' : 'From calendar'}>
+                              <SourceIcon
+                                style={{ width: '14px', height: '14px', color: '#6b7280', flexShrink: 0 }}
+                              />
+                            </span>
+                          )}
                           <span
                             style={{
                               fontSize: '0.75rem',
@@ -1819,38 +1877,52 @@ export default function DiscoverPage() {
                           >
                             {item.content.text}
                           </span>
-                          {/* Show pending indicator */}
-                          {localIsCorrect !== null && localIsCorrect !== undefined && item.status === 'pending' && (
+                          {/* Occurrence count badge */}
+                          {item.occurrenceCount && item.occurrenceCount > 1 && (
                             <span
                               style={{
                                 fontSize: '0.625rem',
                                 padding: '0.125rem 0.375rem',
-                                borderRadius: '4px',
-                                backgroundColor: '#fef3c7',
-                                color: '#92400e',
+                                borderRadius: '9999px',
+                                backgroundColor: '#e0e7ff',
+                                color: '#4338ca',
                                 fontWeight: '600',
                               }}
+                              title={`Found ${item.occurrenceCount} times`}
                             >
-                              Pending
+                              x{item.occurrenceCount}
                             </span>
                           )}
                         </div>
+                        {/* Context preview */}
                         {item.content.context && (
                           <p
                             style={{
                               fontSize: '0.75rem',
                               color: '#6b7280',
-                              margin: 0,
+                              margin: '0.25rem 0 0 0',
                               overflow: 'hidden',
                               textOverflow: 'ellipsis',
                               whiteSpace: 'nowrap',
+                              maxWidth: '100%',
                             }}
+                            title={item.content.context}
                           >
-                            {item.content.context}
+                            {item.content.context.length > 100
+                              ? `${item.content.context.substring(0, 100)}...`
+                              : item.content.context}
                           </p>
                         )}
-                        <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '0.25rem' }}>
+                        <div
+                          style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '0.25rem' }}
+                          title={item.prediction.reasoning || undefined}
+                        >
                           {item.prediction.label} &bull; {item.prediction.confidence}% confidence
+                          {item.prediction.reasoning && (
+                            <span style={{ marginLeft: '0.25rem', cursor: 'help' }} title={item.prediction.reasoning}>
+                              (?)
+                            </span>
+                          )}
                           {localFeedback?.note && (
                             <span style={{ marginLeft: '0.5rem', color: '#3b82f6' }}>
                               &bull; Has note
@@ -1861,7 +1933,9 @@ export default function DiscoverPage() {
 
                       {/* Right: Actions */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', marginLeft: '1rem', flexShrink: 0 }}>
-                        {item.status === 'pending' ? (
+                        {isSubmitting ? (
+                          <Loader2 style={{ width: '16px', height: '16px', color: '#6b7280', animation: 'spin 1s linear infinite' }} />
+                        ) : item.status === 'pending' ? (
                           trainingBudgetExhausted ? (
                             <span
                               style={{
@@ -1877,19 +1951,20 @@ export default function DiscoverPage() {
                           <>
                             <button
                               onClick={() => markFeedback(item.id, true)}
+                              disabled={isSubmitting}
                               style={{
                                 padding: '0.5rem',
                                 borderRadius: '6px',
                                 border: 'none',
                                 backgroundColor: localIsCorrect === true ? '#dcfce7' : 'transparent',
-                                cursor: 'pointer',
+                                cursor: isSubmitting ? 'not-allowed' : 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 transition: 'background-color 0.2s',
                               }}
                               onMouseEnter={(e) => {
-                                if (localIsCorrect !== true) e.currentTarget.style.backgroundColor = '#dcfce7';
+                                if (localIsCorrect !== true && !isSubmitting) e.currentTarget.style.backgroundColor = '#dcfce7';
                               }}
                               onMouseLeave={(e) => {
                                 if (localIsCorrect !== true) e.currentTarget.style.backgroundColor = 'transparent';
@@ -1900,19 +1975,20 @@ export default function DiscoverPage() {
                             </button>
                             <button
                               onClick={() => markFeedback(item.id, false)}
+                              disabled={isSubmitting}
                               style={{
                                 padding: '0.5rem',
                                 borderRadius: '6px',
                                 border: 'none',
                                 backgroundColor: localIsCorrect === false ? '#fee2e2' : 'transparent',
-                                cursor: 'pointer',
+                                cursor: isSubmitting ? 'not-allowed' : 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 transition: 'background-color 0.2s',
                               }}
                               onMouseEnter={(e) => {
-                                if (localIsCorrect !== false) e.currentTarget.style.backgroundColor = '#fee2e2';
+                                if (localIsCorrect !== false && !isSubmitting) e.currentTarget.style.backgroundColor = '#fee2e2';
                               }}
                               onMouseLeave={(e) => {
                                 if (localIsCorrect !== false) e.currentTarget.style.backgroundColor = 'transparent';
@@ -1923,19 +1999,20 @@ export default function DiscoverPage() {
                             </button>
                             <button
                               onClick={() => openNoteDialog(item)}
+                              disabled={isSubmitting}
                               style={{
                                 padding: '0.5rem',
                                 borderRadius: '6px',
                                 border: 'none',
                                 backgroundColor: localFeedback?.note ? '#dbeafe' : 'transparent',
-                                cursor: 'pointer',
+                                cursor: isSubmitting ? 'not-allowed' : 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 transition: 'background-color 0.2s',
                               }}
                               onMouseEnter={(e) => {
-                                if (!localFeedback?.note) e.currentTarget.style.backgroundColor = '#dbeafe';
+                                if (!localFeedback?.note && !isSubmitting) e.currentTarget.style.backgroundColor = '#dbeafe';
                               }}
                               onMouseLeave={(e) => {
                                 if (!localFeedback?.note) e.currentTarget.style.backgroundColor = 'transparent';
@@ -2136,23 +2213,41 @@ export default function DiscoverPage() {
             {/* Save button */}
             <button
               onClick={saveNoteDialogFeedback}
+              disabled={selectedItem && submittingItems.has(selectedItem.id)}
               style={{
                 width: '100%',
                 padding: '0.75rem',
                 borderRadius: '8px',
                 border: 'none',
-                backgroundColor: '#3b82f6',
+                backgroundColor: selectedItem && submittingItems.has(selectedItem.id) ? '#93c5fd' : '#3b82f6',
                 color: '#fff',
                 fontSize: '0.875rem',
                 fontWeight: '600',
-                cursor: 'pointer',
+                cursor: selectedItem && submittingItems.has(selectedItem.id) ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.5rem',
               }}
             >
-              {noteDialogFeedback !== null || noteDialogText ? 'Save Feedback' : 'Close'}
+              {selectedItem && submittingItems.has(selectedItem.id) ? (
+                <>
+                  <Loader2 style={{ width: '16px', height: '16px', animation: 'spin 1s linear infinite' }} />
+                  Submitting...
+                </>
+              ) : noteDialogFeedback !== null ? (
+                'Submit Feedback'
+              ) : noteDialogText ? (
+                'Save Note'
+              ) : (
+                'Close'
+              )}
             </button>
-            <p style={{ fontSize: '0.75rem', color: '#6b7280', textAlign: 'center', marginTop: '0.5rem', marginBottom: 0 }}>
-              Click &quot;Submit All Feedback&quot; when ready to send all marked items
-            </p>
+            {noteDialogFeedback !== null && (
+              <p style={{ fontSize: '0.75rem', color: '#6b7280', textAlign: 'center', marginTop: '0.5rem', marginBottom: 0 }}>
+                Feedback will be submitted immediately
+              </p>
+            )}
           </div>
         </>
       )}

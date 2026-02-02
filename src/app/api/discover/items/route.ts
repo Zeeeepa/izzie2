@@ -1,7 +1,10 @@
 /**
  * GET /api/discover/items
- * Get all discovered items with pagination
+ * Get all discovered items with pagination and deduplication
  * Query params: page, limit, type (entity|relationship), status (pending|reviewed|skipped)
+ *
+ * Deduplication: Items are grouped by (contentText, predictionLabel) combination.
+ * The most recent instance (by createdAt) is returned with an occurrenceCount field.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -10,6 +13,25 @@ import { getActiveAutonomousSession } from '@/lib/training/autonomous-training';
 import { dbClient } from '@/lib/db';
 import { trainingSamples } from '@/lib/db/schema';
 import { eq, and, desc, sql } from 'drizzle-orm';
+
+// Type for the raw query result
+interface RawItemRow {
+  id: string;
+  type: string;
+  content_text: string;
+  content_context: string | null;
+  source_id: string | null;
+  source_type: string | null;
+  prediction_label: string;
+  prediction_confidence: number;
+  prediction_reasoning: string | null;
+  status: string;
+  feedback_is_correct: boolean | null;
+  feedback_corrected_label: string | null;
+  feedback_notes: string | null;
+  created_at: string;
+  occurrence_count: number | string;
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -41,7 +63,7 @@ export async function GET(request: NextRequest) {
     const db = dbClient.getDb();
     const offset = (page - 1) * limit;
 
-    // Build conditions
+    // Build conditions for Drizzle ORM query
     const conditions = [eq(trainingSamples.sessionId, session.id)];
     if (type) {
       conditions.push(eq(trainingSamples.type, type));
@@ -50,15 +72,9 @@ export async function GET(request: NextRequest) {
       conditions.push(eq(trainingSamples.status, status));
     }
 
-    // Get total count
-    const [countResult] = await db
-      .select({ count: sql<number>`cast(count(*) as integer)` })
-      .from(trainingSamples)
-      .where(and(...conditions));
-    const total = Number(countResult?.count) || 0;
-
-    // Get items
-    const items = await db
+    // First, get all items matching the conditions (we'll deduplicate in memory)
+    // This is simpler and more type-safe than raw SQL
+    const allItems = await db
       .select({
         id: trainingSamples.id,
         type: trainingSamples.type,
@@ -77,12 +93,32 @@ export async function GET(request: NextRequest) {
       })
       .from(trainingSamples)
       .where(and(...conditions))
-      .orderBy(desc(trainingSamples.createdAt))
-      .limit(limit)
-      .offset(offset);
+      .orderBy(desc(trainingSamples.createdAt));
+
+    // Deduplicate by (contentText, predictionLabel) combination
+    // Keep the most recent instance and count occurrences
+    const deduplicationMap = new Map<string, {
+      item: typeof allItems[0];
+      count: number;
+    }>();
+
+    for (const item of allItems) {
+      const key = `${item.contentText}||${item.predictionLabel}`;
+      const existing = deduplicationMap.get(key);
+      if (existing) {
+        existing.count++;
+      } else {
+        deduplicationMap.set(key, { item, count: 1 });
+      }
+    }
+
+    // Convert to array and apply pagination
+    const uniqueItems = Array.from(deduplicationMap.values());
+    const total = uniqueItems.length;
+    const paginatedItems = uniqueItems.slice(offset, offset + limit);
 
     // Transform items for UI
-    const transformedItems = items.map((item) => ({
+    const transformedItems = paginatedItems.map(({ item, count }) => ({
       id: item.id,
       type: item.type as 'entity' | 'relationship',
       content: {
@@ -107,6 +143,7 @@ export async function GET(request: NextRequest) {
           }
         : undefined,
       createdAt: item.createdAt,
+      occurrenceCount: count,
     }));
 
     return NextResponse.json({
