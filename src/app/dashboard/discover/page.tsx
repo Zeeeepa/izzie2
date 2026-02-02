@@ -1771,13 +1771,69 @@ export default function DiscoverPage() {
               padding: '1.5rem',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
-              <h3 style={{ fontSize: '1.125rem', fontWeight: '600', color: '#111', margin: 0 }}>
-                Review Items
-              </h3>
-              <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>
-                {items.length} items
-              </span>
+            {/* Sticky header with Review Items title and Submit button */}
+            <div
+              style={{
+                position: 'sticky',
+                top: 0,
+                zIndex: 10,
+                backgroundColor: '#fff',
+                paddingBottom: '0.75rem',
+                marginBottom: '0.5rem',
+                borderBottom: pendingFeedback.size > 0 ? '1px solid #e5e7eb' : 'none',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: pendingFeedback.size > 0 ? '0.75rem' : 0 }}>
+                <h3 style={{ fontSize: '1.125rem', fontWeight: '600', color: '#111', margin: 0 }}>
+                  Review Items
+                </h3>
+                <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+                  {items.length} items
+                </span>
+              </div>
+
+              {/* Submit All Feedback Button - Now in sticky header */}
+              {pendingFeedback.size > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem', padding: '0.75rem', backgroundColor: '#f0fdf4', borderRadius: '8px', border: '1px solid #86efac' }}>
+                  <div>
+                    <span style={{ fontSize: '0.875rem', fontWeight: '600', color: '#166534' }}>
+                      {pendingFeedback.size} item{pendingFeedback.size !== 1 ? 's' : ''} ready to submit
+                    </span>
+                    <p style={{ fontSize: '0.75rem', color: '#15803d', margin: '0.125rem 0 0 0' }}>
+                      Click to save feedback to database
+                    </p>
+                  </div>
+                  <button
+                    onClick={submitAllFeedback}
+                    disabled={isSubmittingBatch}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      padding: '0.5rem 1rem',
+                      borderRadius: '8px',
+                      border: 'none',
+                      backgroundColor: isSubmittingBatch ? '#86efac' : '#22c55e',
+                      color: '#fff',
+                      fontSize: '0.875rem',
+                      fontWeight: '600',
+                      cursor: isSubmittingBatch ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {isSubmittingBatch ? (
+                      <>
+                        <Loader2 style={{ width: '16px', height: '16px', animation: 'spin 1s linear infinite' }} />
+                        Submitting...
+                      </>
+                    ) : (
+                      <>
+                        <Send style={{ width: '16px', height: '16px' }} />
+                        Submit All Feedback
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
             </div>
 
             {itemsLoading ? (
@@ -2054,51 +2110,6 @@ export default function DiscoverPage() {
                     </div>
                   );
                 })}
-              </div>
-            )}
-
-            {/* Submit All Feedback Button */}
-            {pendingFeedback.size > 0 && (
-              <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: '#f0fdf4', borderRadius: '8px', border: '1px solid #86efac' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
-                  <div>
-                    <span style={{ fontSize: '0.875rem', fontWeight: '600', color: '#166534' }}>
-                      {pendingFeedback.size} item{pendingFeedback.size !== 1 ? 's' : ''} ready to submit
-                    </span>
-                    <p style={{ fontSize: '0.75rem', color: '#15803d', margin: '0.25rem 0 0 0' }}>
-                      Click &quot;Submit All Feedback&quot; to save to database
-                    </p>
-                  </div>
-                  <button
-                    onClick={submitAllFeedback}
-                    disabled={isSubmittingBatch}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.5rem',
-                      padding: '0.625rem 1.25rem',
-                      borderRadius: '8px',
-                      border: 'none',
-                      backgroundColor: isSubmittingBatch ? '#86efac' : '#22c55e',
-                      color: '#fff',
-                      fontSize: '0.875rem',
-                      fontWeight: '600',
-                      cursor: isSubmittingBatch ? 'not-allowed' : 'pointer',
-                    }}
-                  >
-                    {isSubmittingBatch ? (
-                      <>
-                        <Loader2 style={{ width: '16px', height: '16px', animation: 'spin 1s linear infinite' }} />
-                        Submitting...
-                      </>
-                    ) : (
-                      <>
-                        <Send style={{ width: '16px', height: '16px' }} />
-                        Submit All Feedback
-                      </>
-                    )}
-                  </button>
-                </div>
               </div>
             )}
 

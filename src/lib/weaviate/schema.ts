@@ -68,6 +68,7 @@ interface BaseEntityProperties {
   userId: string; // User who owns this entity
   extractedAt: string; // ISO timestamp
   context?: string; // Optional surrounding text
+  aliases?: string[]; // Optional list of known aliases for deduplication
 }
 
 /**
@@ -113,6 +114,7 @@ export async function initializeSchema(): Promise<void> {
         { name: 'userId', dataType: 'text', description: 'User ID who owns this entity' },
         { name: 'extractedAt', dataType: 'text', description: 'ISO timestamp of extraction' },
         { name: 'context', dataType: 'text', description: 'Surrounding text context' },
+        { name: 'aliases', dataType: 'text[]', description: 'Known aliases/nicknames for deduplication' },
       ],
     },
     {
@@ -127,6 +129,7 @@ export async function initializeSchema(): Promise<void> {
         { name: 'userId', dataType: 'text', description: 'User ID who owns this entity' },
         { name: 'extractedAt', dataType: 'text', description: 'ISO timestamp of extraction' },
         { name: 'context', dataType: 'text', description: 'Surrounding text context' },
+        { name: 'aliases', dataType: 'text[]', description: 'Known aliases/nicknames for deduplication' },
       ],
     },
     {
@@ -141,6 +144,7 @@ export async function initializeSchema(): Promise<void> {
         { name: 'userId', dataType: 'text', description: 'User ID who owns this entity' },
         { name: 'extractedAt', dataType: 'text', description: 'ISO timestamp of extraction' },
         { name: 'context', dataType: 'text', description: 'Surrounding text context' },
+        { name: 'aliases', dataType: 'text[]', description: 'Known aliases/nicknames for deduplication' },
       ],
     },
     {
@@ -155,6 +159,7 @@ export async function initializeSchema(): Promise<void> {
         { name: 'userId', dataType: 'text', description: 'User ID who owns this entity' },
         { name: 'extractedAt', dataType: 'text', description: 'ISO timestamp of extraction' },
         { name: 'context', dataType: 'text', description: 'Surrounding text context' },
+        { name: 'aliases', dataType: 'text[]', description: 'Known aliases/nicknames for deduplication' },
       ],
     },
     {
@@ -169,6 +174,7 @@ export async function initializeSchema(): Promise<void> {
         { name: 'userId', dataType: 'text', description: 'User ID who owns this entity' },
         { name: 'extractedAt', dataType: 'text', description: 'ISO timestamp of extraction' },
         { name: 'context', dataType: 'text', description: 'Surrounding text context' },
+        { name: 'aliases', dataType: 'text[]', description: 'Known aliases/nicknames for deduplication' },
       ],
     },
     {
@@ -183,6 +189,7 @@ export async function initializeSchema(): Promise<void> {
         { name: 'userId', dataType: 'text', description: 'User ID who owns this entity' },
         { name: 'extractedAt', dataType: 'text', description: 'ISO timestamp of extraction' },
         { name: 'context', dataType: 'text', description: 'Surrounding text context' },
+        { name: 'aliases', dataType: 'text[]', description: 'Known aliases/nicknames for deduplication' },
       ],
     },
     {
@@ -197,6 +204,7 @@ export async function initializeSchema(): Promise<void> {
         { name: 'userId', dataType: 'text', description: 'User ID who owns this entity' },
         { name: 'extractedAt', dataType: 'text', description: 'ISO timestamp of extraction' },
         { name: 'context', dataType: 'text', description: 'Surrounding text context' },
+        { name: 'aliases', dataType: 'text[]', description: 'Known aliases/nicknames for deduplication' },
         { name: 'assignee', dataType: 'text', description: 'Person assigned to action item' },
         { name: 'deadline', dataType: 'text', description: 'Deadline for action item' },
         { name: 'priority', dataType: 'text', description: 'Priority: low, medium, high' },

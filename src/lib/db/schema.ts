@@ -1774,3 +1774,53 @@ export const LLM_OPERATION_TYPE = {
 } as const;
 
 export type LlmOperationType = (typeof LLM_OPERATION_TYPE)[keyof typeof LLM_OPERATION_TYPE];
+
+/**
+ * Entity Aliases table - stores nicknames/aliases for entities
+ * Helps with deduplication by recognizing different names for the same entity
+ */
+export const entityAliases = pgTable(
+  'entity_aliases',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    userId: text('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull(),
+    entityType: text('entity_type').notNull(), // 'person' | 'company' | 'project' | 'tool' | 'topic' | 'location' | 'action_item'
+    entityValue: text('entity_value').notNull(), // Normalized entity value (canonical name)
+    alias: text('alias').notNull(), // The alias/nickname for this entity
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    userIdIdx: index('entity_aliases_user_id_idx').on(table.userId),
+    entityTypeIdx: index('entity_aliases_entity_type_idx').on(table.entityType),
+    entityValueIdx: index('entity_aliases_entity_value_idx').on(table.entityValue),
+    aliasIdx: index('entity_aliases_alias_idx').on(table.alias),
+    userTypeAliasUnique: uniqueIndex('entity_aliases_user_type_alias_unique').on(
+      table.userId,
+      table.entityType,
+      table.alias
+    ),
+  })
+);
+
+/**
+ * Type exports for entity aliases
+ */
+export type EntityAlias = typeof entityAliases.$inferSelect;
+export type NewEntityAlias = typeof entityAliases.$inferInsert;
+
+/**
+ * Entity type constants for aliases
+ */
+export const ENTITY_ALIAS_TYPE = {
+  PERSON: 'person',
+  COMPANY: 'company',
+  PROJECT: 'project',
+  TOOL: 'tool',
+  TOPIC: 'topic',
+  LOCATION: 'location',
+  ACTION_ITEM: 'action_item',
+} as const;
+
+export type EntityAliasType = (typeof ENTITY_ALIAS_TYPE)[keyof typeof ENTITY_ALIAS_TYPE];
