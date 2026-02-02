@@ -24,6 +24,16 @@ When interacting with Claude Desktop, the following MCP tools are available:
 - **kuzu_recall**: Query specific memories
 - **kuzu_stats**: Get memory system statistics
 
+## Training & Discovery
+
+See [Training Business Rules](docs/TRAINING_RULES.md) for critical rules about:
+- Data sources (SENT emails only, calendar)
+- Entity and relationship types
+- Budget system (discovery vs training budgets)
+- Day tracking (never reprocesses same day)
+- Feedback flow (50 items required for Auto-Train)
+- Action items to Google Tasks sync
+
 ## Project Context
 
 
