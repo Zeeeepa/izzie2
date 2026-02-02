@@ -152,6 +152,13 @@ export default function DiscoverPage() {
   const [noteDialogFeedback, setNoteDialogFeedback] = useState<boolean | null>(null);
   const [noteDialogText, setNoteDialogText] = useState('');
 
+  // Local pending feedback state (not yet submitted)
+  const [pendingFeedback, setPendingFeedback] = useState<Map<string, {
+    isCorrect: boolean | null;
+    note: string;
+  }>>(new Map());
+  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
+
   // ============================================================
   // Discovery API Handlers
   // ============================================================
@@ -410,48 +417,110 @@ export default function DiscoverPage() {
     }
   }, [session, page, filterType, filterStatus]);
 
-  const submitFeedback = async (itemId: string, isCorrect: boolean, notes?: string) => {
+  // Mark item locally (no API call yet)
+  const markFeedback = (itemId: string, isCorrect: boolean) => {
+    setPendingFeedback(prev => {
+      const updated = new Map(prev);
+      const existing = updated.get(itemId) || { isCorrect: null, note: '' };
+      // Toggle off if clicking the same feedback
+      if (existing.isCorrect === isCorrect) {
+        updated.set(itemId, { ...existing, isCorrect: null });
+      } else {
+        updated.set(itemId, { ...existing, isCorrect });
+      }
+      return updated;
+    });
+  };
+
+  // Update note locally
+  const updateNote = (itemId: string, note: string) => {
+    setPendingFeedback(prev => {
+      const updated = new Map(prev);
+      const existing = updated.get(itemId) || { isCorrect: null, note: '' };
+      updated.set(itemId, { ...existing, note });
+      return updated;
+    });
+  };
+
+  // Submit all pending feedback at once
+  const submitAllFeedback = async () => {
+    const feedbackItems = Array.from(pendingFeedback.entries())
+      .filter(([_, feedback]) => feedback.isCorrect !== null);
+
+    if (feedbackItems.length === 0) {
+      toast.info('No feedback to submit');
+      return;
+    }
+
+    setIsSubmittingFeedback(true);
+
+    let lastTrainingBudget = null;
+    let budgetExhausted = false;
+
     try {
-      const res = await fetch('/api/train/feedback', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sampleId: itemId,
-          action: 'feedback',
-          isCorrect,
-          notes,
-        }),
-      });
+      // Submit each item
+      for (const [itemId, feedback] of feedbackItems) {
+        const res = await fetch('/api/train/feedback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sampleId: itemId,
+            action: 'feedback',
+            isCorrect: feedback.isCorrect,
+            notes: feedback.note || undefined,
+          }),
+        });
 
-      const data = await res.json();
+        const data = await res.json();
 
-      if (data.success) {
-        // Update item in list
-        setItems(prev => prev.map(item =>
-          item.id === itemId
-            ? { ...item, status: 'reviewed' as const, feedback: { isCorrect, notes } }
-            : item
-        ));
-
-        // Update training budget if returned
-        if (data.trainingBudget) {
-          setTrainingBudget(data.trainingBudget);
-        }
-
-        // Check for budget exhaustion
-        if (data.budgetExhausted) {
-          toast.warning(data.message || 'Training budget exhausted');
-          // Update session status locally
-          if (session) {
-            setSession({ ...session, status: 'paused' });
+        if (data.success) {
+          // Track training budget updates
+          if (data.trainingBudget) {
+            lastTrainingBudget = data.trainingBudget;
+          }
+          if (data.budgetExhausted) {
+            budgetExhausted = true;
           }
         }
-
-        // Refresh stats
-        await fetchStatus();
       }
+
+      // Update items in local state to show as reviewed
+      setItems(prev => prev.map(item => {
+        const feedback = pendingFeedback.get(item.id);
+        if (feedback && feedback.isCorrect !== null) {
+          return {
+            ...item,
+            status: 'reviewed' as const,
+            feedback: { isCorrect: feedback.isCorrect, notes: feedback.note || undefined }
+          };
+        }
+        return item;
+      }));
+
+      // Update training budget if returned
+      if (lastTrainingBudget) {
+        setTrainingBudget(lastTrainingBudget);
+      }
+
+      // Check for budget exhaustion
+      if (budgetExhausted) {
+        toast.warning('Training budget exhausted');
+        if (session) {
+          setSession({ ...session, status: 'paused' });
+        }
+      }
+
+      // Clear pending feedback
+      setPendingFeedback(new Map());
+      toast.success(`Submitted feedback for ${feedbackItems.length} items`);
+
+      // Refresh stats
+      await fetchStatus();
     } catch (err) {
       console.error('Failed to submit feedback:', err);
+      toast.error('Failed to submit some feedback');
+    } finally {
+      setIsSubmittingFeedback(false);
     }
   };
 
@@ -489,14 +558,26 @@ export default function DiscoverPage() {
 
   const openNoteDialog = (item: DiscoveredItem) => {
     setSelectedItem(item);
-    setNoteDialogFeedback(null);
-    setNoteDialogText('');
+    // Initialize from pending feedback if exists
+    const existing = pendingFeedback.get(item.id);
+    setNoteDialogFeedback(existing?.isCorrect ?? null);
+    setNoteDialogText(existing?.note ?? '');
     setNoteDialogOpen(true);
   };
 
-  const submitNoteDialogFeedback = async () => {
-    if (!selectedItem || noteDialogFeedback === null) return;
-    await submitFeedback(selectedItem.id, noteDialogFeedback, noteDialogText);
+  // Save note dialog to local state (no API call)
+  const saveNoteDialogFeedback = () => {
+    if (!selectedItem) return;
+
+    setPendingFeedback(prev => {
+      const updated = new Map(prev);
+      updated.set(selectedItem.id, {
+        isCorrect: noteDialogFeedback,
+        note: noteDialogText,
+      });
+      return updated;
+    });
+
     setNoteDialogOpen(false);
     setSelectedItem(null);
   };
@@ -547,6 +628,9 @@ export default function DiscoverPage() {
   const canAutoTrain = feedbackCount >= MIN_FEEDBACK_FOR_AUTO_TRAIN;
   const feedbackNeeded = MIN_FEEDBACK_FOR_AUTO_TRAIN - feedbackCount;
   const trainingBudgetExhausted = trainingBudget ? trainingBudget.remaining <= 0 : false;
+
+  // Count pending feedback items that have been marked
+  const pendingFeedbackCount = Array.from(pendingFeedback.values()).filter(f => f.isCorrect !== null).length;
 
   // ============================================================
   // Render
@@ -1165,6 +1249,46 @@ export default function DiscoverPage() {
             </div>
           </div>
 
+          {/* Pending Feedback Banner */}
+          {pendingFeedbackCount > 0 && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '0.75rem 1rem',
+                backgroundColor: '#eff6ff',
+                border: '1px solid #bfdbfe',
+                borderRadius: '8px',
+                marginBottom: '1rem',
+              }}
+            >
+              <span style={{ fontSize: '0.875rem', color: '#1e40af', fontWeight: '500' }}>
+                {pendingFeedbackCount} item{pendingFeedbackCount !== 1 ? 's' : ''} marked for feedback
+              </span>
+              <button
+                onClick={submitAllFeedback}
+                disabled={isSubmittingFeedback}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  padding: '0.5rem 1rem',
+                  borderRadius: '6px',
+                  border: 'none',
+                  backgroundColor: isSubmittingFeedback ? '#93c5fd' : '#3b82f6',
+                  color: '#fff',
+                  fontSize: '0.875rem',
+                  fontWeight: '600',
+                  cursor: isSubmittingFeedback ? 'not-allowed' : 'pointer',
+                  transition: 'background-color 0.2s',
+                }}
+              >
+                {isSubmittingFeedback ? 'Submitting...' : 'Submit All Feedback'}
+              </button>
+            </div>
+          )}
+
           {/* Items List */}
           <div
             style={{
@@ -1199,14 +1323,28 @@ export default function DiscoverPage() {
             ) : (
               <div style={{ maxHeight: '60vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                 {items.map((item) => {
-                  // Determine border color based on feedback status
+                  // Get local pending feedback for this item
+                  const localFeedback = pendingFeedback.get(item.id);
+                  const localIsCorrect = localFeedback?.isCorrect;
+
+                  // Determine border color based on feedback status (local pending or already submitted)
                   let borderColor = '#e5e7eb';
                   let bgColor = '#fff';
+
+                  // Already submitted feedback takes precedence
                   if (item.feedback?.isCorrect === true) {
                     borderColor = '#22c55e';
                     bgColor = '#f0fdf4';
                   } else if (item.feedback?.isCorrect === false) {
                     borderColor = '#ef4444';
+                    bgColor = '#fef2f2';
+                  }
+                  // Local pending feedback (not yet submitted)
+                  else if (localIsCorrect === true) {
+                    borderColor = '#86efac';
+                    bgColor = '#f0fdf4';
+                  } else if (localIsCorrect === false) {
+                    borderColor = '#fca5a5';
                     bgColor = '#fef2f2';
                   }
 
@@ -1252,6 +1390,21 @@ export default function DiscoverPage() {
                           >
                             {item.content.text}
                           </span>
+                          {/* Show pending indicator */}
+                          {localIsCorrect !== null && localIsCorrect !== undefined && item.status === 'pending' && (
+                            <span
+                              style={{
+                                fontSize: '0.625rem',
+                                padding: '0.125rem 0.375rem',
+                                borderRadius: '4px',
+                                backgroundColor: '#fef3c7',
+                                color: '#92400e',
+                                fontWeight: '600',
+                              }}
+                            >
+                              Pending
+                            </span>
+                          )}
                         </div>
                         {item.content.context && (
                           <p
@@ -1269,6 +1422,11 @@ export default function DiscoverPage() {
                         )}
                         <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '0.25rem' }}>
                           {item.prediction.label} &bull; {item.prediction.confidence}% confidence
+                          {localFeedback?.note && (
+                            <span style={{ marginLeft: '0.5rem', color: '#3b82f6' }}>
+                              &bull; Has note
+                            </span>
+                          )}
                         </div>
                       </div>
 
@@ -1289,39 +1447,47 @@ export default function DiscoverPage() {
                           ) : (
                           <>
                             <button
-                              onClick={() => submitFeedback(item.id, true)}
+                              onClick={() => markFeedback(item.id, true)}
                               style={{
                                 padding: '0.5rem',
                                 borderRadius: '6px',
                                 border: 'none',
-                                backgroundColor: 'transparent',
+                                backgroundColor: localIsCorrect === true ? '#dcfce7' : 'transparent',
                                 cursor: 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 transition: 'background-color 0.2s',
                               }}
-                              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#dcfce7'}
-                              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                              onMouseEnter={(e) => {
+                                if (localIsCorrect !== true) e.currentTarget.style.backgroundColor = '#dcfce7';
+                              }}
+                              onMouseLeave={(e) => {
+                                if (localIsCorrect !== true) e.currentTarget.style.backgroundColor = 'transparent';
+                              }}
                               title="Mark as correct"
                             >
                               <ThumbsUp style={{ width: '16px', height: '16px', color: '#22c55e' }} />
                             </button>
                             <button
-                              onClick={() => submitFeedback(item.id, false)}
+                              onClick={() => markFeedback(item.id, false)}
                               style={{
                                 padding: '0.5rem',
                                 borderRadius: '6px',
                                 border: 'none',
-                                backgroundColor: 'transparent',
+                                backgroundColor: localIsCorrect === false ? '#fee2e2' : 'transparent',
                                 cursor: 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 transition: 'background-color 0.2s',
                               }}
-                              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#fee2e2'}
-                              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                              onMouseEnter={(e) => {
+                                if (localIsCorrect !== false) e.currentTarget.style.backgroundColor = '#fee2e2';
+                              }}
+                              onMouseLeave={(e) => {
+                                if (localIsCorrect !== false) e.currentTarget.style.backgroundColor = 'transparent';
+                              }}
                               title="Mark as incorrect"
                             >
                               <ThumbsDown style={{ width: '16px', height: '16px', color: '#ef4444' }} />
@@ -1332,15 +1498,19 @@ export default function DiscoverPage() {
                                 padding: '0.5rem',
                                 borderRadius: '6px',
                                 border: 'none',
-                                backgroundColor: 'transparent',
+                                backgroundColor: localFeedback?.note ? '#dbeafe' : 'transparent',
                                 cursor: 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 transition: 'background-color 0.2s',
                               }}
-                              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#dbeafe'}
-                              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                              onMouseEnter={(e) => {
+                                if (!localFeedback?.note) e.currentTarget.style.backgroundColor = '#dbeafe';
+                              }}
+                              onMouseLeave={(e) => {
+                                if (!localFeedback?.note) e.currentTarget.style.backgroundColor = 'transparent';
+                              }}
                               title="Add note"
                             >
                               <MessageSquare style={{ width: '16px', height: '16px', color: '#3b82f6' }} />
@@ -1534,24 +1704,26 @@ export default function DiscoverPage() {
               </button>
             </div>
 
-            {/* Submit button */}
+            {/* Save button */}
             <button
-              onClick={submitNoteDialogFeedback}
-              disabled={noteDialogFeedback === null}
+              onClick={saveNoteDialogFeedback}
               style={{
                 width: '100%',
                 padding: '0.75rem',
                 borderRadius: '8px',
                 border: 'none',
-                backgroundColor: noteDialogFeedback === null ? '#e5e7eb' : '#3b82f6',
-                color: noteDialogFeedback === null ? '#9ca3af' : '#fff',
+                backgroundColor: '#3b82f6',
+                color: '#fff',
                 fontSize: '0.875rem',
                 fontWeight: '600',
-                cursor: noteDialogFeedback === null ? 'not-allowed' : 'pointer',
+                cursor: 'pointer',
               }}
             >
-              Submit Feedback
+              {noteDialogFeedback !== null || noteDialogText ? 'Save Feedback' : 'Close'}
             </button>
+            <p style={{ fontSize: '0.75rem', color: '#6b7280', textAlign: 'center', marginTop: '0.5rem', marginBottom: 0 }}>
+              Click &quot;Submit All Feedback&quot; when ready to send all marked items
+            </p>
           </div>
         </>
       )}
