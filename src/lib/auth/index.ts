@@ -67,6 +67,15 @@ function getAuth(): ReturnType<typeof betterAuth> | null {
         },
       }),
 
+      // Account linking configuration - allows multiple Google accounts per user
+      account: {
+        accountLinking: {
+          enabled: true,
+          trustedProviders: ['google', 'github'],
+          allowDifferentEmails: true, // Allow multiple Google accounts with different emails
+        },
+      },
+
       // Email and password authentication (optional, can be disabled)
       emailAndPassword: {
         enabled: true,

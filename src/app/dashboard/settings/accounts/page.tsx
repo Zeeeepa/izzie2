@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { SignOutButton } from '@/components/auth/SignOutButton';
 import { useConfirmModal } from '@/components/ui/confirm-modal';
+import { linkGoogleAccount } from '@/lib/auth/client';
 
 type PageState = 'loading' | 'loaded' | 'error';
 
@@ -263,10 +264,13 @@ export default function AccountsSettingsPage() {
     }
   };
 
-  // Add account (redirect to OAuth)
-  const handleAddAccount = () => {
-    // Redirect to Google OAuth with link=true parameter
-    window.location.href = '/api/auth/google?link=true';
+  // Add account using Better Auth's linkSocial method
+  const handleAddAccount = async () => {
+    try {
+      await linkGoogleAccount('/dashboard/settings/accounts');
+    } catch (error) {
+      showMessage('error', error instanceof Error ? error.message : 'Failed to add account');
+    }
   };
 
   // Reconnect account to refresh OAuth scopes

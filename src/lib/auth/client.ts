@@ -52,6 +52,77 @@ export function handleSignOut() {
 }
 
 /**
+ * Helper to link an additional Google account
+ * Links a new Google account to the existing user
+ * Uses Better Auth's linkSocial method which calls /link-social endpoint
+ * @param callbackURL - Where to redirect after linking (defaults to accounts settings)
+ */
+export async function linkGoogleAccount(callbackURL: string = '/dashboard/settings/accounts') {
+  // Use the authClient's linkSocial method - this calls POST /api/auth/link-social
+  // The method is auto-generated from the Better Auth /link-social endpoint
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const client = authClient as any;
+
+  if (typeof client.linkSocial === 'function') {
+    return client.linkSocial({
+      provider: 'google',
+      callbackURL,
+    });
+  }
+
+  // Fallback: Use $fetch to call the endpoint directly
+  const response = await client.$fetch('/link-social', {
+    method: 'POST',
+    body: {
+      provider: 'google',
+      callbackURL,
+    },
+  });
+
+  // If the response contains a redirect URL, navigate to it
+  if (response?.data?.url) {
+    window.location.href = response.data.url;
+  }
+
+  return response;
+}
+
+/**
+ * Helper to link an additional GitHub account
+ * Links a new GitHub account to the existing user
+ * Uses Better Auth's linkSocial method which calls /link-social endpoint
+ * @param callbackURL - Where to redirect after linking (defaults to accounts settings)
+ */
+export async function linkGitHubAccount(callbackURL: string = '/dashboard/settings/accounts') {
+  // Use the authClient's linkSocial method - this calls POST /api/auth/link-social
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const client = authClient as any;
+
+  if (typeof client.linkSocial === 'function') {
+    return client.linkSocial({
+      provider: 'github',
+      callbackURL,
+    });
+  }
+
+  // Fallback: Use $fetch to call the endpoint directly
+  const response = await client.$fetch('/link-social', {
+    method: 'POST',
+    body: {
+      provider: 'github',
+      callbackURL,
+    },
+  });
+
+  // If the response contains a redirect URL, navigate to it
+  if (response?.data?.url) {
+    window.location.href = response.data.url;
+  }
+
+  return response;
+}
+
+/**
  * Type guard to check if user is authenticated
  */
 export function isAuthenticated(
