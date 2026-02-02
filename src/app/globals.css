@@ -105,3 +105,39 @@
 .safe-area-bottom {
   padding-bottom: env(safe-area-inset-bottom);
 }
+
+/* ============================================================
+   Overlay Styles - Ensure solid backgrounds for dropdowns/modals
+   ============================================================ */
+
+/* Dropdown menu content - solid background with proper shadow */
+[data-radix-popper-content-wrapper] [role="menu"],
+[data-radix-menu-content] {
+  background-color: hsl(var(--popover)) !important;
+  border: 1px solid hsl(var(--border));
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+}
+
+.dark [data-radix-popper-content-wrapper] [role="menu"],
+.dark [data-radix-menu-content] {
+  background-color: hsl(222.2 84% 4.9%) !important;
+  border-color: hsl(217.2 32.6% 17.5%);
+}
+
+/* Dialog/Modal overlay - solid backdrop */
+[data-radix-dialog-overlay] {
+  background-color: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(2px);
+}
+
+/* Dialog content - solid background */
+[data-radix-dialog-content] {
+  background-color: hsl(var(--popover)) !important;
+  border: 1px solid hsl(var(--border));
+  box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+}
+
+.dark [data-radix-dialog-content] {
+  background-color: hsl(222.2 84% 4.9%) !important;
+  border-color: hsl(217.2 32.6% 17.5%);
+}

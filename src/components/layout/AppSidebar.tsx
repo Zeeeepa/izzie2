@@ -21,6 +21,7 @@ import {
   RefreshCw,
   Contact,
   Sparkles,
+  DollarSign,
 } from 'lucide-react';
 import { BUILD_INFO } from '@/lib/build-info';
 import {
@@ -115,6 +116,11 @@ const settingsNavItems = [
     href: '/dashboard/settings/usage',
     label: 'Usage',
     icon: BarChart3,
+  },
+  {
+    href: '/dashboard/settings/costs',
+    label: 'LLM Costs',
+    icon: DollarSign,
   },
   {
     href: '/dashboard/settings/accounts',
@@ -359,6 +365,12 @@ export function AppSidebar({ user }: AppSidebarProps) {
                   <Link href="/dashboard/settings/preferences" className="cursor-pointer">
                     <Settings className="mr-2 h-4 w-4 stroke-[1.5]" />
                     <span className="text-sm">Settings</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href="/dashboard/settings/costs" className="cursor-pointer">
+                    <DollarSign className="mr-2 h-4 w-4 stroke-[1.5]" />
+                    <span className="text-sm">LLM Costs</span>
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>

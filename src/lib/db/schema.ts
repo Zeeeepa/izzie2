@@ -1726,3 +1726,51 @@ export const inviteCodes = pgTable(
  */
 export type InviteCode = typeof inviteCodes.$inferSelect;
 export type NewInviteCode = typeof inviteCodes.$inferInsert;
+
+/**
+ * LLM Usage table - tracks all LLM inference calls with detailed cost tracking
+ * Provides granular tracking of token usage and costs by operation type
+ */
+export const llmUsage = pgTable(
+  'llm_usage',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    userId: text('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull(),
+    operationType: text('operation_type').notNull(), // 'chat' | 'extraction' | 'training' | 'research' | 'agent' | 'telegram'
+    model: text('model').notNull(), // e.g., 'claude-opus-4.5', 'anthropic/claude-sonnet-4'
+    inputTokens: integer('input_tokens').notNull(),
+    outputTokens: integer('output_tokens').notNull(),
+    costUsd: real('cost_usd').notNull(), // Calculated cost in USD
+    metadata: jsonb('metadata').$type<Record<string, unknown>>(), // Optional extra data
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    userIdIdx: index('llm_usage_user_id_idx').on(table.userId),
+    operationTypeIdx: index('llm_usage_operation_type_idx').on(table.operationType),
+    modelIdx: index('llm_usage_model_idx').on(table.model),
+    createdAtIdx: index('llm_usage_created_at_idx').on(table.createdAt),
+    userCreatedAtIdx: index('llm_usage_user_created_at_idx').on(table.userId, table.createdAt),
+  })
+);
+
+/**
+ * Type exports for LLM usage
+ */
+export type LlmUsage = typeof llmUsage.$inferSelect;
+export type NewLlmUsage = typeof llmUsage.$inferInsert;
+
+/**
+ * Operation type constants for LLM usage
+ */
+export const LLM_OPERATION_TYPE = {
+  CHAT: 'chat',
+  EXTRACTION: 'extraction',
+  TRAINING: 'training',
+  RESEARCH: 'research',
+  AGENT: 'agent',
+  TELEGRAM: 'telegram',
+} as const;
+
+export type LlmOperationType = (typeof LLM_OPERATION_TYPE)[keyof typeof LLM_OPERATION_TYPE];
