@@ -42,9 +42,9 @@ export async function GET(request: NextRequest) {
     const db = dbClient.getDb();
     const feedbackStats = await db
       .select({
-        total: sql<number>`count(*)`,
-        reviewed: sql<number>`count(case when ${trainingSamples.status} = 'reviewed' then 1 end)`,
-        pending: sql<number>`count(case when ${trainingSamples.status} = 'pending' then 1 end)`,
+        total: sql<number>`cast(count(*) as integer)`,
+        reviewed: sql<number>`cast(count(case when ${trainingSamples.status} = 'reviewed' then 1 end) as integer)`,
+        pending: sql<number>`cast(count(case when ${trainingSamples.status} = 'pending' then 1 end) as integer)`,
       })
       .from(trainingSamples)
       .where(eq(trainingSamples.sessionId, session.id));
@@ -68,9 +68,9 @@ export async function GET(request: NextRequest) {
         currentActivity: session.status === 'running' ? 'Processing emails and calendar events...' : undefined,
       },
       feedbackStats: {
-        total: feedbackStats[0]?.total || 0,
-        reviewed: feedbackStats[0]?.reviewed || 0,
-        pending: feedbackStats[0]?.pending || 0,
+        total: Number(feedbackStats[0]?.total) || 0,
+        reviewed: Number(feedbackStats[0]?.reviewed) || 0,
+        pending: Number(feedbackStats[0]?.pending) || 0,
       },
       startedAt: status.startedAt,
       completedAt: status.completedAt,

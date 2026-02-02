@@ -52,10 +52,10 @@ export async function GET(request: NextRequest) {
 
     // Get total count
     const [countResult] = await db
-      .select({ count: sql<number>`count(*)` })
+      .select({ count: sql<number>`cast(count(*) as integer)` })
       .from(trainingSamples)
       .where(and(...conditions));
-    const total = countResult?.count || 0;
+    const total = Number(countResult?.count) || 0;
 
     // Get items
     const items = await db
