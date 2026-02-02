@@ -474,6 +474,76 @@ async function syncTables() {
     await pool.query('CREATE INDEX IF NOT EXISTS usage_tracking_source_idx ON usage_tracking(source)');
     await pool.query('CREATE INDEX IF NOT EXISTS usage_tracking_user_date_idx ON usage_tracking(user_id, date)');
 
+    // Step 13: Create invite_codes table
+    console.log('📝 Creating invite_codes table...');
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS invite_codes (
+        id text PRIMARY KEY NOT NULL,
+        code varchar(50) NOT NULL UNIQUE,
+        created_by text REFERENCES users(id) ON DELETE SET NULL,
+        used_by text REFERENCES users(id) ON DELETE SET NULL,
+        used_at timestamp,
+        expires_at timestamp,
+        max_uses integer NOT NULL DEFAULT 1,
+        use_count integer NOT NULL DEFAULT 0,
+        created_at timestamp DEFAULT now() NOT NULL
+      )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS invite_codes_code_idx ON invite_codes(code)');
+    await pool.query('CREATE INDEX IF NOT EXISTS invite_codes_created_by_idx ON invite_codes(created_by)');
+
+    // Seed initial invite codes if table is empty
+    const existingCodes = await pool.query(`SELECT COUNT(*) as count FROM invite_codes`);
+    if (existingCodes.rows[0].count === '0') {
+      console.log('🌱 Seeding initial invite codes...');
+      await pool.query(`
+        INSERT INTO invite_codes (id, code, max_uses, use_count, created_at)
+        VALUES
+          (gen_random_uuid()::text, 'IZZIE-FOUNDER', 999999, 0, now()),
+          (gen_random_uuid()::text, 'IZZIE-BETA-001', 1, 0, now()),
+          (gen_random_uuid()::text, 'IZZIE-BETA-002', 1, 0, now()),
+          (gen_random_uuid()::text, 'IZZIE-BETA-003', 1, 0, now()),
+          (gen_random_uuid()::text, 'IZZIE-BETA-004', 1, 0, now()),
+          (gen_random_uuid()::text, 'IZZIE-BETA-005', 1, 0, now()),
+          (gen_random_uuid()::text, 'IZZIE-BETA-006', 1, 0, now()),
+          (gen_random_uuid()::text, 'IZZIE-BETA-007', 1, 0, now()),
+          (gen_random_uuid()::text, 'IZZIE-BETA-008', 1, 0, now()),
+          (gen_random_uuid()::text, 'IZZIE-BETA-009', 1, 0, now()),
+          (gen_random_uuid()::text, 'IZZIE-BETA-010', 1, 0, now())
+        ON CONFLICT (code) DO NOTHING
+      `);
+    }
+
+    // Step 14: Create llm_usage table
+    console.log('📝 Creating llm_usage table...');
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS llm_usage (
+        id text PRIMARY KEY NOT NULL,
+        user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        operation_type text NOT NULL,
+        model text NOT NULL,
+        input_tokens integer NOT NULL,
+        output_tokens integer NOT NULL,
+        cost_usd real NOT NULL,
+        metadata jsonb,
+        created_at timestamp DEFAULT now() NOT NULL
+      )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS llm_usage_user_id_idx ON llm_usage(user_id)');
+    await pool.query('CREATE INDEX IF NOT EXISTS llm_usage_operation_type_idx ON llm_usage(operation_type)');
+    await pool.query('CREATE INDEX IF NOT EXISTS llm_usage_model_idx ON llm_usage(model)');
+    await pool.query('CREATE INDEX IF NOT EXISTS llm_usage_created_at_idx ON llm_usage(created_at)');
+    await pool.query('CREATE INDEX IF NOT EXISTS llm_usage_user_created_at_idx ON llm_usage(user_id, created_at)');
+
+    // Step 15: Add encryption fields to users table if not exists
+    console.log('📝 Adding encryption fields to users table...');
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS encryption_key_hash text`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS encryption_salt text`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS passphrase_hint text`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS encryption_enabled boolean NOT NULL DEFAULT false`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS encryption_failed_attempts integer NOT NULL DEFAULT 0`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS encryption_locked_until timestamp`);
+
     console.log('✅ All tables synced successfully!');
 
     // Verify
@@ -502,6 +572,8 @@ async function syncTables() {
       'research_sources',
       'research_findings',
       'usage_tracking',
+      'invite_codes',
+      'llm_usage',
     ];
 
     const tables = await pool.query(

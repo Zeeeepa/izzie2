@@ -6,8 +6,8 @@
 CREATE TABLE IF NOT EXISTS "invite_codes" (
   "id" text PRIMARY KEY NOT NULL,
   "code" varchar(50) NOT NULL UNIQUE,
-  "created_by" text REFERENCES "user"("id") ON DELETE SET NULL,
-  "used_by" text REFERENCES "user"("id") ON DELETE SET NULL,
+  "created_by" text REFERENCES "users"("id") ON DELETE SET NULL,
+  "used_by" text REFERENCES "users"("id") ON DELETE SET NULL,
   "used_at" timestamp,
   "expires_at" timestamp,
   "max_uses" integer NOT NULL DEFAULT 1,
