@@ -173,7 +173,7 @@ export async function POST(request: NextRequest) {
     // Process emails for this day
     try {
       const emails = await gmailService.searchEmails(
-        `after:${dateStr} before:${nextDay.toISOString().split('T')[0]}`,
+        `in:sent after:${dateStr} before:${nextDay.toISOString().split('T')[0]}`,
         20 // Limit per day to keep processing quick
       );
 

@@ -341,7 +341,7 @@ async function processEmailsForDay(
   try {
     // Fetch emails for this day
     const emails = await gmailService.searchEmails(
-      `after:${dateStr} before:${nextDay.toISOString().split('T')[0]}`,
+      `in:sent after:${dateStr} before:${nextDay.toISOString().split('T')[0]}`,
       50 // Max emails per day
     );
 
