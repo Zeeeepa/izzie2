@@ -475,111 +475,115 @@ export default function SettingsPage() {
   // Render writing preferences tab
   const renderPreferencesTab = () => (
     <div className="space-y-6">
+      {/* Writing Style Section */}
       <div className="rounded-lg border bg-card shadow-sm">
-        <div className="p-6 space-y-6">
-          {/* Writing Style Section */}
-          <div className="space-y-4">
-            <div>
-              <h3 className="font-medium text-foreground">Writing Style</h3>
-              <p className="text-sm text-muted-foreground">
-                Choose the overall style for written responses
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              {WRITING_STYLES.map((style) => (
-                <label
-                  key={style.value}
-                  className={cn(
-                    'flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-colors',
-                    writingStyle === style.value
-                      ? 'border-primary bg-primary/5'
-                      : 'border-input hover:border-muted-foreground/50'
-                  )}
-                >
-                  <input
-                    type="radio"
-                    name="writingStyle"
-                    value={style.value}
-                    checked={writingStyle === style.value}
-                    onChange={(e) => setWritingStyle(e.target.value as WritingStyle)}
-                    className="mt-0.5 h-4 w-4 text-primary focus:ring-primary"
-                  />
-                  <div>
-                    <span className="font-medium text-foreground">{style.label}</span>
-                    <p className="text-sm text-muted-foreground">{style.description}</p>
-                  </div>
-                </label>
-              ))}
-            </div>
+        <div className="p-6 space-y-4">
+          <div>
+            <h3 className="font-medium text-foreground">Writing Style</h3>
+            <p className="text-sm text-muted-foreground">
+              Choose the overall style for written responses
+            </p>
           </div>
 
-          {/* Tone Section */}
-          <div className="space-y-4">
-            <div>
-              <h3 className="font-medium text-foreground">Tone</h3>
-              <p className="text-sm text-muted-foreground">
-                Set the emotional tone for communications
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              {TONES.map((toneOption) => (
-                <label
-                  key={toneOption.value}
-                  className={cn(
-                    'flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-colors',
-                    tone === toneOption.value
-                      ? 'border-primary bg-primary/5'
-                      : 'border-input hover:border-muted-foreground/50'
-                  )}
-                >
-                  <input
-                    type="radio"
-                    name="tone"
-                    value={toneOption.value}
-                    checked={tone === toneOption.value}
-                    onChange={(e) => setTone(e.target.value as Tone)}
-                    className="mt-0.5 h-4 w-4 text-primary focus:ring-primary"
-                  />
-                  <div>
-                    <span className="font-medium text-foreground">{toneOption.label}</span>
-                    <p className="text-sm text-muted-foreground">{toneOption.description}</p>
-                  </div>
-                </label>
-              ))}
-            </div>
+          <div className="space-y-2">
+            {WRITING_STYLES.map((style) => (
+              <label
+                key={style.value}
+                className={cn(
+                  'flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-colors',
+                  writingStyle === style.value
+                    ? 'border-primary bg-primary/5'
+                    : 'border-input hover:border-muted-foreground/50'
+                )}
+              >
+                <input
+                  type="radio"
+                  name="writingStyle"
+                  value={style.value}
+                  checked={writingStyle === style.value}
+                  onChange={(e) => setWritingStyle(e.target.value as WritingStyle)}
+                  className="mt-0.5 h-4 w-4 text-primary focus:ring-primary"
+                />
+                <div>
+                  <span className="font-medium text-foreground">{style.label}</span>
+                  <p className="text-sm text-muted-foreground">{style.description}</p>
+                </div>
+              </label>
+            ))}
           </div>
-
-          {/* Custom Instructions Section */}
-          <div className="space-y-4">
-            <div>
-              <h3 className="font-medium text-foreground">Custom Instructions</h3>
-              <p className="text-sm text-muted-foreground">
-                Add any specific preferences or context (optional)
-              </p>
-            </div>
-
-            <div>
-              <textarea
-                value={customInstructions}
-                onChange={(e) => setCustomInstructions(e.target.value)}
-                placeholder="e.g., Always include action items at the end of summaries, or prefer bullet points over paragraphs..."
-                rows={4}
-                maxLength={2000}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary resize-none"
-              />
-              <div className="flex justify-end mt-1">
-                <span className="text-xs text-muted-foreground">
-                  {customInstructions.length}/2000
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Save Button */}
-          {renderSaveButton(saveWritingPreferences)}
         </div>
+      </div>
+
+      {/* Tone Section */}
+      <div className="rounded-lg border bg-card shadow-sm">
+        <div className="p-6 space-y-4">
+          <div>
+            <h3 className="font-medium text-foreground">Tone</h3>
+            <p className="text-sm text-muted-foreground">
+              Set the emotional tone for communications
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            {TONES.map((toneOption) => (
+              <label
+                key={toneOption.value}
+                className={cn(
+                  'flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-colors',
+                  tone === toneOption.value
+                    ? 'border-primary bg-primary/5'
+                    : 'border-input hover:border-muted-foreground/50'
+                )}
+              >
+                <input
+                  type="radio"
+                  name="tone"
+                  value={toneOption.value}
+                  checked={tone === toneOption.value}
+                  onChange={(e) => setTone(e.target.value as Tone)}
+                  className="mt-0.5 h-4 w-4 text-primary focus:ring-primary"
+                />
+                <div>
+                  <span className="font-medium text-foreground">{toneOption.label}</span>
+                  <p className="text-sm text-muted-foreground">{toneOption.description}</p>
+                </div>
+              </label>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Custom Instructions Section */}
+      <div className="rounded-lg border bg-card shadow-sm">
+        <div className="p-6 space-y-4">
+          <div>
+            <h3 className="font-medium text-foreground">Custom Instructions</h3>
+            <p className="text-sm text-muted-foreground">
+              Add any specific preferences or context (optional)
+            </p>
+          </div>
+
+          <div>
+            <textarea
+              value={customInstructions}
+              onChange={(e) => setCustomInstructions(e.target.value)}
+              placeholder="e.g., Always include action items at the end of summaries, or prefer bullet points over paragraphs..."
+              rows={4}
+              maxLength={2000}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+            />
+            <div className="flex justify-end mt-1">
+              <span className="text-xs text-muted-foreground">
+                {customInstructions.length}/2000
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Save Button */}
+      <div className="rounded-lg border bg-card shadow-sm p-6">
+        {renderSaveButton(saveWritingPreferences)}
       </div>
     </div>
   );
