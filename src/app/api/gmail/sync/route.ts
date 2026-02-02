@@ -1,9 +1,14 @@
 /**
  * Gmail Sync API Endpoint
- * Triggers email synchronization from Gmail
+ * Triggers email synchronization from Gmail using service account
+ *
+ * SECURITY: Requires authentication. The userEmail is taken from the
+ * authenticated session, not from the request body, to prevent attackers
+ * from triggering syncs for other users.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAuth } from '@/lib/auth';
 import { getServiceAccountAuth } from '@/lib/google/auth';
 import { getGmailService } from '@/lib/google/gmail';
 import type { SyncStatus } from '@/lib/google/types';
@@ -20,9 +25,25 @@ let syncStatus: SyncStatus & { eventsSent?: number } = {
 /**
  * POST /api/gmail/sync
  * Start email synchronization
+ *
+ * SECURITY FIX: Now requires authentication and uses the authenticated
+ * user's email instead of accepting userEmail from request body.
  */
 export async function POST(request: NextRequest) {
   try {
+    // SECURITY: Require authentication
+    const session = await requireAuth(request);
+    const userEmail = session.user.email;
+
+    if (!userEmail) {
+      return NextResponse.json(
+        { error: 'User email not found in session' },
+        { status: 400 }
+      );
+    }
+
+    console.log('[Gmail Sync] Authenticated user:', session.user.id, userEmail);
+
     // Check if sync is already running
     if (syncStatus.isRunning) {
       return NextResponse.json(
@@ -40,7 +61,7 @@ export async function POST(request: NextRequest) {
       folder = 'sent', // Default to SENT emails (user's own communications)
       maxResults = 100,
       since,
-      userEmail,
+      // SECURITY: userEmail from body is IGNORED - we use session.user.email
     } = body;
 
     // Validate folder
@@ -52,6 +73,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Start sync (don't await - run in background)
+    // SECURITY: Use authenticated user's email, not request body
     startSync(folder, maxResults, since, userEmail).catch((error) => {
       console.error('[Gmail Sync] Background sync failed:', error);
       syncStatus.isRunning = false;
@@ -60,10 +82,21 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       message: 'Sync started',
+      userId: session.user.id,
+      userEmail,
       status: syncStatus,
     });
   } catch (error) {
     console.error('[Gmail Sync] Failed to start sync:', error);
+
+    // Handle authentication errors
+    if (error instanceof Error && error.message.includes('Unauthorized')) {
+      return NextResponse.json(
+        { error: 'Authentication required' },
+        { status: 401 }
+      );
+    }
+
     return NextResponse.json(
       { error: `Failed to start sync: ${error}` },
       { status: 500 }
@@ -74,11 +107,32 @@ export async function POST(request: NextRequest) {
 /**
  * GET /api/gmail/sync
  * Get sync status
+ *
+ * SECURITY: Requires authentication to view sync status
  */
-export async function GET() {
-  return NextResponse.json({
-    status: syncStatus,
-  });
+export async function GET(request: NextRequest) {
+  try {
+    // SECURITY: Require authentication
+    const session = await requireAuth(request);
+
+    return NextResponse.json({
+      status: syncStatus,
+      userId: session.user.id,
+    });
+  } catch (error) {
+    // Handle authentication errors
+    if (error instanceof Error && error.message.includes('Unauthorized')) {
+      return NextResponse.json(
+        { error: 'Authentication required' },
+        { status: 401 }
+      );
+    }
+
+    return NextResponse.json(
+      { error: 'Failed to get sync status' },
+      { status: 500 }
+    );
+  }
 }
 
 /**

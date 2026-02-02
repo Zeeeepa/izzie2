@@ -176,7 +176,7 @@ export default function PrivacyPolicyPage() {
               contact us at:
             </p>
             <p className="text-slate-600">
-              Email: <a href="mailto:privacy@izzie.app" className="text-blue-600 hover:underline">privacy@izzie.app</a>
+              Email: <a href="mailto:izzie@matsuoka.com" className="text-blue-600 hover:underline">izzie@matsuoka.com</a>
             </p>
           </section>
         </div>

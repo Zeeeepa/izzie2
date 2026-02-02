@@ -231,7 +231,7 @@ export default function TermsOfServicePage() {
               If you have any questions about these Terms of Service, please contact us at:
             </p>
             <p className="text-slate-600">
-              Email: <a href="mailto:legal@izzie.app" className="text-blue-600 hover:underline">legal@izzie.app</a>
+              Email: <a href="mailto:izzie@matsuoka.com" className="text-blue-600 hover:underline">izzie@matsuoka.com</a>
             </p>
           </section>
         </div>

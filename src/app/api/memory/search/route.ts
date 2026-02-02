@@ -5,16 +5,18 @@
  * Search memories using semantic similarity
  *
  * Query parameters:
- * - userId: string (required)
  * - query: string (required) - search query
  * - limit?: number - max results (default: 10)
  * - threshold?: number - similarity threshold 0-1 (default: 0.7)
  * - conversationId?: string - filter by conversation
  * - minImportance?: number - minimum importance (default: 1)
  * - includeGraph?: boolean - include graph results (default: false)
+ *
+ * SECURITY: Requires authentication. userId is taken from the authenticated session.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAuth } from '@/lib/auth';
 import { memoryService } from '@/lib/memory';
 
 /**
@@ -23,17 +25,21 @@ import { memoryService } from '@/lib/memory';
  */
 export async function GET(request: NextRequest) {
   try {
+    // SECURITY: Require authentication and use authenticated user's ID
+    // This prevents cross-tenant data access
+    const session = await requireAuth(request);
+    const userId = session.user.id;
+
     const { searchParams } = request.nextUrl;
 
-    // Get required parameters
-    const userId = searchParams.get('userId');
+    // Get required query parameter
     const query = searchParams.get('query');
 
-    if (!userId || !query) {
+    if (!query) {
       return NextResponse.json(
         {
-          error: 'Missing required parameters',
-          message: 'userId and query are required',
+          error: 'Missing required parameter',
+          message: 'query is required',
         },
         { status: 400 }
       );

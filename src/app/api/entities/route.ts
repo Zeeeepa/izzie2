@@ -43,7 +43,7 @@ interface EntityData {
 
 export async function GET(request: NextRequest) {
   try {
-    // Require authentication (but don't filter by userId for single-user app)
+    // Require authentication and filter by userId for multi-tenant isolation
     const session = await requireAuth(request);
     const userId = session.user.id;
 
@@ -78,8 +78,7 @@ export async function GET(request: NextRequest) {
     const typeParam = searchParams.get('type');
     const limit = Math.min(parseInt(searchParams.get('limit') || '500', 10), 1000);
 
-    console.log(`${LOG_PREFIX} Fetching entities type=${typeParam || 'all'} (single-user app, no userId filter)`);
-    console.log(`${LOG_PREFIX} Session: userId=${session.user.id}, email=${session.user.email?.substring(0, 3)}***`);
+    console.log(`${LOG_PREFIX} Fetching entities type=${typeParam || 'all'} for user ${userId}`);
 
     const entities: EntityData[] = [];
     const stats: Record<string, number> = {};
@@ -89,10 +88,10 @@ export async function GET(request: NextRequest) {
       ? [typeParam as EntityType]
       : VALID_TYPES;
 
-    // Fetch entities from Weaviate for each type (no userId filter for single-user app)
+    // Fetch entities from Weaviate for each type, filtered by userId for multi-tenant isolation
     for (const entityType of typesToFetch) {
       try {
-        const typeEntities = await listEntitiesByType(undefined, entityType, limit);
+        const typeEntities = await listEntitiesByType(userId, entityType, limit);
 
         for (const entity of typeEntities) {
           entities.push({

@@ -82,14 +82,15 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Require authentication
+    // Require authentication and get userId for multi-tenant isolation
     const session = await requireAuth(request);
+    const userId = session.user.id;
 
     // Get entity ID from params (URL-decoded)
     const { id: rawId } = await params;
     const entityId = decodeURIComponent(rawId);
 
-    console.log(`${LOG_PREFIX} Getting details for entity: ${entityId}`);
+    console.log(`${LOG_PREFIX} Getting details for entity: ${entityId} (user: ${userId})`);
 
     // Parse entity ID (format: "type:value")
     const colonIndex = entityId.indexOf(':');
@@ -128,8 +129,8 @@ export async function GET(
       30
     );
 
-    // Fetch entity data from Weaviate
-    const entities = await listEntitiesByType(undefined, entityType, 1000);
+    // Fetch entity data from Weaviate, filtered by userId for multi-tenant isolation
+    const entities = await listEntitiesByType(userId, entityType, 1000);
     const normalizedSearchValue = entityValue.toLowerCase();
 
     const matchedEntity = entities.find(

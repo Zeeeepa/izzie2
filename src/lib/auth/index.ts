@@ -3,12 +3,19 @@
  * Server-side authentication setup with Google OAuth and Drizzle adapter
  */
 
+// Re-export ownership utilities for multi-tenant data isolation
+export {
+  ensureUserOwnsResource,
+  assertUserOwnsResource,
+  filterOwnedResources,
+} from './ownership';
+
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { createAuthMiddleware, APIError } from 'better-auth/api';
 import { dbClient } from '@/lib/db';
-import { users, sessions, accounts, verifications, accountMetadata } from '@/lib/db/schema';
-import { eq, and, desc } from 'drizzle-orm';
+import { users, sessions, accounts, verifications, accountMetadata, inviteCodes } from '@/lib/db/schema';
+import { eq, and, desc, sql } from 'drizzle-orm';
 
 /**
  * Email whitelist for restricting sign-ups
@@ -37,6 +44,62 @@ function isEmailAllowed(email: string): boolean {
     return true; // No restriction configured
   }
   return allowedEmails.has(email.toLowerCase());
+}
+
+/**
+ * Check if invite codes are required for signup
+ * Returns true if REQUIRE_INVITE_CODE env var is set to 'true'
+ */
+function isInviteCodeRequired(): boolean {
+  return process.env.REQUIRE_INVITE_CODE === 'true';
+}
+
+/**
+ * Validates an invite code and marks it as used
+ * Returns true if the code is valid and was successfully used
+ */
+async function validateAndUseInviteCode(
+  code: string,
+  userId: string
+): Promise<{ valid: boolean; message: string }> {
+  if (!dbClient.isConfigured()) {
+    return { valid: false, message: 'Database not configured' };
+  }
+
+  const normalizedCode = code.trim().toUpperCase();
+  const db = dbClient.getDb();
+
+  // Look up the invite code
+  const [inviteCode] = await db
+    .select()
+    .from(inviteCodes)
+    .where(eq(inviteCodes.code, normalizedCode))
+    .limit(1);
+
+  if (!inviteCode) {
+    return { valid: false, message: 'Invalid invite code' };
+  }
+
+  if (inviteCode.expiresAt && new Date(inviteCode.expiresAt) < new Date()) {
+    return { valid: false, message: 'This invite code has expired' };
+  }
+
+  if (inviteCode.useCount >= inviteCode.maxUses) {
+    return { valid: false, message: 'This invite code has already been used' };
+  }
+
+  // Mark the code as used
+  await db
+    .update(inviteCodes)
+    .set({
+      useCount: sql`${inviteCodes.useCount} + 1`,
+      usedBy: userId,
+      usedAt: new Date(),
+    })
+    .where(eq(inviteCodes.code, normalizedCode));
+
+  console.log(`[Auth] Invite code ${normalizedCode} used by user ${userId}`);
+  return { valid: true, message: 'Valid' };
 }
 
 /**

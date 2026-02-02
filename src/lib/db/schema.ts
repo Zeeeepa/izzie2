@@ -1689,3 +1689,32 @@ export const TRAINING_SOURCE_TYPE = {
 } as const;
 
 export type TrainingSourceType = (typeof TRAINING_SOURCE_TYPE)[keyof typeof TRAINING_SOURCE_TYPE];
+
+/**
+ * Invite Codes table - gate new user signups
+ * Users must enter a valid invite code before creating an account
+ */
+export const inviteCodes = pgTable(
+  'invite_codes',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    code: varchar('code', { length: 50 }).notNull().unique(),
+    createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
+    usedBy: text('used_by').references(() => users.id, { onDelete: 'set null' }),
+    usedAt: timestamp('used_at'),
+    expiresAt: timestamp('expires_at'),
+    maxUses: integer('max_uses').notNull().default(1),
+    useCount: integer('use_count').notNull().default(0),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    codeIdx: index('invite_codes_code_idx').on(table.code),
+    createdByIdx: index('invite_codes_created_by_idx').on(table.createdBy),
+  })
+);
+
+/**
+ * Type exports for invite codes
+ */
+export type InviteCode = typeof inviteCodes.$inferSelect;
+export type NewInviteCode = typeof inviteCodes.$inferInsert;

@@ -28,7 +28,7 @@ export const { useSession, signIn, signOut } = authClient;
 export function signInWithGoogle() {
   return signIn.social({
     provider: 'google',
-    callbackURL: '/', // Redirect to home after sign-in
+    callbackURL: '/dashboard', // Redirect to dashboard after sign-in
   });
 }
 
@@ -39,7 +39,7 @@ export function signInWithGoogle() {
 export function signInWithGitHub() {
   return signIn.social({
     provider: 'github',
-    callbackURL: '/', // Redirect to home after sign-in
+    callbackURL: '/dashboard', // Redirect to dashboard after sign-in
   });
 }
 
