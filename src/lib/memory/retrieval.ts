@@ -5,7 +5,7 @@
  * Combines semantic search with temporal decay for context-aware memory access.
  */
 
-import { getWeaviateClient } from '../weaviate/client';
+import { getWeaviateClient, ensureTenant } from '../weaviate/client';
 import type { Memory, MemorySearchOptions, MemoryWithStrength, MemoryCategory } from './types';
 import { addStrengthToMemory, rankMemoriesByRelevance, filterByStrength } from './decay';
 import { refreshMemoryAccess } from './storage';
@@ -69,24 +69,27 @@ export async function searchMemories(
   options: MemorySearchOptions
 ): Promise<MemoryWithStrength[]> {
   const client = await getWeaviateClient();
+
+  // Ensure tenant exists for this user
+  await ensureTenant(MEMORY_COLLECTION, options.userId);
+
   const collection = client.collections.get(MEMORY_COLLECTION);
+  // Get tenant-specific collection handle
+  const tenantCollection = collection.withTenant(options.userId);
 
   console.log(`${LOG_PREFIX} Searching memories for: "${options.query}"`);
 
   try {
-    // Use BM25 keyword search
-    const result = await collection.query.bm25(options.query, {
+    // Use BM25 keyword search on tenant-specific data
+    const result = await tenantCollection.query.bm25(options.query, {
       limit: options.limit || 20,
       returnMetadata: ['score'],
     });
 
-    // Filter results
+    // Filter results (no userId filter needed - tenant isolation handles it)
     let memories: Memory[] = result.objects
       .filter((obj: any) => {
         const props = obj.properties as WeaviateMemory;
-
-        // Must match userId
-        if (props.userId !== options.userId) return false;
 
         // Must not be deleted (unless explicitly requested)
         if (props.isDeleted && !options.includeExpired) return false;
@@ -173,7 +176,7 @@ export async function searchMemories(
 
     // Refresh access timestamps for top results (to reinforce frequently accessed memories)
     const topMemories = rankedMemories.slice(0, Math.min(5, rankedMemories.length));
-    await Promise.all(topMemories.map((m) => refreshMemoryAccess(m.id)));
+    await Promise.all(topMemories.map((m) => refreshMemoryAccess(m.id, options.userId)));
 
     return rankedMemories;
   } catch (error) {

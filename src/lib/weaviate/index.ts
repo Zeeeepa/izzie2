@@ -4,14 +4,32 @@
  * Export all Weaviate functionality for easy imports.
  */
 
-export { getWeaviateClient, closeWeaviateClient, isWeaviateReady } from './client';
-export { initializeSchema, deleteAllCollections, COLLECTIONS, RELATIONSHIP_COLLECTION } from './schema';
+export {
+  getWeaviateClient,
+  closeWeaviateClient,
+  isWeaviateReady,
+  ensureTenant,
+  ensureTenantForCollections,
+  deleteTenant,
+  deleteTenantFromAllCollections,
+  clearTenantCache,
+} from './client';
+export {
+  initializeSchema,
+  deleteAllCollections,
+  COLLECTIONS,
+  RELATIONSHIP_COLLECTION,
+  MEMORY_COLLECTION,
+  RESEARCH_FINDING_COLLECTION_NAME,
+  ALL_MULTI_TENANT_COLLECTIONS,
+} from './schema';
 export {
   saveEntities,
   searchEntities,
   getEntitiesBySource,
   deleteEntitiesBySource,
   getEntityStats,
+  listEntitiesByType,
 } from './entities';
 export {
   saveRelationships,
@@ -20,6 +38,8 @@ export {
   buildRelationshipGraph,
   getRelationshipStats,
   deleteRelationshipsBySource,
+  deleteRelationshipById,
+  deleteAllRelationships,
 } from './relationships';
 export {
   initResearchFindingSchema,

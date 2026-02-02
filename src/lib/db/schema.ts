@@ -59,6 +59,14 @@ export const users = pgTable(
     metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
+
+    // Per-user encryption fields (POC - user-managed passphrases)
+    encryptionKeyHash: text('encryption_key_hash'), // Hash of derived key for verification
+    encryptionSalt: text('encryption_salt'), // Unique salt per user for key derivation
+    passphraseHint: text('passphrase_hint'), // Optional hint user can set
+    encryptionEnabled: boolean('encryption_enabled').default(false).notNull(),
+    encryptionFailedAttempts: integer('encryption_failed_attempts').default(0).notNull(),
+    encryptionLockedUntil: timestamp('encryption_locked_until'), // Account lock after failed attempts
   },
   (table) => ({
     emailIdx: index('users_email_idx').on(table.email),

@@ -5,7 +5,7 @@
  */
 
 import { Filters } from 'weaviate-client';
-import { getWeaviateClient } from './client';
+import { getWeaviateClient, ensureTenant } from './client';
 import { RELATIONSHIP_COLLECTION } from './schema';
 import type {
   InferredRelationship,
@@ -45,16 +45,18 @@ function getRelationshipKey(
 
 /**
  * Check for existing relationships to prevent duplicates
+ * Uses tenant-aware collection access for data isolation.
  */
 async function findExistingRelationshipKeys(
-  collection: any,
+  tenantCollection: any,
   userId: string
 ): Promise<Set<string>> {
   const existingKeys = new Set<string>();
 
   try {
-    const result = await collection.query.fetchObjects({
-      filters: collection.filter.byProperty('userId').equal(userId),
+    // With multi-tenancy, we query the tenant-specific collection directly
+    // No need for userId filter - tenant isolation handles it
+    const result = await tenantCollection.query.fetchObjects({
       limit: 10000,
       returnProperties: [
         'fromEntityType',
@@ -100,12 +102,18 @@ export async function saveRelationships(
   }
 
   const client = await getWeaviateClient();
+
+  // Ensure tenant exists for this user
+  await ensureTenant(RELATIONSHIP_COLLECTION, userId);
+
   const collection = client.collections.get(RELATIONSHIP_COLLECTION);
+  // Get tenant-specific collection handle
+  const tenantCollection = collection.withTenant(userId);
 
   console.log(`${LOG_PREFIX} Checking for duplicates among ${relationships.length} relationships...`);
 
-  // Fetch existing relationship keys for this user
-  const existingKeys = await findExistingRelationshipKeys(collection, userId);
+  // Fetch existing relationship keys for this user's tenant
+  const existingKeys = await findExistingRelationshipKeys(tenantCollection, userId);
   console.log(`${LOG_PREFIX} Found ${existingKeys.size} existing relationships for user`);
 
   // Filter out duplicates
@@ -147,9 +155,10 @@ export async function saveRelationships(
   }));
 
   try {
-    const result = await collection.data.insertMany(objects);
+    // Insert to tenant-specific collection
+    const result = await tenantCollection.data.insertMany(objects);
     const insertedCount = result.uuids ? Object.keys(result.uuids).length : 0;
-    console.log(`${LOG_PREFIX} Saved ${insertedCount} relationships`);
+    console.log(`${LOG_PREFIX} Saved ${insertedCount} relationships (tenant: ${userId})`);
     return insertedCount;
   } catch (error) {
     console.error(`${LOG_PREFIX} Failed to save relationships:`, error);
@@ -163,33 +172,35 @@ export async function saveRelationships(
 export async function getEntityRelationships(
   entityType: EntityType,
   entityValue: string,
-  userId?: string
+  userId: string
 ): Promise<InferredRelationship[]> {
   const client = await getWeaviateClient();
+
+  // Ensure tenant exists for this user
+  await ensureTenant(RELATIONSHIP_COLLECTION, userId);
+
   const collection = client.collections.get(RELATIONSHIP_COLLECTION);
+  // Get tenant-specific collection handle
+  const tenantCollection = collection.withTenant(userId);
   const normalizedValue = entityValue.toLowerCase();
 
   console.log(`${LOG_PREFIX} Fetching relationships for ${entityType}: ${entityValue}`);
 
   try {
     // Build filter for entity match (from OR to) using Weaviate Filters API
+    // No need for userId filter - tenant isolation handles it
     const fromFilter = Filters.and(
-      collection.filter.byProperty('fromEntityType').equal(entityType),
-      collection.filter.byProperty('fromEntityValue').equal(normalizedValue)
+      tenantCollection.filter.byProperty('fromEntityType').equal(entityType),
+      tenantCollection.filter.byProperty('fromEntityValue').equal(normalizedValue)
     );
     const toFilter = Filters.and(
-      collection.filter.byProperty('toEntityType').equal(entityType),
-      collection.filter.byProperty('toEntityValue').equal(normalizedValue)
+      tenantCollection.filter.byProperty('toEntityType').equal(entityType),
+      tenantCollection.filter.byProperty('toEntityValue').equal(normalizedValue)
     );
     const entityFilter = Filters.or(fromFilter, toFilter);
 
-    // Combine with userId filter if provided
-    const finalFilter = userId
-      ? Filters.and(entityFilter, collection.filter.byProperty('userId').equal(userId))
-      : entityFilter;
-
-    const result = await collection.query.fetchObjects({
-      filters: finalFilter,
+    const result = await tenantCollection.query.fetchObjects({
+      filters: entityFilter,
       limit: 500,
       returnProperties: [
         'fromEntityType',
@@ -231,22 +242,23 @@ export async function getEntityRelationships(
  * Get all relationships for a user
  */
 export async function getAllRelationships(
-  userId?: string,
+  userId: string,
   limit: number = 1000
 ): Promise<InferredRelationship[]> {
   const client = await getWeaviateClient();
-  const collection = client.collections.get(RELATIONSHIP_COLLECTION);
 
-  console.log(`${LOG_PREFIX} Fetching all relationships${userId ? ` for user ${userId}` : ''}...`);
+  // Ensure tenant exists for this user
+  await ensureTenant(RELATIONSHIP_COLLECTION, userId);
+
+  const collection = client.collections.get(RELATIONSHIP_COLLECTION);
+  // Get tenant-specific collection handle
+  const tenantCollection = collection.withTenant(userId);
+
+  console.log(`${LOG_PREFIX} Fetching all relationships for user ${userId}...`);
 
   try {
-    // Build filter using Weaviate Filters API if userId is provided
-    const filters = userId
-      ? collection.filter.byProperty('userId').equal(userId)
-      : undefined;
-
-    const result = await collection.query.fetchObjects({
-      filters,
+    // No need for userId filter - tenant isolation handles it
+    const result = await tenantCollection.query.fetchObjects({
       limit,
       returnProperties: [
         'fromEntityType',
@@ -318,7 +330,7 @@ interface FrontendRelationshipGraph {
  * Returns data formatted for the frontend dashboard
  */
 export async function buildRelationshipGraph(
-  userId?: string,
+  userId: string,
   options?: {
     centerEntity?: { type: EntityType; value: string };
     maxDepth?: number;
@@ -414,7 +426,7 @@ export async function buildRelationshipGraph(
 /**
  * Get relationship statistics
  */
-export async function getRelationshipStats(userId?: string): Promise<{
+export async function getRelationshipStats(userId: string): Promise<{
   total: number;
   byType: Record<string, number>;
   avgConfidence: number;
@@ -441,35 +453,35 @@ export async function getRelationshipStats(userId?: string): Promise<{
 
 /**
  * Delete a single relationship by ID
- * Verifies the relationship belongs to the specified user before deletion.
+ * Uses tenant isolation for data security.
  */
 export async function deleteRelationshipById(
   id: string,
   userId: string
 ): Promise<boolean> {
   const client = await getWeaviateClient();
+
+  // Ensure tenant exists for this user
+  await ensureTenant(RELATIONSHIP_COLLECTION, userId);
+
   const collection = client.collections.get(RELATIONSHIP_COLLECTION);
+  // Get tenant-specific collection handle
+  const tenantCollection = collection.withTenant(userId);
 
   try {
-    // Fetch the relationship to verify ownership
-    const result = await collection.query.fetchObjectById(id, {
+    // Fetch the relationship from tenant (tenant isolation ensures ownership)
+    const result = await tenantCollection.query.fetchObjectById(id, {
       returnProperties: ['userId'],
     });
 
     if (!result) {
-      console.log(`${LOG_PREFIX} Relationship ${id} not found`);
+      console.log(`${LOG_PREFIX} Relationship ${id} not found in tenant ${userId}`);
       return false;
     }
 
-    // Verify the relationship belongs to this user
-    if (result.properties.userId !== userId) {
-      console.log(`${LOG_PREFIX} Relationship ${id} does not belong to user ${userId}`);
-      return false;
-    }
-
-    // Delete the relationship
-    await collection.data.deleteById(id);
-    console.log(`${LOG_PREFIX} Deleted relationship ${id}`);
+    // Delete the relationship from tenant
+    await tenantCollection.data.deleteById(id);
+    console.log(`${LOG_PREFIX} Deleted relationship ${id} (tenant: ${userId})`);
     return true;
   } catch (error) {
     console.error(`${LOG_PREFIX} Failed to delete relationship ${id}:`, error);
@@ -482,24 +494,28 @@ export async function deleteRelationshipById(
  */
 export async function deleteAllRelationships(userId: string): Promise<number> {
   const client = await getWeaviateClient();
+
+  // Ensure tenant exists for this user
+  await ensureTenant(RELATIONSHIP_COLLECTION, userId);
+
   const collection = client.collections.get(RELATIONSHIP_COLLECTION);
+  // Get tenant-specific collection handle
+  const tenantCollection = collection.withTenant(userId);
 
   try {
-    const filters = collection.filter.byProperty('userId').equal(userId);
-
-    const result = await collection.query.fetchObjects({
-      filters,
+    // No need for userId filter - tenant isolation handles it
+    const result = await tenantCollection.query.fetchObjects({
       limit: 10000,
       returnProperties: ['userId'],
     });
 
     let deletedCount = 0;
     for (const obj of result.objects) {
-      await collection.data.deleteById(obj.uuid);
+      await tenantCollection.data.deleteById(obj.uuid);
       deletedCount++;
     }
 
-    console.log(`${LOG_PREFIX} Deleted ${deletedCount} relationships for user ${userId}`);
+    console.log(`${LOG_PREFIX} Deleted ${deletedCount} relationships for user ${userId} (tenant)`);
     return deletedCount;
   } catch (error) {
     console.error(`${LOG_PREFIX} Failed to delete all relationships:`, error);
@@ -515,26 +531,29 @@ export async function deleteRelationshipsBySource(
   userId: string
 ): Promise<number> {
   const client = await getWeaviateClient();
+
+  // Ensure tenant exists for this user
+  await ensureTenant(RELATIONSHIP_COLLECTION, userId);
+
   const collection = client.collections.get(RELATIONSHIP_COLLECTION);
+  // Get tenant-specific collection handle
+  const tenantCollection = collection.withTenant(userId);
 
   try {
-    // Use Weaviate Filters API to filter at database level
-    const filters = Filters.and(
-      collection.filter.byProperty('sourceId').equal(sourceId),
-      collection.filter.byProperty('userId').equal(userId)
-    );
+    // Filter by sourceId only - tenant isolation handles userId
+    const filters = tenantCollection.filter.byProperty('sourceId').equal(sourceId);
 
-    const result = await collection.query.fetchObjects({
+    const result = await tenantCollection.query.fetchObjects({
       filters,
       limit: 1000,
-      returnProperties: ['sourceId', 'userId'],
+      returnProperties: ['sourceId'],
     });
 
     for (const obj of result.objects) {
-      await collection.data.deleteById(obj.uuid);
+      await tenantCollection.data.deleteById(obj.uuid);
     }
 
-    console.log(`${LOG_PREFIX} Deleted ${result.objects.length} relationships for source ${sourceId}`);
+    console.log(`${LOG_PREFIX} Deleted ${result.objects.length} relationships for source ${sourceId} (tenant: ${userId})`);
     return result.objects.length;
   } catch (error) {
     console.error(`${LOG_PREFIX} Failed to delete relationships:`, error);

@@ -4,7 +4,7 @@
  * Save, search, and manage extracted entities in Weaviate.
  */
 
-import { getWeaviateClient } from './client';
+import { getWeaviateClient, ensureTenant } from './client';
 import { COLLECTIONS } from './schema';
 import type { Entity, EntityType } from '../extraction/types';
 
@@ -50,7 +50,12 @@ export async function saveEntities(
     }
 
     try {
+      // Ensure tenant exists for this user
+      await ensureTenant(collectionName, userId);
+
       const collection = client.collections.get(collectionName);
+      // Get tenant-specific collection handle
+      const tenantCollection = collection.withTenant(userId);
 
       // Prepare objects for insertion
       const objects = typeEntities.map((entity) => ({
@@ -70,13 +75,13 @@ export async function saveEntities(
         }),
       }));
 
-      // Batch insert
-      const result = await collection.data.insertMany(objects);
+      // Batch insert to tenant-specific collection
+      const result = await tenantCollection.data.insertMany(objects);
 
       // Count successful inserts (uuids is an object/dictionary, not an array)
       const insertedCount = result.uuids ? Object.keys(result.uuids).length : 0;
       console.log(
-        `${LOG_PREFIX} Saved ${insertedCount} ${entityType} entities to collection '${collectionName}'`
+        `${LOG_PREFIX} Saved ${insertedCount} ${entityType} entities to collection '${collectionName}' (tenant: ${userId})`
       );
       totalSaved += insertedCount;
     } catch (error) {
@@ -114,17 +119,21 @@ export async function searchEntities(
 
   for (const collectionName of collectionsToSearch) {
     try {
-      const collection = client.collections.get(collectionName);
+      // Ensure tenant exists for this user
+      await ensureTenant(collectionName, userId);
 
-      // Use BM25 keyword search (no vectorizer needed)
-      const result = await collection.query.bm25(query, {
+      const collection = client.collections.get(collectionName);
+      // Get tenant-specific collection handle
+      const tenantCollection = collection.withTenant(userId);
+
+      // Use BM25 keyword search (no vectorizer needed) on tenant-specific data
+      const result = await tenantCollection.query.bm25(query, {
         limit,
         returnMetadata: ['score'],
       });
 
-      // Convert results to Entity objects and filter by userId
+      // Convert results to Entity objects (no need to filter by userId - tenant isolation handles it)
       const entities: Entity[] = result.objects
-        .filter((obj: any) => obj.properties.userId === userId)
         .map((obj: any) => {
           const entityType = Object.entries(COLLECTIONS).find(
             ([_, name]) => name === collectionName
@@ -189,7 +198,12 @@ export async function getEntitiesBySource(sourceId: string, userId: string): Pro
 
   for (const [entityType, collectionName] of Object.entries(COLLECTIONS)) {
     try {
+      // Ensure tenant exists for this user
+      await ensureTenant(collectionName, userId);
+
       const collection = client.collections.get(collectionName);
+      // Get tenant-specific collection handle
+      const tenantCollection = collection.withTenant(userId);
 
       // Base properties for all collections
       const baseProperties = [
@@ -209,16 +223,14 @@ export async function getEntitiesBySource(sourceId: string, userId: string): Pro
           ? [...baseProperties, 'assignee', 'deadline', 'priority']
           : baseProperties;
 
-      const result = await collection.query.fetchObjects({
+      const result = await tenantCollection.query.fetchObjects({
         limit: 1000,
         returnProperties,
       });
 
-      // Filter by sourceId and userId in code since we can't use complex filters
+      // Filter by sourceId only (tenant isolation handles userId filtering)
       const entities: Entity[] = result.objects
-        .filter(
-          (obj: any) => obj.properties.sourceId === sourceId && obj.properties.userId === userId
-        )
+        .filter((obj: any) => obj.properties.sourceId === sourceId)
         .map((obj: any) => {
           return {
             type: entityType as EntityType,
@@ -257,27 +269,32 @@ export async function deleteEntitiesBySource(sourceId: string, userId: string): 
 
   for (const collectionName of Object.values(COLLECTIONS)) {
     try {
-      const collection = client.collections.get(collectionName);
+      // Ensure tenant exists for this user
+      await ensureTenant(collectionName, userId);
 
-      // First, fetch all objects matching the criteria
-      const result = await collection.query.fetchObjects({
+      const collection = client.collections.get(collectionName);
+      // Get tenant-specific collection handle
+      const tenantCollection = collection.withTenant(userId);
+
+      // First, fetch all objects matching the criteria from tenant
+      const result = await tenantCollection.query.fetchObjects({
         limit: 1000,
-        returnProperties: ['sourceId', 'userId'],
+        returnProperties: ['sourceId'],
       });
 
-      // Filter objects to delete
+      // Filter objects to delete by sourceId (tenant isolation handles userId)
       const objectsToDelete = result.objects.filter(
-        (obj: any) => obj.properties.sourceId === sourceId && obj.properties.userId === userId
+        (obj: any) => obj.properties.sourceId === sourceId
       );
 
       // Delete each object by UUID
       for (const obj of objectsToDelete) {
-        await collection.data.deleteById(obj.uuid);
+        await tenantCollection.data.deleteById(obj.uuid);
         totalDeleted++;
       }
 
       console.log(
-        `${LOG_PREFIX} Deleted ${objectsToDelete.length} entities from '${collectionName}'`
+        `${LOG_PREFIX} Deleted ${objectsToDelete.length} entities from '${collectionName}' (tenant: ${userId})`
       );
     } catch (error) {
       console.error(`${LOG_PREFIX} Failed to delete from collection '${collectionName}':`, error);
@@ -308,9 +325,14 @@ export async function getEntityStats(userId: string): Promise<Record<EntityType,
 
   for (const [entityType, collectionName] of Object.entries(COLLECTIONS)) {
     try {
-      const collection = client.collections.get(collectionName);
+      // Ensure tenant exists for this user
+      await ensureTenant(collectionName, userId);
 
-      const result = await collection.aggregate.overAll();
+      const collection = client.collections.get(collectionName);
+      // Get tenant-specific collection handle
+      const tenantCollection = collection.withTenant(userId);
+
+      const result = await tenantCollection.aggregate.overAll();
 
       stats[entityType as EntityType] = result.totalCount || 0;
     } catch (error) {
@@ -324,10 +346,10 @@ export async function getEntityStats(userId: string): Promise<Record<EntityType,
 
 /**
  * List all entities of a specific type for a user
- * @param userId - Optional user ID filter (omit for single-user apps)
+ * @param userId - User ID for tenant isolation (required for multi-tenancy)
  */
 export async function listEntitiesByType(
-  userId: string | undefined,
+  userId: string,
   entityType: EntityType,
   limit: number = 500
 ): Promise<(Entity & { sourceId?: string; extractedAt?: string })[]> {
@@ -339,11 +361,15 @@ export async function listEntitiesByType(
     return [];
   }
 
-  const userFilter = userId ? ` for user ${userId}` : ' (all users)';
-  console.log(`${LOG_PREFIX} Listing ${entityType} entities${userFilter}...`);
+  console.log(`${LOG_PREFIX} Listing ${entityType} entities for user ${userId}...`);
 
   try {
+    // Ensure tenant exists for this user
+    await ensureTenant(collectionName, userId);
+
     const collection = client.collections.get(collectionName);
+    // Get tenant-specific collection handle
+    const tenantCollection = collection.withTenant(userId);
 
     // Base properties for all collections
     const baseProperties = [
@@ -363,28 +389,15 @@ export async function listEntitiesByType(
         ? [...baseProperties, 'assignee', 'deadline', 'priority']
         : baseProperties;
 
-    const result = await collection.query.fetchObjects({
+    const result = await tenantCollection.query.fetchObjects({
       limit,
       returnProperties,
     });
 
     console.log(`${LOG_PREFIX} Raw fetch returned ${result.objects.length} objects`);
 
-    if (userId) {
-      console.log(`${LOG_PREFIX} Filtering by userId: ${userId}`);
-      // Log first object's userId for debugging
-      if (result.objects.length > 0) {
-        const firstUserId = (result.objects[0] as any).properties.userId;
-        console.log(`${LOG_PREFIX} First object userId: ${firstUserId}`);
-        console.log(`${LOG_PREFIX} UserIds match: ${firstUserId === userId}`);
-      }
-    } else {
-      console.log(`${LOG_PREFIX} No userId filter - returning all entities`);
-    }
-
-    // Filter by userId only if provided (for single-user apps, skip filtering)
+    // No need to filter by userId - tenant isolation handles it
     const entities = result.objects
-      .filter((obj: any) => !userId || obj.properties.userId === userId)
       .map((obj: any) => ({
         type: entityType,
         value: obj.properties.value,

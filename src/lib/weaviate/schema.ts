@@ -6,6 +6,7 @@
  * - Memory (with temporal decay)
  */
 
+import weaviate from 'weaviate-client';
 import { getWeaviateClient } from './client';
 import type { EntityType } from '../extraction/types';
 import { initializeMemorySchema } from '../memory/storage';
@@ -33,6 +34,27 @@ const LEGACY_DATE_COLLECTION = 'Date';
  * Relationship collection name
  */
 export const RELATIONSHIP_COLLECTION = 'Relationship';
+
+/**
+ * Memory collection name (re-exported for convenience)
+ */
+export const MEMORY_COLLECTION = 'Memory';
+
+/**
+ * Research Finding collection name (re-exported for convenience)
+ */
+export const RESEARCH_FINDING_COLLECTION_NAME = 'ResearchFinding';
+
+/**
+ * All multi-tenant collection names.
+ * Used for tenant lifecycle management (creation/deletion).
+ */
+export const ALL_MULTI_TENANT_COLLECTIONS: string[] = [
+  ...Object.values(COLLECTIONS),
+  RELATIONSHIP_COLLECTION,
+  MEMORY_COLLECTION,
+  RESEARCH_FINDING_COLLECTION_NAME,
+];
 
 /**
  * Common properties for all entity collections
@@ -193,11 +215,12 @@ export async function initializeSchema(): Promise<void> {
         continue;
       }
 
-      // Create collection
+      // Create collection with multi-tenancy enabled
       await client.collections.create({
         name: definition.name,
         description: definition.description,
         properties: definition.properties as any,
+        multiTenancy: weaviate.configure.multiTenancy({ enabled: true }),
       });
 
       console.log(`${LOG_PREFIX} Created collection '${definition.name}'`);
@@ -229,6 +252,7 @@ export async function initializeSchema(): Promise<void> {
           { name: 'userId', dataType: 'text', description: 'User ID who owns this relationship' },
           { name: 'inferredAt', dataType: 'text', description: 'ISO timestamp of inference' },
         ] as any,
+        multiTenancy: weaviate.configure.multiTenancy({ enabled: true }),
       });
 
       console.log(`${LOG_PREFIX} Created collection '${RELATIONSHIP_COLLECTION}'`);

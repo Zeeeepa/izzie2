@@ -5,7 +5,8 @@
  * Memories are stored with decay parameters for temporal relevance.
  */
 
-import { getWeaviateClient } from '../weaviate/client';
+import weaviate from 'weaviate-client';
+import { getWeaviateClient, ensureTenant } from '../weaviate/client';
 import type {
   Memory,
   CreateMemoryInput,
@@ -58,7 +59,7 @@ export async function initializeMemorySchema(): Promise<void> {
       return;
     }
 
-    // Create Memory collection with vectorization for semantic search
+    // Create Memory collection with vectorization for semantic search and multi-tenancy enabled
     await client.collections.create({
       name: MEMORY_COLLECTION,
       description: 'User memories with temporal decay',
@@ -80,6 +81,7 @@ export async function initializeMemorySchema(): Promise<void> {
         { name: 'updatedAt', dataType: 'text', description: 'ISO date of last update' },
         { name: 'isDeleted', dataType: 'boolean', description: 'Soft delete flag' },
       ],
+      multiTenancy: weaviate.configure.multiTenancy({ enabled: true }),
     });
 
     console.log(`${LOG_PREFIX} Created Memory collection`);
@@ -94,7 +96,13 @@ export async function initializeMemorySchema(): Promise<void> {
  */
 export async function saveMemory(input: CreateMemoryInput): Promise<Memory> {
   const client = await getWeaviateClient();
+
+  // Ensure tenant exists for this user
+  await ensureTenant(MEMORY_COLLECTION, input.userId);
+
   const collection = client.collections.get(MEMORY_COLLECTION);
+  // Get tenant-specific collection handle
+  const tenantCollection = collection.withTenant(input.userId);
 
   // Get decay rate for category
   const decayRate = DECAY_RATES[input.category];
@@ -126,9 +134,9 @@ export async function saveMemory(input: CreateMemoryInput): Promise<Memory> {
   };
 
   try {
-    const result = await collection.data.insert(memoryData);
+    const result = await tenantCollection.data.insert(memoryData);
 
-    console.log(`${LOG_PREFIX} Saved memory ${result} for user ${input.userId}`);
+    console.log(`${LOG_PREFIX} Saved memory ${result} for user ${input.userId} (tenant)`);
 
     return {
       id: result as string,
@@ -156,6 +164,7 @@ export async function saveMemory(input: CreateMemoryInput): Promise<Memory> {
 
 /**
  * Save multiple memories in batch
+ * Note: All inputs must be for the same user (same tenant)
  */
 export async function saveMemories(inputs: CreateMemoryInput[]): Promise<Memory[]> {
   if (inputs.length === 0) {
@@ -163,8 +172,20 @@ export async function saveMemories(inputs: CreateMemoryInput[]): Promise<Memory[
     return [];
   }
 
+  // All inputs must be for the same user
+  const userId = inputs[0].userId;
+  if (inputs.some(input => input.userId !== userId)) {
+    throw new Error('saveMemories: All inputs must be for the same user');
+  }
+
   const client = await getWeaviateClient();
+
+  // Ensure tenant exists for this user
+  await ensureTenant(MEMORY_COLLECTION, userId);
+
   const collection = client.collections.get(MEMORY_COLLECTION);
+  // Get tenant-specific collection handle
+  const tenantCollection = collection.withTenant(userId);
 
   console.log(`${LOG_PREFIX} Saving ${inputs.length} memories...`);
 
@@ -196,12 +217,12 @@ export async function saveMemories(inputs: CreateMemoryInput[]): Promise<Memory[
   });
 
   try {
-    const result = await collection.data.insertMany(objects);
+    const result = await tenantCollection.data.insertMany(objects);
 
     // Extract UUIDs (result.uuids is an object/dictionary)
     const insertedCount = result.uuids ? Object.keys(result.uuids).length : 0;
 
-    console.log(`${LOG_PREFIX} Saved ${insertedCount} memories`);
+    console.log(`${LOG_PREFIX} Saved ${insertedCount} memories (tenant: ${userId})`);
 
     // Return Memory objects (approximate - we don't have actual UUIDs back easily)
     return inputs.map((input, index) => {
@@ -236,13 +257,20 @@ export async function saveMemories(inputs: CreateMemoryInput[]): Promise<Memory[
 
 /**
  * Get memory by ID
+ * Requires userId for tenant isolation
  */
-export async function getMemoryById(memoryId: string): Promise<Memory | null> {
+export async function getMemoryById(memoryId: string, userId: string): Promise<Memory | null> {
   const client = await getWeaviateClient();
+
+  // Ensure tenant exists for this user
+  await ensureTenant(MEMORY_COLLECTION, userId);
+
   const collection = client.collections.get(MEMORY_COLLECTION);
+  // Get tenant-specific collection handle
+  const tenantCollection = collection.withTenant(userId);
 
   try {
-    const result = await collection.query.fetchObjectById(memoryId);
+    const result = await tenantCollection.query.fetchObjectById(memoryId);
 
     if (!result || !result.properties) {
       return null;
@@ -277,15 +305,22 @@ export async function getMemoryById(memoryId: string): Promise<Memory | null> {
 
 /**
  * Update memory's lastAccessed timestamp (refresh decay clock)
+ * Requires userId for tenant isolation
  */
-export async function refreshMemoryAccess(memoryId: string): Promise<void> {
+export async function refreshMemoryAccess(memoryId: string, userId: string): Promise<void> {
   const client = await getWeaviateClient();
+
+  // Ensure tenant exists for this user
+  await ensureTenant(MEMORY_COLLECTION, userId);
+
   const collection = client.collections.get(MEMORY_COLLECTION);
+  // Get tenant-specific collection handle
+  const tenantCollection = collection.withTenant(userId);
 
   const now = new Date().toISOString();
 
   try {
-    await collection.data.update({
+    await tenantCollection.data.update({
       id: memoryId,
       properties: {
         lastAccessed: now,
@@ -293,7 +328,7 @@ export async function refreshMemoryAccess(memoryId: string): Promise<void> {
       },
     });
 
-    console.log(`${LOG_PREFIX} Refreshed memory ${memoryId}`);
+    console.log(`${LOG_PREFIX} Refreshed memory ${memoryId} (tenant: ${userId})`);
   } catch (error) {
     console.error(`${LOG_PREFIX} Failed to refresh memory ${memoryId}:`, error);
   }
@@ -301,13 +336,20 @@ export async function refreshMemoryAccess(memoryId: string): Promise<void> {
 
 /**
  * Soft delete a memory
+ * Requires userId for tenant isolation
  */
-export async function deleteMemory(memoryId: string): Promise<void> {
+export async function deleteMemory(memoryId: string, userId: string): Promise<void> {
   const client = await getWeaviateClient();
+
+  // Ensure tenant exists for this user
+  await ensureTenant(MEMORY_COLLECTION, userId);
+
   const collection = client.collections.get(MEMORY_COLLECTION);
+  // Get tenant-specific collection handle
+  const tenantCollection = collection.withTenant(userId);
 
   try {
-    await collection.data.update({
+    await tenantCollection.data.update({
       id: memoryId,
       properties: {
         isDeleted: true,
@@ -315,7 +357,7 @@ export async function deleteMemory(memoryId: string): Promise<void> {
       },
     });
 
-    console.log(`${LOG_PREFIX} Deleted memory ${memoryId}`);
+    console.log(`${LOG_PREFIX} Deleted memory ${memoryId} (tenant: ${userId})`);
   } catch (error) {
     console.error(`${LOG_PREFIX} Failed to delete memory ${memoryId}:`, error);
     throw error;
@@ -324,14 +366,21 @@ export async function deleteMemory(memoryId: string): Promise<void> {
 
 /**
  * Hard delete a memory
+ * Requires userId for tenant isolation
  */
-export async function hardDeleteMemory(memoryId: string): Promise<void> {
+export async function hardDeleteMemory(memoryId: string, userId: string): Promise<void> {
   const client = await getWeaviateClient();
+
+  // Ensure tenant exists for this user
+  await ensureTenant(MEMORY_COLLECTION, userId);
+
   const collection = client.collections.get(MEMORY_COLLECTION);
+  // Get tenant-specific collection handle
+  const tenantCollection = collection.withTenant(userId);
 
   try {
-    await collection.data.deleteById(memoryId);
-    console.log(`${LOG_PREFIX} Hard deleted memory ${memoryId}`);
+    await tenantCollection.data.deleteById(memoryId);
+    console.log(`${LOG_PREFIX} Hard deleted memory ${memoryId} (tenant: ${userId})`);
   } catch (error) {
     console.error(`${LOG_PREFIX} Failed to hard delete memory ${memoryId}:`, error);
     throw error;
@@ -343,16 +392,22 @@ export async function hardDeleteMemory(memoryId: string): Promise<void> {
  */
 export async function getAllMemories(userId: string): Promise<Memory[]> {
   const client = await getWeaviateClient();
+
+  // Ensure tenant exists for this user
+  await ensureTenant(MEMORY_COLLECTION, userId);
+
   const collection = client.collections.get(MEMORY_COLLECTION);
+  // Get tenant-specific collection handle
+  const tenantCollection = collection.withTenant(userId);
 
   try {
-    const result = await collection.query.fetchObjects({
+    const result = await tenantCollection.query.fetchObjects({
       limit: 10000,
     });
 
-    // Filter by userId and isDeleted
+    // Filter by isDeleted only (tenant isolation handles userId)
     const memories: Memory[] = result.objects
-      .filter((obj: any) => obj.properties.userId === userId && !obj.properties.isDeleted)
+      .filter((obj: any) => !obj.properties.isDeleted)
       .map((obj: any) => {
         const props = obj.properties as WeaviateMemory;
 

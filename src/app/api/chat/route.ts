@@ -288,7 +288,7 @@ ${RESPONSE_FORMAT_INSTRUCTION}
     // Refresh accessed memories (slows decay for frequently used context)
     if (context.memories.length > 0) {
       const topMemories = context.memories.slice(0, 5);
-      await Promise.all(topMemories.map((m) => refreshMemoryAccess(m.id)));
+      await Promise.all(topMemories.map((m) => refreshMemoryAccess(m.id, userId)));
       console.log(`${LOG_PREFIX} Refreshed ${topMemories.length} memory access timestamps`);
     }
 

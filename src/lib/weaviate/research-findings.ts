@@ -15,7 +15,8 @@
  * - userId: string
  */
 
-import { getWeaviateClient } from './client';
+import weaviate from 'weaviate-client';
+import { getWeaviateClient, ensureTenant } from './client';
 import type { ResearchFinding } from '@/agents/research/types';
 
 const LOG_PREFIX = '[Weaviate Research Findings]';
@@ -64,7 +65,7 @@ export async function initResearchFindingSchema(): Promise<void> {
       return;
     }
 
-    // Create collection with no vectorizer (use BM25 keyword search)
+    // Create collection with no vectorizer (use BM25 keyword search) and multi-tenancy enabled
     await client.collections.create({
       name: RESEARCH_FINDING_COLLECTION,
       description: 'Research findings with claims, evidence, and citations',
@@ -115,6 +116,7 @@ export async function initResearchFindingSchema(): Promise<void> {
           description: 'ISO timestamp of creation',
         },
       ] as any,
+      multiTenancy: weaviate.configure.multiTenancy({ enabled: true }),
     });
 
     console.log(`${LOG_PREFIX} Created collection '${RESEARCH_FINDING_COLLECTION}'`);
@@ -137,7 +139,12 @@ export async function saveFinding(
   const client = await getWeaviateClient();
 
   try {
+    // Ensure tenant exists for this user
+    await ensureTenant(RESEARCH_FINDING_COLLECTION, userId);
+
     const collection = client.collections.get(RESEARCH_FINDING_COLLECTION);
+    // Get tenant-specific collection handle
+    const tenantCollection = collection.withTenant(userId);
 
     const storedFinding = {
       claim: finding.claim,
@@ -151,9 +158,9 @@ export async function saveFinding(
       createdAt: new Date().toISOString(),
     };
 
-    const result = await collection.data.insert(storedFinding as any);
+    const result = await tenantCollection.data.insert(storedFinding as any);
 
-    console.log(`${LOG_PREFIX} Saved finding: "${finding.claim.substring(0, 50)}..."`);
+    console.log(`${LOG_PREFIX} Saved finding: "${finding.claim.substring(0, 50)}..." (tenant: ${userId})`);
     return result;
   } catch (error) {
     console.error(`${LOG_PREFIX} Failed to save finding:`, error);
@@ -177,7 +184,12 @@ export async function saveFindings(
   const client = await getWeaviateClient();
 
   try {
+    // Ensure tenant exists for this user
+    await ensureTenant(RESEARCH_FINDING_COLLECTION, userId);
+
     const collection = client.collections.get(RESEARCH_FINDING_COLLECTION);
+    // Get tenant-specific collection handle
+    const tenantCollection = collection.withTenant(userId);
 
     const objects = findings.map((finding) => ({
       claim: finding.claim,
@@ -191,11 +203,11 @@ export async function saveFindings(
       createdAt: new Date().toISOString(),
     }));
 
-    const result = await collection.data.insertMany(objects);
+    const result = await tenantCollection.data.insertMany(objects);
 
     // Count successful inserts
     const insertedCount = result.uuids ? Object.keys(result.uuids).length : 0;
-    console.log(`${LOG_PREFIX} Saved ${insertedCount} findings for task ${taskId}`);
+    console.log(`${LOG_PREFIX} Saved ${insertedCount} findings for task ${taskId} (tenant: ${userId})`);
 
     return result.uuids ? Object.values(result.uuids).map(String) : [];
   } catch (error) {
@@ -222,18 +234,22 @@ export async function searchFindings(
   console.log(`${LOG_PREFIX} Searching for: "${query}" (user: ${userId})`);
 
   try {
-    const collection = client.collections.get(RESEARCH_FINDING_COLLECTION);
+    // Ensure tenant exists for this user
+    await ensureTenant(RESEARCH_FINDING_COLLECTION, userId);
 
-    // Use BM25 keyword search
-    const result = await collection.query.bm25(query, {
+    const collection = client.collections.get(RESEARCH_FINDING_COLLECTION);
+    // Get tenant-specific collection handle
+    const tenantCollection = collection.withTenant(userId);
+
+    // Use BM25 keyword search on tenant-specific data
+    const result = await tenantCollection.query.bm25(query, {
       limit: limit * 2, // Fetch more for filtering
       returnMetadata: ['score'],
     });
 
-    // Filter by userId and optionally taskId
+    // Filter optionally by taskId and minConfidence (no need for userId filter - tenant isolation)
     const filtered = result.objects
       .filter((obj: any) => {
-        if (obj.properties.userId !== userId) return false;
         if (options?.taskId && obj.properties.taskId !== options.taskId) return false;
         if (options?.minConfidence && obj.properties.confidence < options.minConfidence) {
           return false;
@@ -274,9 +290,14 @@ export async function getFindingsByTask(
   console.log(`${LOG_PREFIX} Fetching findings for task ${taskId}...`);
 
   try {
-    const collection = client.collections.get(RESEARCH_FINDING_COLLECTION);
+    // Ensure tenant exists for this user
+    await ensureTenant(RESEARCH_FINDING_COLLECTION, userId);
 
-    const result = await collection.query.fetchObjects({
+    const collection = client.collections.get(RESEARCH_FINDING_COLLECTION);
+    // Get tenant-specific collection handle
+    const tenantCollection = collection.withTenant(userId);
+
+    const result = await tenantCollection.query.fetchObjects({
       limit: 1000,
       returnProperties: [
         'claim',
@@ -291,11 +312,9 @@ export async function getFindingsByTask(
       ],
     });
 
-    // Filter by taskId and userId
+    // Filter by taskId only (tenant isolation handles userId)
     const findings: StoredResearchFinding[] = result.objects
-      .filter(
-        (obj: any) => obj.properties.taskId === taskId && obj.properties.userId === userId
-      )
+      .filter((obj: any) => obj.properties.taskId === taskId)
       .map((obj: any) => ({
         id: obj.uuid,
         taskId: obj.properties.taskId,
@@ -324,25 +343,30 @@ export async function deleteFindingsByTask(taskId: string, userId: string): Prom
   console.log(`${LOG_PREFIX} Deleting findings for task ${taskId}...`);
 
   try {
-    const collection = client.collections.get(RESEARCH_FINDING_COLLECTION);
+    // Ensure tenant exists for this user
+    await ensureTenant(RESEARCH_FINDING_COLLECTION, userId);
 
-    // Fetch all objects matching the criteria
-    const result = await collection.query.fetchObjects({
+    const collection = client.collections.get(RESEARCH_FINDING_COLLECTION);
+    // Get tenant-specific collection handle
+    const tenantCollection = collection.withTenant(userId);
+
+    // Fetch all objects matching the criteria from tenant
+    const result = await tenantCollection.query.fetchObjects({
       limit: 1000,
-      returnProperties: ['taskId', 'userId'],
+      returnProperties: ['taskId'],
     });
 
-    // Filter objects to delete
+    // Filter objects to delete by taskId (tenant isolation handles userId)
     const objectsToDelete = result.objects.filter(
-      (obj: any) => obj.properties.taskId === taskId && obj.properties.userId === userId
+      (obj: any) => obj.properties.taskId === taskId
     );
 
     // Delete each object by UUID
     for (const obj of objectsToDelete) {
-      await collection.data.deleteById(obj.uuid);
+      await tenantCollection.data.deleteById(obj.uuid);
     }
 
-    console.log(`${LOG_PREFIX} Deleted ${objectsToDelete.length} findings`);
+    console.log(`${LOG_PREFIX} Deleted ${objectsToDelete.length} findings (tenant: ${userId})`);
     return objectsToDelete.length;
   } catch (error) {
     console.error(`${LOG_PREFIX} Failed to delete findings:`, error);
