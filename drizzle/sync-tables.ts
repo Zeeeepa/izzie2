@@ -535,7 +535,38 @@ async function syncTables() {
     await pool.query('CREATE INDEX IF NOT EXISTS llm_usage_created_at_idx ON llm_usage(created_at)');
     await pool.query('CREATE INDEX IF NOT EXISTS llm_usage_user_created_at_idx ON llm_usage(user_id, created_at)');
 
-    // Step 15: Add encryption fields to users table if not exists
+    // Step 15: Create user_identity table
+    console.log('📝 Creating user_identity table...');
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_identity (
+        id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        user_id text NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+        display_name text,
+        created_at timestamp DEFAULT now() NOT NULL,
+        updated_at timestamp DEFAULT now() NOT NULL
+      )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS user_identity_user_id_idx ON user_identity(user_id)');
+
+    // Step 16: Create identity_entities table
+    console.log('📝 Creating identity_entities table...');
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS identity_entities (
+        id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        identity_id text NOT NULL REFERENCES user_identity(id) ON DELETE CASCADE,
+        entity_type text NOT NULL,
+        entity_value text NOT NULL,
+        is_primary boolean DEFAULT false NOT NULL,
+        created_at timestamp DEFAULT now() NOT NULL
+      )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS identity_entities_user_id_idx ON identity_entities(user_id)');
+    await pool.query('CREATE INDEX IF NOT EXISTS identity_entities_identity_id_idx ON identity_entities(identity_id)');
+    await pool.query('CREATE INDEX IF NOT EXISTS identity_entities_entity_type_idx ON identity_entities(entity_type)');
+    await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS identity_entities_user_type_value_unique ON identity_entities(user_id, entity_type, entity_value)');
+
+    // Step 17: Add encryption fields to users table if not exists
     console.log('📝 Adding encryption fields to users table...');
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS encryption_key_hash text`);
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS encryption_salt text`);
@@ -574,6 +605,8 @@ async function syncTables() {
       'usage_tracking',
       'invite_codes',
       'llm_usage',
+      'user_identity',
+      'identity_entities',
     ];
 
     const tables = await pool.query(
