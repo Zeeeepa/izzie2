@@ -344,45 +344,45 @@ export function applyPostFilters(
       }
     }
 
-    // Filter 3: Single names (only if not already filtered)
-    if (shouldKeep) {
-      const nameResult = filterSingleNames(currentEntity, knownSingleNames);
-      if (!nameResult.keep) {
-        shouldKeep = false;
-        filterReason = nameResult.reason;
-        stats.filterBreakdown.singleNames++;
-      }
-    }
+    // Filter 3: Single names - DISABLED (too aggressive, removing valid contacts like "Bob", "Sarah")
+    // if (shouldKeep) {
+    //   const nameResult = filterSingleNames(currentEntity, knownSingleNames);
+    //   if (!nameResult.keep) {
+    //     shouldKeep = false;
+    //     filterReason = nameResult.reason;
+    //     stats.filterBreakdown.singleNames++;
+    //   }
+    // }
 
-    // Filter 4: Famous people from newsletters (only if not already filtered)
-    if (shouldKeep) {
-      const famousResult = filterFamousPeople(currentEntity);
-      if (!famousResult.keep) {
-        shouldKeep = false;
-        filterReason = famousResult.reason;
-        stats.filterBreakdown.famousPeople++;
-      }
-    }
+    // Filter 4: Famous people - DISABLED (too aggressive for personal email extraction)
+    // if (shouldKeep) {
+    //   const famousResult = filterFamousPeople(currentEntity);
+    //   if (!famousResult.keep) {
+    //     shouldKeep = false;
+    //     filterReason = famousResult.reason;
+    //     stats.filterBreakdown.famousPeople++;
+    //   }
+    // }
 
-    // Filter 5: Well-known companies from newsletters (only if not already filtered)
-    if (shouldKeep) {
-      const companyResult = filterNewsletterCompanies(currentEntity);
-      if (!companyResult.keep) {
-        shouldKeep = false;
-        filterReason = companyResult.reason;
-        stats.filterBreakdown.newsletterCompanies++;
-      }
-    }
+    // Filter 5: Newsletter companies - DISABLED (too aggressive for personal email extraction)
+    // if (shouldKeep) {
+    //   const companyResult = filterNewsletterCompanies(currentEntity);
+    //   if (!companyResult.keep) {
+    //     shouldKeep = false;
+    //     filterReason = companyResult.reason;
+    //     stats.filterBreakdown.newsletterCompanies++;
+    //   }
+    // }
 
-    // Filter 6: Generic newsletter topics (only if not already filtered)
-    if (shouldKeep) {
-      const topicResult = filterNewsletterTopics(currentEntity);
-      if (!topicResult.keep) {
-        shouldKeep = false;
-        filterReason = topicResult.reason;
-        stats.filterBreakdown.newsletterTopics++;
-      }
-    }
+    // Filter 6: Newsletter topics - DISABLED (too aggressive for personal email extraction)
+    // if (shouldKeep) {
+    //   const topicResult = filterNewsletterTopics(currentEntity);
+    //   if (!topicResult.keep) {
+    //     shouldKeep = false;
+    //     filterReason = topicResult.reason;
+    //     stats.filterBreakdown.newsletterTopics++;
+    //   }
+    // }
 
     // Add to appropriate list
     if (shouldKeep) {

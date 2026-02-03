@@ -146,7 +146,7 @@ export interface ExtractionConfig {
 }
 
 export const DEFAULT_EXTRACTION_CONFIG: ExtractionConfig = {
-  minConfidence: 0.7,
+  minConfidence: 0.5,
   extractFromMetadata: true,
   extractFromSubject: true,
   extractFromBody: true,

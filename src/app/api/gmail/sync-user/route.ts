@@ -341,7 +341,7 @@ async function startUserSync(
             // Step 2: Apply post-processing filters (quality improvement)
             const filterResult = applyPostFilters(processedEntities, {
               strictNameFormat: false, // Lenient mode: allow "John Q. Public"
-              logFiltered: false, // Don't log individual filtered entities (too verbose)
+              logFiltered: true, // Log filtered entities for debugging
             });
             processedEntities = filterResult.filtered;
 
