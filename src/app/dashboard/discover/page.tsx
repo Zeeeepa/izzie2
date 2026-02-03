@@ -9,7 +9,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useToast } from '@/components/ui/toast';
 import { useConfirmModal } from '@/components/ui/confirm-modal';
 import { FeedbackDialog } from '@/components/feedback/FeedbackDialog';
-import { ThumbsUp, ThumbsDown, MessageSquare, X, Play, Pause, Square, RefreshCw, DollarSign, AlertCircle, Mail, Calendar, Loader2, Send, CheckCircle2 } from 'lucide-react';
+import { ThumbsUp, ThumbsDown, MessageSquare, X, Play, Pause, Square, RefreshCw, DollarSign, AlertCircle, Mail, Calendar, Loader2, Send, CheckCircle2, Trash2 } from 'lucide-react';
 
 // ============================================================
 // Types
@@ -144,6 +144,7 @@ export default function DiscoverPage() {
   const [feedbackStats, setFeedbackStats] = useState<FeedbackStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
   const [processingDetails, setProcessingDetails] = useState<ProcessingDetails | null>(null);
   const [error, setError] = useState('');
 
@@ -313,6 +314,43 @@ export default function DiscoverPage() {
     } catch (err) {
       console.error('Failed to cancel:', err);
       toast.error('Failed to cancel discovery');
+    }
+  };
+
+  const resetTrainingData = async () => {
+    const confirmed = await showConfirmation({
+      title: 'Reset All Training Data?',
+      message: 'This will delete all training samples, sessions, and extracted entities. You\'ll need to run discovery again. This action cannot be undone.',
+      confirmText: 'Reset Data',
+      cancelText: 'Cancel',
+      variant: 'destructive',
+    });
+
+    if (!confirmed) return;
+
+    setIsResetting(true);
+    try {
+      const res = await fetch('/api/discover/reset', { method: 'POST' });
+      const data = await res.json();
+
+      if (data.success) {
+        // Clear all local state
+        setSession(null);
+        setBudget(null);
+        setDiscoveryBudget(null);
+        setTrainingBudget(null);
+        setProgress(null);
+        setFeedbackStats(null);
+        setItems([]);
+        toast.success('Training data reset successfully. You can start fresh!');
+      } else {
+        toast.error(data.error || 'Failed to reset training data');
+      }
+    } catch (err) {
+      console.error('Failed to reset:', err);
+      toast.error('Failed to reset training data');
+    } finally {
+      setIsResetting(false);
     }
   };
 
@@ -729,13 +767,42 @@ export default function DiscoverPage() {
   return (
     <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '2rem' }}>
       {/* Page Header */}
-      <div style={{ marginBottom: '2rem' }}>
-        <h1 style={{ fontSize: '1.875rem', fontWeight: '700', color: '#111', marginBottom: '0.5rem' }}>
-          Discover
-        </h1>
-        <p style={{ fontSize: '0.875rem', color: '#6b7280' }}>
-          Automatically discover entities and relationships from your emails and calendar
-        </p>
+      <div style={{ marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <h1 style={{ fontSize: '1.875rem', fontWeight: '700', color: '#111', marginBottom: '0.5rem' }}>
+            Discover
+          </h1>
+          <p style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+            Automatically discover entities and relationships from your emails and calendar
+          </p>
+        </div>
+        <button
+          onClick={resetTrainingData}
+          disabled={isResetting || isProcessing}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.375rem',
+            padding: '0.5rem 1rem',
+            borderRadius: '8px',
+            border: '1px solid #fca5a5',
+            backgroundColor: '#fff',
+            color: '#dc2626',
+            fontSize: '0.875rem',
+            fontWeight: '500',
+            cursor: isResetting || isProcessing ? 'not-allowed' : 'pointer',
+            opacity: isResetting || isProcessing ? 0.5 : 1,
+            transition: 'all 0.2s',
+          }}
+          title="Reset all training data and extracted entities"
+        >
+          {isResetting ? (
+            <Loader2 style={{ width: '14px', height: '14px', animation: 'spin 1s linear infinite' }} />
+          ) : (
+            <Trash2 style={{ width: '14px', height: '14px' }} />
+          )}
+          {isResetting ? 'Resetting...' : 'Reset Data'}
+        </button>
       </div>
 
       {/* Tab Toggle */}
