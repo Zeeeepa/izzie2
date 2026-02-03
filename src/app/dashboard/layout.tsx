@@ -21,7 +21,9 @@ export default function DashboardLayout({
         <MobileUserInfo />
       </Suspense>
       <main className="flex-1 overflow-auto pb-20">
-        {children}
+        <div className="mx-auto w-full max-w-4xl px-4 sm:px-6 lg:px-8">
+          {children}
+        </div>
       </main>
       <BottomNav />
     </div>

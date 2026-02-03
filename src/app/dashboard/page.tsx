@@ -45,7 +45,7 @@ export default function DashboardPage() {
 
   if (isPending) {
     return (
-      <div className="p-4 space-y-6">
+      <div className="py-4 space-y-6">
         <div className="h-8 w-48 bg-muted animate-pulse rounded" />
         <div className="h-4 w-64 bg-muted animate-pulse rounded" />
       </div>
@@ -55,7 +55,7 @@ export default function DashboardPage() {
   const firstName = session?.user?.name?.split(' ')[0] || 'there';
 
   return (
-    <div className="p-4 space-y-6">
+    <div className="py-4 space-y-6">
       {/* Greeting */}
       <div>
         <h2 className="text-2xl font-bold">Hi, {firstName}</h2>
@@ -90,12 +90,14 @@ export default function DashboardPage() {
       </section>
 
       {/* Quick Chat Input */}
-      <section className="fixed bottom-20 left-4 right-4">
-        <Link href="/dashboard/chat">
-          <div className="rounded-full border bg-muted/50 px-4 py-3 text-muted-foreground cursor-pointer hover:bg-muted transition-colors">
-            Ask me anything...
-          </div>
-        </Link>
+      <section className="fixed bottom-20 left-0 right-0 px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-4xl">
+          <Link href="/dashboard/chat">
+            <div className="rounded-full border bg-muted/50 px-4 py-3 text-muted-foreground cursor-pointer hover:bg-muted transition-colors">
+              Ask me anything...
+            </div>
+          </Link>
+        </div>
       </section>
     </div>
   );

@@ -148,7 +148,7 @@ export default function LLMCostsPage() {
   const maxDailyCost = dailyBreakdown.length > 0 ? Math.max(...dailyBreakdown.map((d) => d.cost)) : 0;
 
   return (
-    <div className="max-w-4xl">
+    <div className="py-4">
       {/* Header */}
       <div className="mb-6">
         <div className="flex items-center gap-3 mb-2">

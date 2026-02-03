@@ -314,7 +314,7 @@ export default function AccountsSettingsPage() {
   };
 
   return (
-    <div className="max-w-4xl">
+    <div className="py-4">
       {/* Header */}
       <div className="mb-6 flex items-start justify-between">
         <div>

@@ -121,7 +121,7 @@ export default function UsagePage() {
   const maxDailyTokens = dailyData.length > 0 ? Math.max(...dailyData.map((d) => d.tokens)) : 0;
 
   return (
-    <div className="max-w-4xl">
+    <div className="py-4">
       {/* Header */}
       <div className="mb-6 flex items-center justify-between">
         <div>
