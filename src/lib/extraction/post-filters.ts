@@ -5,6 +5,8 @@
  * - Filter 1: Remove email addresses from person entities (~15% of errors)
  * - Filter 2: Detect company indicators in person names (~20% of errors)
  * - Filter 3: Require full names for persons (~30% of errors)
+ * - Filter 4: Filter famous people/companies from newsletters (~25% of errors)
+ * - Filter 5: Filter known newsletter sources (~10% of errors)
  *
  * Target: 90% accuracy for person entity extraction
  */
@@ -34,6 +36,9 @@ export interface FilterStats {
     emailAddresses: number;
     companyIndicators: number;
     singleNames: number;
+    famousPeople: number;
+    newsletterCompanies: number;
+    newsletterTopics: number;
   };
 }
 
@@ -152,6 +157,126 @@ export function filterSingleNames(
 }
 
 /**
+ * Filter 4: Filter famous people unlikely to be personal contacts
+ *
+ * Problem: Tech celebrities and public figures from newsletters are being extracted
+ * Solution: Filter out well-known public figures unless source indicates direct contact
+ */
+export function filterFamousPeople(entity: Entity): FilterResult {
+  // Only filter person entities
+  if (entity.type !== 'person') {
+    return { keep: true };
+  }
+
+  const value = entity.value.trim().toLowerCase();
+
+  // Famous tech/business figures often mentioned in newsletters
+  const famousPeople = [
+    'elon musk', 'sam altman', 'satya nadella', 'sundar pichai', 'tim cook',
+    'mark zuckerberg', 'jeff bezos', 'bill gates', 'jensen huang', 'dario amodei',
+    'demis hassabis', 'ilya sutskever', 'andrej karpathy', 'yann lecun',
+    'geoffrey hinton', 'fei-fei li', 'andrew ng', 'mustafa suleyman',
+    'reid hoffman', 'peter thiel', 'marc andreessen', 'ben horowitz',
+    'jack dorsey', 'brian chesky', 'travis kalanick', 'adam neumann',
+    'sheryl sandberg', 'marissa mayer', 'ginni rometty', 'meg whitman',
+  ];
+
+  // Check if it's a famous person
+  if (famousPeople.includes(value)) {
+    // Only filter if source is body (newsletters mention in body)
+    // Keep if from metadata (direct email contact)
+    if (entity.source === 'body') {
+      return {
+        keep: false,
+        reason: `Famous person from body content (likely newsletter): ${entity.value}`,
+      };
+    }
+  }
+
+  return { keep: true };
+}
+
+/**
+ * Filter 5: Filter well-known companies from newsletter content
+ *
+ * Problem: Big tech companies mentioned in newsletters are being extracted
+ * Solution: Filter out major companies when mentioned in body (not direct business context)
+ */
+export function filterNewsletterCompanies(entity: Entity): FilterResult {
+  // Only filter company entities
+  if (entity.type !== 'company') {
+    return { keep: true };
+  }
+
+  const value = entity.value.trim().toLowerCase();
+
+  // Major tech/media companies often mentioned in newsletters
+  // These should only be extracted if user works for/with them directly
+  const newsletterCompanies = [
+    'microsoft', 'google', 'apple', 'amazon', 'meta', 'facebook', 'openai',
+    'anthropic', 'nvidia', 'tesla', 'twitter', 'x corp', 'linkedin', 'netflix',
+    'spotify', 'uber', 'airbnb', 'salesforce', 'oracle', 'ibm', 'intel', 'amd',
+    'mit technology review', 'techcrunch', 'the verge', 'wired', 'ars technica',
+    'hacker news', 'y combinator', 'andreessen horowitz', 'sequoia capital',
+    'new york times', 'washington post', 'wall street journal', 'bloomberg',
+    'reuters', 'associated press', 'bbc', 'cnn', 'nbc', 'abc', 'cbs', 'fox',
+  ];
+
+  // Check if it's a commonly-mentioned company
+  if (newsletterCompanies.includes(value)) {
+    // Only filter if source is body (newsletters mention in body)
+    // Keep if from metadata or subject (direct business correspondence)
+    if (entity.source === 'body') {
+      return {
+        keep: false,
+        reason: `Well-known company from body content (likely newsletter): ${entity.value}`,
+      };
+    }
+  }
+
+  return { keep: true };
+}
+
+/**
+ * Filter 6: Filter generic newsletter topics
+ *
+ * Problem: Generic tech/news topics from newsletters are being extracted
+ * Solution: Filter out common newsletter topics that aren't personally relevant
+ */
+export function filterNewsletterTopics(entity: Entity): FilterResult {
+  // Only filter topic entities
+  if (entity.type !== 'topic') {
+    return { keep: true };
+  }
+
+  const value = entity.value.trim().toLowerCase();
+
+  // Generic topics commonly found in tech newsletters
+  const genericTopics = [
+    'artificial intelligence', 'machine learning', 'ai', 'ml', 'llm', 'gpt',
+    'cryptocurrency', 'crypto', 'bitcoin', 'blockchain', 'nft', 'web3',
+    'startup', 'venture capital', 'funding round', 'ipo', 'acquisition',
+    'tech industry', 'silicon valley', 'big tech', 'tech news',
+    'data privacy', 'cybersecurity', 'regulation', 'antitrust',
+    'climate tech', 'electric vehicles', 'autonomous driving',
+    'social media', 'content moderation', 'misinformation',
+  ];
+
+  // Check if it's a generic newsletter topic
+  if (genericTopics.includes(value)) {
+    // Only filter if source is body
+    if (entity.source === 'body') {
+      return {
+        keep: false,
+        reason: `Generic newsletter topic: ${entity.value}`,
+      };
+    }
+  }
+
+  return { keep: true };
+}
+
+/**
  * Apply all post-processing filters to a list of entities
  *
  * Returns filtered entities and statistics
@@ -180,6 +305,9 @@ export function applyPostFilters(
       emailAddresses: 0,
       companyIndicators: 0,
       singleNames: 0,
+      famousPeople: 0,
+      newsletterCompanies: 0,
+      newsletterTopics: 0,
     },
   };
 
@@ -226,6 +354,36 @@ export function applyPostFilters(
       }
     }
 
+    // Filter 4: Famous people from newsletters (only if not already filtered)
+    if (shouldKeep) {
+      const famousResult = filterFamousPeople(currentEntity);
+      if (!famousResult.keep) {
+        shouldKeep = false;
+        filterReason = famousResult.reason;
+        stats.filterBreakdown.famousPeople++;
+      }
+    }
+
+    // Filter 5: Well-known companies from newsletters (only if not already filtered)
+    if (shouldKeep) {
+      const companyResult = filterNewsletterCompanies(currentEntity);
+      if (!companyResult.keep) {
+        shouldKeep = false;
+        filterReason = companyResult.reason;
+        stats.filterBreakdown.newsletterCompanies++;
+      }
+    }
+
+    // Filter 6: Generic newsletter topics (only if not already filtered)
+    if (shouldKeep) {
+      const topicResult = filterNewsletterTopics(currentEntity);
+      if (!topicResult.keep) {
+        shouldKeep = false;
+        filterReason = topicResult.reason;
+        stats.filterBreakdown.newsletterTopics++;
+      }
+    }
+
     // Add to appropriate list
     if (shouldKeep) {
       filtered.push(currentEntity);
@@ -256,6 +414,9 @@ export function logFilterStats(stats: FilterStats): void {
   console.log(`  Email addresses: ${stats.filterBreakdown.emailAddresses}`);
   console.log(`  Company indicators: ${stats.filterBreakdown.companyIndicators}`);
   console.log(`  Single names: ${stats.filterBreakdown.singleNames}`);
+  console.log(`  Famous people (newsletter): ${stats.filterBreakdown.famousPeople}`);
+  console.log(`  Newsletter companies: ${stats.filterBreakdown.newsletterCompanies}`);
+  console.log(`  Newsletter topics: ${stats.filterBreakdown.newsletterTopics}`);
 
   if (stats.totalEntities > 0) {
     const successRate = ((stats.kept + stats.reclassified) / stats.totalEntities) * 100;

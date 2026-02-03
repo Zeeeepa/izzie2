@@ -56,41 +56,85 @@ export function buildExtractionPrompt(
     : '1. **person** - People\'s names (ONLY from From/To/CC metadata - NOT from email body text)';
 
   return `Extract structured entities and classify spam from this email.
+
+**CRITICAL: PERSONAL RELEVANCE FILTER**
+Focus ONLY on entities that are PERSONALLY relevant to the user - people they interact with,
+companies they work for/with, projects they're involved in. SKIP entities that are merely
+mentioned in news, newsletters, or forwarded content.
+
+**Newsletter/News Detection:**
+If this email appears to be a newsletter, news digest, marketing email, or forwarded content:
+- From addresses like "newsletter@", "digest@", "noreply@", "news@", "updates@"
+- Subject lines with "Weekly", "Daily", "Digest", "Newsletter", "Update:", "News:"
+- Bulk sender indicators (unsubscribe links, mass distribution patterns)
+- Forwarded content patterns ("FW:", "Fwd:", forwarded headers in body)
+
+For newsletter/news content: ONLY extract entities if the user has a DIRECT personal connection
+(e.g., they are mentioned by name, invited to something, assigned a task).
 ${userContext}
 ${sources.join('\n')}
 
-**Entity Types to Extract:**
+**Entity Types to Extract (PERSONAL RELEVANCE REQUIRED):**
 ${personExtractionRule}
-2. **company** - Organizations and companies (from metadata, subject, and body)
-   - Business entities with employees, products, or services
+   - EXTRACT: People who directly emailed the user, recipients of user's emails, meeting attendees
+   - SKIP: Famous people mentioned in news articles (Elon Musk, Sam Altman, unless they emailed directly)
+   - SKIP: Authors/journalists of forwarded articles
+   - SKIP: People mentioned in newsletters the user didn't write
+2. **company** - Organizations the user PERSONALLY interacts with
+   - EXTRACT: User's employer, clients, vendors, partners they work with directly
+   - EXTRACT: Companies where contacts work (from direct correspondence)
+   - SKIP: Companies mentioned in news/newsletters (Microsoft, Google, OpenAI - unless user works there/with them)
+   - SKIP: Companies in forwarded articles, tech news, industry updates
    - NOT software tools/platforms (those are "tool" type)
-3. **project** - SPECIFIC project names with proper nouns (e.g., "claude-mpm", "Issue #24", "Q4 Migration")
-   - Must be a NAMED project or initiative, not a generic task/feature
-   - Examples: GitHub repo names, issue numbers, codenames, initiative names
-   - DO NOT extract: generic tasks ("database optimization"), features ("email parsing"), technical terms ("sandbox cluster")
-   - DO NOT extract: Invoice numbers (INV-xxx, Invoice #xxx, or date-based codes like "2026-01-RECESS")
-4. **tool** - Software tools, platforms, APIs, and services
-   - Examples: Slack, GitHub, HiBob, Notion, Figma, Jira, Asana, Salesforce, Zoom
-   - Internal tools and bots: Clawdbot, deployment scripts, CI/CD tools
-   - Differentiate from companies: "HiBob" (HR software) is a TOOL, not a company
-   - If it's something you USE to do work, it's likely a tool
-5. **topic** - Subject areas and themes (from metadata, subject, and body)
-6. **location** - SPECIFIC geographic locations only
-   - Extract: Cities, specific addresses, neighborhoods, building names
-   - DO NOT extract: Countries (USA, Croatia), States (California, Texas), Regions (East Coast, Europe)
-   - DO NOT extract: Generic areas (Washington DC as a region - only extract if specific address/building)
-7. **action_item** - ACTIONABLE tasks with clear context (from subject and body)
-   - Must include what needs to be done AND at least one of: who/when/priority
-   - Extract ONLY if you can identify specific action + (assignee OR deadline OR priority)
-   - DO NOT extract vague items like "check status", "follow up", "review changes" without context
+3. **project** - Projects the user is PERSONALLY involved in
+   - EXTRACT: User's work projects, initiatives they're assigned to, repos they contribute to
+   - EXTRACT: Specific named projects from direct work emails ("Project Phoenix", "Q4 Migration", "Issue #24")
+   - SKIP: Projects mentioned in newsletters (product launches, open source projects they don't contribute to)
+   - SKIP: Generic features or products announced in tech news
+   - DO NOT extract: Invoice numbers (INV-xxx, Invoice #xxx)
+4. **tool** - Tools the user ACTUALLY uses
+   - EXTRACT: Tools mentioned in direct work context (Slack channels, GitHub repos, Jira tickets)
+   - SKIP: Tools mentioned in product announcements, tech news, comparisons
+   - Examples of personal tools: Slack, GitHub, HiBob, Notion, Figma, Jira
+5. **topic** - Topics relevant to user's ACTUAL work/life
+   - EXTRACT: Topics from direct conversations, meeting invites, project discussions
+   - SKIP: General tech trends, news topics, industry buzzwords from newsletters
+6. **location** - Places the user ACTUALLY goes or works
+   - EXTRACT: User's office, meeting locations, event venues they're invited to
+   - EXTRACT: Cities/addresses from direct correspondence about meetings, travel
+   - SKIP: Locations mentioned in news (company headquarters, event locations user isn't attending)
+   - DO NOT extract: Countries, states, or generic regions
+7. **action_item** - Tasks ASSIGNED TO or BY the user
+   - EXTRACT: Tasks from direct emails where user is assignee or assigner
+   - SKIP: Tasks mentioned in forwarded content, newsletters, or status updates not involving user
 
-**Spam Classification:**
-Classify if this email is spam/promotional/low-value based on:
+**WHAT TO EXTRACT vs WHAT TO SKIP - EXAMPLES:**
+EXTRACT (personal):
+- "Hi John, can we meet Tuesday?" -> person: John (direct communication)
+- "Please review the Acme proposal" -> company: Acme (user's client/work)
+- "Join our standup on Zoom" -> tool: Zoom (user's meeting)
+
+SKIP (newsletter/news):
+- "Microsoft announced..." -> SKIP Microsoft (news mention)
+- "Elon Musk said..." -> SKIP Elon Musk (celebrity, not direct contact)
+- "OpenAI released GPT-5..." -> SKIP OpenAI, GPT-5 (tech news)
+- "California passes new law..." -> SKIP California (news about location)
+- "MIT Technology Review reports..." -> SKIP MIT Technology Review (newsletter source)
+
+**Spam/Newsletter Classification:**
+Classify if this email is spam/promotional/newsletter/low-value based on:
 - Marketing/promotional content
-- Mass-distributed newsletters
+- Mass-distributed newsletters (tech digests, news roundups, industry updates)
 - Automated notifications with no actionable content
 - Phishing attempts or suspicious patterns
 - Low relevance to recipient
+- Forwarded content from others (FW:, Fwd:)
+
+Newsletter indicators (set higher spamScore 0.6-0.8 for these):
+- From addresses: newsletter@, digest@, noreply@, news@, updates@, weekly@
+- Subject patterns: "Weekly", "Daily", "Digest", "Newsletter", "Roundup", "Top Stories"
+- Content patterns: Multiple unrelated topics, "Unsubscribe" links, bulk formatting
+- Known newsletter senders: MIT Technology Review, TechCrunch, The Verge, Hacker News, etc.
 
 **Relationship Extraction:**
 Also identify meaningful relationships between the entities you extract:
