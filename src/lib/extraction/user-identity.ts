@@ -221,7 +221,52 @@ function normalizeEntityName(name: string): string {
 }
 
 /**
+ * Generate multiple normalization variants for robust matching
+ *
+ * Tries different strategies to handle various name formats:
+ * - underscores: "Bob Matsuoka" -> "bob_matsuoka"
+ * - no spaces: "Bob Matsuoka" -> "bobmatsuoka"
+ * - with spaces: "Bob Matsuoka" -> "bob matsuoka"
+ * - first name only: "Bob Matsuoka" -> "bob"
+ * - last name only: "Bob Matsuoka" -> "matsuoka"
+ *
+ * @param name - Name to normalize
+ * @returns Set of all normalized variants
+ */
+function generateNormalizationVariants(name: string): Set<string> {
+  const variants = new Set<string>();
+  const cleaned = name.toLowerCase().replace(/[^\w\s]/g, '').trim();
+
+  // Strategy 1: Replace spaces with underscores
+  variants.add(cleaned.replace(/\s+/g, '_'));
+
+  // Strategy 2: Remove spaces entirely
+  variants.add(cleaned.replace(/\s+/g, ''));
+
+  // Strategy 3: Keep spaces (normalized)
+  variants.add(cleaned.replace(/\s+/g, ' '));
+
+  // Strategy 4 & 5: First name and last name only
+  const parts = cleaned.split(/\s+/);
+  if (parts.length >= 1) {
+    variants.add(parts[0]); // First name
+  }
+  if (parts.length >= 2) {
+    variants.add(parts[parts.length - 1]); // Last name
+  }
+
+  return variants;
+}
+
+/**
  * Check if an entity refers to the current user
+ *
+ * Uses multiple normalization strategies to handle various name formats:
+ * - Replace spaces with underscores: "Bob Matsuoka" -> "bob_matsuoka"
+ * - Remove spaces entirely: "Bob Matsuoka" -> "bobmatsuoka"
+ * - Keep spaces: "Bob Matsuoka" -> "bob matsuoka"
+ * - First name only: "Bob Matsuoka" -> "bob"
+ * - Last name only: "Bob Matsuoka" -> "matsuoka"
  *
  * @param entity - Entity to check
  * @param identity - User identity with aliases
@@ -233,33 +278,54 @@ export function isCurrentUser(entity: Entity, identity: UserIdentity): boolean {
     return false;
   }
 
-  const normalized = normalizeEntityName(entity.value);
-  const normalizedPrimaryName = normalizeEntityName(identity.primaryName);
+  // Generate all normalization variants for the entity name
+  const entityVariants = generateNormalizationVariants(entity.value);
 
-  console.log(`${LOG_PREFIX} isCurrentUser: Checking "${entity.value}" (normalized: "${normalized}") against:`, {
+  // Generate all normalization variants for the primary name
+  const primaryNameVariants = generateNormalizationVariants(identity.primaryName);
+
+  console.log(`${LOG_PREFIX} isCurrentUser: Checking "${entity.value}" against identity:`, {
     primaryName: identity.primaryName,
-    normalizedPrimaryName,
+    entityVariants: Array.from(entityVariants),
+    primaryNameVariants: Array.from(primaryNameVariants),
     aliasCount: identity.aliases.length,
   });
 
-  // Check against primary name
-  if (normalized === normalizedPrimaryName) {
-    console.log(`${LOG_PREFIX} isCurrentUser: MATCH on primary name "${identity.primaryName}"`);
+  // Check against primary name (compare all variants)
+  for (const entityVariant of entityVariants) {
+    if (primaryNameVariants.has(entityVariant)) {
+      console.log(`${LOG_PREFIX} isCurrentUser: MATCH on primary name variant "${entityVariant}"`);
+      return true;
+    }
+  }
+
+  // Check against aliases (normalize both sides and compare all variants)
+  for (const alias of identity.aliases) {
+    const aliasVariants = generateNormalizationVariants(alias);
+    for (const entityVariant of entityVariants) {
+      if (aliasVariants.has(entityVariant)) {
+        console.log(`${LOG_PREFIX} isCurrentUser: MATCH - entity variant "${entityVariant}" matches alias "${alias}"`);
+        return true;
+      }
+    }
+  }
+
+  // Check against email aliases in entity value
+  const entityLower = entity.value.toLowerCase();
+  const matchedEmailInValue = identity.emailAliases.find((email) => entityLower.includes(email));
+  if (matchedEmailInValue) {
+    console.log(`${LOG_PREFIX} isCurrentUser: MATCH on email alias in value "${matchedEmailInValue}"`);
     return true;
   }
 
-  // Check against aliases
-  const matchedAlias = identity.aliases.find((alias) => normalized === alias);
-  if (matchedAlias) {
-    console.log(`${LOG_PREFIX} isCurrentUser: MATCH on alias "${matchedAlias}"`);
-    return true;
-  }
-
-  // Check against email aliases (if entity value is an email)
-  const matchedEmail = identity.emailAliases.find((email) => entity.value.toLowerCase().includes(email));
-  if (matchedEmail) {
-    console.log(`${LOG_PREFIX} isCurrentUser: MATCH on email alias "${matchedEmail}"`);
-    return true;
+  // Check against email aliases in entity context (e.g., "From: bob@matsuoka.com")
+  if (entity.context) {
+    const contextLower = entity.context.toLowerCase();
+    const matchedEmailInContext = identity.emailAliases.find((email) => contextLower.includes(email));
+    if (matchedEmailInContext) {
+      console.log(`${LOG_PREFIX} isCurrentUser: MATCH on email alias in context "${matchedEmailInContext}"`);
+      return true;
+    }
   }
 
   console.log(`${LOG_PREFIX} isCurrentUser: No match found for "${entity.value}"`);
