@@ -14,6 +14,8 @@ export type RelationshipType =
   | 'FAMILY_OF'         // Person ↔ Person (general family relation)
   | 'MARRIED_TO'        // Person ↔ Person (spouse)
   | 'SIBLING_OF'        // Person ↔ Person (brother/sister)
+  // Identity relationships (entity resolution)
+  | 'SAME_AS'           // Entity ↔ Entity (same identity, different name variants)
   // Company relationships
   | 'PARTNERS_WITH'     // Company ↔ Company
   | 'COMPETES_WITH'     // Company ↔ Company

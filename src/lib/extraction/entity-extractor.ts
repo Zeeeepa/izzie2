@@ -426,9 +426,11 @@ export class EntityExtractor {
       const adjustedEntities = this.filterAndAdjustEntities(structurallyValidEntities);
 
       // Apply post-filters (email addresses, company indicators, self-entities)
+      // Phase 2 Entity Resolution: Tag self-entities with isIdentity=true instead of filtering
       const { filtered: validEntities } = applyPostFilters(adjustedEntities, {
         userIdentity: this.userIdentity,
-        filterSelf: true,
+        filterSelf: false,           // Don't filter out self-entities
+        tagSelfAsIdentity: true,     // Tag them with isIdentity=true instead
         logFiltered: true,
       });
 

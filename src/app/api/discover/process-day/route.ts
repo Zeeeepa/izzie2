@@ -16,12 +16,14 @@ import {
 } from '@/lib/db/schema';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { getEntityExtractor } from '@/lib/extraction/entity-extractor';
+import { processIdentityRelationships } from '@/lib/extraction/identity-relationships';
 import { GmailService } from '@/lib/google/gmail';
 import { CalendarService } from '@/lib/google/calendar';
 import { saveEntities } from '@/lib/weaviate/entities';
 import { saveRelationships } from '@/lib/weaviate/relationships';
 import type { InferredRelationship, RelationshipType } from '@/lib/relationships/types';
 import { getActiveAutonomousSession, getAutonomousStatus } from '@/lib/training/autonomous-training';
+import type { Entity } from '@/lib/extraction/types';
 
 // Cost estimates per API call (in cents)
 const COST_PER_EMAIL_EXTRACTION = 0.05;
@@ -168,6 +170,9 @@ export async function POST(request: NextRequest) {
     const nextDay = new Date(processDate);
     nextDay.setDate(nextDay.getDate() + 1);
 
+    // Collect all extracted entities for identity relationship creation (Phase 2)
+    const allExtractedEntities: Entity[] = [];
+
     console.log(`${LOG_PREFIX} Processing day ${dateStr} for user ${userId}`);
 
     // Process emails for this day
@@ -192,6 +197,8 @@ export async function POST(request: NextRequest) {
           if (result.entities.length > 0) {
             await saveEntities(result.entities, userId, email.id);
             itemsFound += result.entities.length;
+            // Collect for identity relationship creation (Phase 2)
+            allExtractedEntities.push(...result.entities);
           }
 
           if (result.relationships.length > 0) {
@@ -254,6 +261,8 @@ export async function POST(request: NextRequest) {
           if (result.entities.length > 0) {
             await saveEntities(result.entities, userId, event.id);
             calendarItemsFound += result.entities.length;
+            // Collect for identity relationship creation (Phase 2)
+            allExtractedEntities.push(...result.entities);
           }
 
           if (result.relationships.length > 0) {
@@ -290,6 +299,20 @@ export async function POST(request: NextRequest) {
       });
     } catch (calendarError) {
       console.error(`${LOG_PREFIX} Error processing calendar:`, calendarError);
+    }
+
+    // Phase 2 Entity Resolution: Create SAME_AS relationships between identity entities
+    // This runs after all entities are extracted for the day
+    if (allExtractedEntities.length > 0) {
+      try {
+        const identityRelationshipsCreated = await processIdentityRelationships(userId, allExtractedEntities);
+        if (identityRelationshipsCreated > 0) {
+          console.log(`${LOG_PREFIX} Created ${identityRelationshipsCreated} SAME_AS identity relationships for ${dateStr}`);
+          itemsFound += identityRelationshipsCreated;
+        }
+      } catch (identityError) {
+        console.error(`${LOG_PREFIX} Error creating identity relationships:`, identityError);
+      }
     }
 
     // Update session budget (both legacy and new discovery budget fields)

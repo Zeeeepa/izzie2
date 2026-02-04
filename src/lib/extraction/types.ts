@@ -35,6 +35,8 @@ export type InlineRelationshipType =
   | 'FAMILY_OF'         // Person ↔ Person (family member: parent, child, grandparent, etc.)
   | 'MARRIED_TO'        // Person ↔ Person (spouse)
   | 'SIBLING_OF'        // Person ↔ Person (brother/sister)
+  // Identity relationships (entity resolution)
+  | 'SAME_AS'           // Entity ↔ Entity (same identity, different name variants)
   // Company relationships
   | 'PARTNERS_WITH'     // Company ↔ Company
   | 'COMPETES_WITH'     // Company ↔ Company

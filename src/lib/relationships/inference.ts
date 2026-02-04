@@ -17,6 +17,8 @@ const VALID_RELATIONSHIPS: Record<RelationshipType, [EntityType[], EntityType[]]
   'FAMILY_OF': [['person'], ['person']],
   'MARRIED_TO': [['person'], ['person']],
   'SIBLING_OF': [['person'], ['person']],
+  // Identity relationships (entity resolution - same entity, different name variants)
+  'SAME_AS': [['person', 'company', 'project', 'topic', 'location'], ['person', 'company', 'project', 'topic', 'location']],
   // Company relationships
   'PARTNERS_WITH': [['company'], ['company']],
   'COMPETES_WITH': [['company'], ['company']],

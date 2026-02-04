@@ -41,3 +41,10 @@ export type { MatchResult, ExtendedEntity } from './entity-matcher';
 // Post-processing filters with identity tagging
 export { tagSelfEntity, applyPostFilters, filterSelfEntities } from './post-filters';
 export type { FilterOptions, FilterStats, FilterResult } from './post-filters';
+
+// Identity Relationships (Phase 2 Entity Resolution)
+export {
+  createIdentityRelationships,
+  collectIdentityEntities,
+  processIdentityRelationships,
+} from './identity-relationships';
