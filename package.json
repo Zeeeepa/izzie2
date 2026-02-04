@@ -1,6 +1,6 @@
 {
   "name": "izzie2",
-  "version": "1.0.38",
+  "version": "1.0.39",
   "packageManager": "pnpm@10.18.3",
   "description": "",
   "main": "index.js",
