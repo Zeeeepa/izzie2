@@ -336,6 +336,9 @@ Respond with JSON only.`;
 
 /**
  * Build extraction prompt for calendar events
+ * NOTE: Calendar events only extract entities, NOT relationships.
+ * Calendar events have limited context (attendees, title, description) so
+ * relationships aren't meaningful - we only want entities (people, topics, locations).
  */
 export function buildCalendarExtractionPrompt(
   event: CalendarEvent,
@@ -380,36 +383,9 @@ ${sources.join('\n')}
    - DO NOT extract: Countries, states, or regions
 7. **action_item** - Tasks, todos, and action items mentioned in description
 
-**Relationship Extraction:**
-Also identify meaningful relationships between the entities you extract:
-RELATIONSHIP TYPES (use exactly these):
-- WORKS_WITH: Two people who work together/collaborate (professional)
-  * REQUIRES: Explicit evidence of formal collaboration (same project, same team, same company)
-  * NOT just two people attending the same meeting
-- REPORTS_TO: Person reports to another person (hierarchy)
-- WORKS_FOR: Person works for a company
-  * If company name is ambiguous/unknown, use LOWER confidence (0.5-0.6)
-- LEADS: Person leads/manages a project
-- WORKS_ON: Person works on a project
-- EXPERT_IN: Person has expertise in a topic
-- LOCATED_IN: Person or company is located in a SPECIFIC place (cities only, not countries/states)
-- FRIEND_OF: Person is a friend of another person (personal, non-work relationship)
-- FAMILY_OF: Person is a family member of another (parent, child, grandparent, cousin, etc.)
-- MARRIED_TO: Person is married to/spouse of another person
-- SIBLING_OF: Person is brother or sister of another person
-- PARTNERS_WITH: Two companies partner together
-- OWNS: Company owns/runs a project
-- RELATED_TO: Projects or topics are related
-- PART_OF: Project is part of a larger project
-
-RELATIONSHIP RULES:
-1. Only infer relationships with CLEAR, EXPLICIT evidence in the content
-2. Confidence should reflect how explicitly stated (0.5-1.0)
-3. Include a brief quote as evidence supporting each relationship
-4. Focus on meaningful relationships, not every possible connection
-5. Maximum 5 relationships per event
-6. For WORKS_WITH: require explicit collaboration evidence, not just co-attendance
-7. For unknown/ambiguous company names: cap confidence at 0.6
+**IMPORTANT: DO NOT extract relationships.**
+Calendar events have limited context, so relationship extraction is skipped.
+Only return the "relationships" array as empty: []
 
 **Instructions:**
 - Extract all entities with confidence scores (0.0 to 1.0)
@@ -471,17 +447,7 @@ RELATIONSHIP RULES:
       "priority": "medium"
     }
   ],
-  "relationships": [
-    {
-      "fromType": "person",
-      "fromValue": "John Doe",
-      "toType": "company",
-      "toValue": "Acme Corp",
-      "relationshipType": "WORKS_FOR",
-      "confidence": 0.8,
-      "evidence": "John Doe attending meeting with Acme Corp team"
-    }
-  ]
+  "relationships": []
 }
 
 Respond with JSON only. No additional text or explanation.`;
