@@ -74,52 +74,80 @@ For newsletter/news content: ONLY extract entities if the user has a DIRECT pers
 ${userContext}
 ${sources.join('\n')}
 
-**Entity Types to Extract (PERSONAL RELEVANCE REQUIRED):**
+**CRITICAL: EXTRACT SPECIFIC NAMED ENTITIES ONLY**
+Only extract entities that would be useful to remember for future reference.
+Generic terms clutter the knowledge base and provide no value.
+
+**WHAT TO EXTRACT (specific, named entities):**
+- Specific named PEOPLE the user interacts with (colleagues, friends, family)
+- Specific named COMPANIES/organizations (not generic "company" or "the client")
+- Specific named PROJECTS with proper names (not just "project" or "the project")
+- Specific named TOOLS/software the user actually uses (not generic tech terms)
+- Specific named LOCATIONS/places (not "office" or "home")
+- Specific ACTION ITEMS with clear deliverables
+
+**DO NOT EXTRACT (generic/common terms) - SKIP THESE ENTIRELY:**
+- Generic nouns: meeting, call, email, project, task, system, platform, app, tool, database, server, API, cloud, software, data, file, report, schedule, plan, budget, invoice, package, item, document, process, workflow, update, review
+- Technology buzzwords without specific context: AI, ML, automation, integration, optimization, sync, analytics
+- Common verbs turned into nouns: update, review, check, sync, follow-up, check-in
+- Vague references: "the tool", "that project", "their system", "the client", "our platform"
+- Infrastructure terms: Terraform, Kubernetes, Docker, AWS, Azure (unless user directly works with them in a specific named project context)
+- Generic time references: "next week", "soon", "later", "tomorrow" (not entities)
+
+**EXTRACTION EXAMPLES:**
+
+CORRECT extractions:
+- "We're using Salesforce for the Acme Corp deal" -> tool: Salesforce, company: Acme Corp
+- "Joan will handle the Q1 Budget Review" -> person: Joan, project: Q1 Budget Review
+- "Meeting with Sarah at Anthropic HQ" -> person: Sarah, company: Anthropic, location: Anthropic HQ
+- "Deploy to the Phoenix environment by Friday" -> project: Phoenix (specific named environment)
+
+INCORRECT - DO NOT EXTRACT:
+- "I'll send you the report" -> SKIP "report" (too generic)
+- "Let's schedule a meeting" -> SKIP "meeting" (too generic)
+- "We need to update the system" -> SKIP "system", "update" (too generic)
+- "The project is on track" -> SKIP "project" (no specific name)
+- "Can you review this?" -> SKIP "review" (generic action, not a named entity)
+- "Using some automation tools" -> SKIP "automation", "tools" (generic buzzwords)
+- "Working on the integration" -> SKIP "integration" (generic tech term)
+
+**Entity Types to Extract (PERSONAL RELEVANCE + SPECIFIC NAMES REQUIRED):**
 ${personExtractionRule}
    - EXTRACT: People who directly emailed the user, recipients of user's emails, meeting attendees
    - SKIP: Famous people mentioned in news articles (Elon Musk, Sam Altman, unless they emailed directly)
    - SKIP: Authors/journalists of forwarded articles
    - SKIP: People mentioned in newsletters the user didn't write
-2. **company** - Organizations the user PERSONALLY interacts with
-   - EXTRACT: User's employer, clients, vendors, partners they work with directly
+2. **company** - Specific named organizations the user PERSONALLY interacts with
+   - EXTRACT: User's employer, clients, vendors, partners they work with directly (by name!)
    - EXTRACT: Companies where contacts work (from direct correspondence)
+   - SKIP: Generic references like "the company", "our client", "the vendor"
    - SKIP: Companies mentioned in news/newsletters (Microsoft, Google, OpenAI - unless user works there/with them)
-   - SKIP: Companies in forwarded articles, tech news, industry updates
    - NOT software tools/platforms (those are "tool" type)
-3. **project** - Projects the user is PERSONALLY involved in
-   - EXTRACT: User's work projects, initiatives they're assigned to, repos they contribute to
-   - EXTRACT: Specific named projects from direct work emails ("Project Phoenix", "Q4 Migration", "Issue #24")
+3. **project** - Specific named projects the user is PERSONALLY involved in
+   - EXTRACT: Named projects like "Project Phoenix", "Q4 Migration", "Operation Sunrise", "Issue #24"
+   - EXTRACT: User's work projects with proper names, repos they contribute to by name
+   - SKIP: Generic "the project", "this initiative", "our work"
    - SKIP: Projects mentioned in newsletters (product launches, open source projects they don't contribute to)
-   - SKIP: Generic features or products announced in tech news
    - DO NOT extract: Invoice numbers (INV-xxx, Invoice #xxx)
-4. **tool** - Tools the user ACTUALLY uses
-   - EXTRACT: Tools mentioned in direct work context (Slack channels, GitHub repos, Jira tickets)
+4. **tool** - Specific named tools the user ACTUALLY uses
+   - EXTRACT: Named tools in direct work context: Slack, GitHub, HiBob, Notion, Figma, Jira, Salesforce
+   - SKIP: Generic "the tool", "our platform", "the system", "the app"
    - SKIP: Tools mentioned in product announcements, tech news, comparisons
-   - Examples of personal tools: Slack, GitHub, HiBob, Notion, Figma, Jira
-5. **topic** - Topics relevant to user's ACTUAL work/life
-   - EXTRACT: Topics from direct conversations, meeting invites, project discussions
+   - SKIP: Generic tech terms: database, server, API, cloud, software
+5. **topic** - Specific topics relevant to user's ACTUAL work/life
+   - EXTRACT: Specific topics from direct conversations: "machine learning", "quarterly planning", "hiring"
+   - SKIP: Generic terms: meeting, call, update, review, sync
    - SKIP: General tech trends, news topics, industry buzzwords from newsletters
-6. **location** - Places the user ACTUALLY goes or works
-   - EXTRACT: User's office, meeting locations, event venues they're invited to
-   - EXTRACT: Cities/addresses from direct correspondence about meetings, travel
+6. **location** - Specific named places the user ACTUALLY goes or works
+   - EXTRACT: Named places: "Anthropic HQ", "WeWork Times Square", "Central Park"
+   - EXTRACT: Specific cities/addresses from direct correspondence about meetings, travel
+   - SKIP: Generic "the office", "home", "downtown", "conference room"
    - SKIP: Locations mentioned in news (company headquarters, event locations user isn't attending)
    - DO NOT extract: Countries, states, or generic regions
-7. **action_item** - Tasks ASSIGNED TO or BY the user
-   - EXTRACT: Tasks from direct emails where user is assignee or assigner
+7. **action_item** - Specific tasks ASSIGNED TO or BY the user with clear deliverables
+   - EXTRACT: Clear tasks: "Review the Acme proposal by Friday", "Submit Q4 forecast"
+   - SKIP: Vague actions: "follow up", "check in", "sync later"
    - SKIP: Tasks mentioned in forwarded content, newsletters, or status updates not involving user
-
-**WHAT TO EXTRACT vs WHAT TO SKIP - EXAMPLES:**
-EXTRACT (personal):
-- "Hi John, can we meet Tuesday?" -> person: John (direct communication)
-- "Please review the Acme proposal" -> company: Acme (user's client/work)
-- "Join our standup on Zoom" -> tool: Zoom (user's meeting)
-
-SKIP (newsletter/news):
-- "Microsoft announced..." -> SKIP Microsoft (news mention)
-- "Elon Musk said..." -> SKIP Elon Musk (celebrity, not direct contact)
-- "OpenAI released GPT-5..." -> SKIP OpenAI, GPT-5 (tech news)
-- "California passes new law..." -> SKIP California (news about location)
-- "MIT Technology Review reports..." -> SKIP MIT Technology Review (newsletter source)
 
 **Spam/Newsletter Classification:**
 Classify if this email is spam/promotional/newsletter/low-value based on:
@@ -373,15 +401,64 @@ export function buildCalendarExtractionPrompt(
 
 ${sources.join('\n')}
 
-**Entity Types to Extract:**
+**CRITICAL: EXTRACT SPECIFIC NAMED ENTITIES ONLY**
+Only extract entities that would be useful to remember for future reference.
+Generic terms clutter the knowledge base and provide no value.
+
+**WHAT TO EXTRACT (specific, named entities):**
+- Specific named PEOPLE from attendees and description
+- Specific named COMPANIES/organizations (not generic "company" or "the client")
+- Specific named PROJECTS with proper names (not just "project" or "standup")
+- Specific named TOOLS/software mentioned (not generic tech terms)
+- Specific named LOCATIONS/places (not "office" or "conference room")
+- Specific ACTION ITEMS with clear deliverables
+
+**DO NOT EXTRACT (generic/common terms) - SKIP THESE ENTIRELY:**
+- Generic nouns: meeting, call, standup, sync, check-in, review, update, planning, discussion, session, workshop, training
+- Technology buzzwords without specific context: AI, ML, automation, integration, optimization
+- Common verbs turned into nouns: update, review, check, sync, follow-up
+- Vague references: "the tool", "that project", "their system", "the client"
+- Generic meeting types: "1:1", "weekly", "daily", "team meeting", "all-hands" (unless part of a specific named series)
+- Infrastructure terms: Terraform, Kubernetes, Docker (unless in specific project context)
+
+**EXTRACTION EXAMPLES:**
+
+CORRECT extractions:
+- "Project Phoenix Review with Sarah" -> project: Project Phoenix, person: Sarah
+- "Acme Corp contract discussion" -> company: Acme Corp
+- "Q4 Budget Planning at WeWork SoHo" -> project: Q4 Budget, location: WeWork SoHo
+- "Demo Salesforce integration to marketing team" -> tool: Salesforce
+
+INCORRECT - DO NOT EXTRACT:
+- "Weekly team standup" -> SKIP "standup", "team" (too generic)
+- "1:1 with manager" -> SKIP "1:1", "manager" (too generic - but DO extract manager's name if shown)
+- "Planning meeting" -> SKIP "planning", "meeting" (too generic)
+- "Review session" -> SKIP "review", "session" (too generic)
+- "Sync call" -> SKIP "sync", "call" (too generic)
+
+**Entity Types to Extract (SPECIFIC NAMES REQUIRED):**
 1. **person** - People's names (from attendees, organizer, and description)
-2. **company** - Organizations and companies mentioned (NOT software tools/platforms)
-3. **project** - Project names and references (NOT invoice numbers like INV-xxx)
-4. **tool** - Software tools, platforms, APIs, and services (Slack, GitHub, HiBob, Notion, Zoom, etc.)
-5. **topic** - Subject areas and themes (meeting topics, discussion areas)
-6. **location** - SPECIFIC geographic locations only (cities, specific addresses, meeting rooms)
+   - EXTRACT: Named individuals like "Sarah Chen", "John Doe"
+   - SKIP: Generic roles like "manager", "team lead", "client"
+2. **company** - Specific named organizations and companies (NOT software tools/platforms)
+   - EXTRACT: Named companies like "Acme Corp", "Anthropic", "Google"
+   - SKIP: Generic "the client", "our partner", "the vendor"
+3. **project** - Specific named projects and references (NOT invoice numbers like INV-xxx)
+   - EXTRACT: Named projects like "Project Phoenix", "Q4 Migration", "Operation Sunrise"
+   - SKIP: Generic "the project", "sprint review", "planning session"
+4. **tool** - Specific named software tools, platforms, APIs, and services
+   - EXTRACT: Named tools like Slack, GitHub, HiBob, Notion, Zoom, Salesforce
+   - SKIP: Generic "the tool", "our platform", "the system"
+5. **topic** - Specific subject areas and themes (NOT generic meeting types)
+   - EXTRACT: Specific topics like "machine learning", "quarterly planning", "budget review"
+   - SKIP: Generic "meeting", "discussion", "sync", "update"
+6. **location** - SPECIFIC named geographic locations only
+   - EXTRACT: Named places like "WeWork SoHo", "Anthropic HQ", "Central Park"
+   - SKIP: Generic "office", "conference room", "downtown", "home"
    - DO NOT extract: Countries, states, or regions
-7. **action_item** - Tasks, todos, and action items mentioned in description
+7. **action_item** - Specific tasks, todos with clear deliverables
+   - EXTRACT: Clear tasks like "Prepare Q4 forecast", "Review Acme proposal"
+   - SKIP: Vague "prepare", "review", "follow up"
 
 **IMPORTANT: DO NOT extract relationships.**
 Calendar events have limited context, so relationship extraction is skipped.
@@ -395,6 +472,7 @@ Only return the "relationships" array as empty: []
 - Minimum confidence threshold: ${config.minConfidence}
 - For action_item: extract assignee, deadline, and priority if mentioned
 - The event itself is NOT spam, so always set isSpam: false
+- When in doubt, DO NOT extract - only extract entities you're confident are specific and named
 
 **Response Format (JSON only):**
 {
