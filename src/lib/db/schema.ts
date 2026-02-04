@@ -1526,6 +1526,9 @@ export const trainingSamples = pgTable(
     predictionConfidence: integer('prediction_confidence').notNull(), // 0-100
     predictionReasoning: text('prediction_reasoning'),
 
+    // Identity flag - true if this entity represents the user themselves
+    isIdentity: boolean('is_identity').default(false),
+
     // User feedback
     status: text('status').notNull().default('pending'), // 'pending' | 'reviewed' | 'skipped'
     feedbackIsCorrect: boolean('feedback_is_correct'),

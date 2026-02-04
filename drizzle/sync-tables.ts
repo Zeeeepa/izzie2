@@ -575,6 +575,32 @@ async function syncTables() {
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS encryption_failed_attempts integer NOT NULL DEFAULT 0`);
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS encryption_locked_until timestamp`);
 
+    // Step 18: Add isIdentity column to training_samples if not exists
+    console.log('📝 Adding isIdentity column to training_samples table...');
+    await pool.query(`ALTER TABLE training_samples ADD COLUMN IF NOT EXISTS is_identity boolean DEFAULT false`);
+
+    // Step 19: Create merge_suggestions table
+    console.log('📝 Creating merge_suggestions table...');
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS merge_suggestions (
+        id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        entity1_type text NOT NULL,
+        entity1_value text NOT NULL,
+        entity2_type text NOT NULL,
+        entity2_value text NOT NULL,
+        confidence real NOT NULL,
+        match_reason text NOT NULL,
+        status text NOT NULL DEFAULT 'pending',
+        reviewed_at timestamp,
+        created_at timestamp DEFAULT now() NOT NULL
+      )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS merge_suggestions_user_id_idx ON merge_suggestions(user_id)');
+    await pool.query('CREATE INDEX IF NOT EXISTS merge_suggestions_status_idx ON merge_suggestions(status)');
+    await pool.query('CREATE INDEX IF NOT EXISTS merge_suggestions_confidence_idx ON merge_suggestions(confidence)');
+    await pool.query('CREATE INDEX IF NOT EXISTS merge_suggestions_created_at_idx ON merge_suggestions(created_at)');
+
     console.log('✅ All tables synced successfully!');
 
     // Verify
@@ -607,6 +633,7 @@ async function syncTables() {
       'llm_usage',
       'user_identity',
       'identity_entities',
+      'merge_suggestions',
     ];
 
     const tables = await pool.query(

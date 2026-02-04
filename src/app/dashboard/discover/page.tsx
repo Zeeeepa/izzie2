@@ -105,6 +105,7 @@ interface DiscoveredItem {
   };
   createdAt: string;
   occurrenceCount?: number; // How many times this entity was found
+  isIdentity?: boolean; // True if this entity represents the user themselves
 }
 
 // ============================================================
@@ -1333,6 +1334,23 @@ export default function DiscoverPage() {
                             <td style={{ padding: '0.5rem 0.75rem' }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                 <span style={{ fontWeight: '500', color: '#111' }}>{item.content.text}</span>
+                                {item.isIdentity && (
+                                  <span
+                                    style={{
+                                      fontSize: '0.625rem',
+                                      padding: '0.125rem 0.375rem',
+                                      borderRadius: '4px',
+                                      backgroundColor: '#ede9fe',
+                                      color: '#7c3aed',
+                                      fontWeight: '600',
+                                      textTransform: 'uppercase',
+                                      letterSpacing: '0.025em',
+                                    }}
+                                    title="This is you"
+                                  >
+                                    You
+                                  </span>
+                                )}
                                 {item.prediction.reasoning && (
                                   <span
                                     style={{ color: '#9ca3af', cursor: 'help', fontSize: '0.75rem' }}
@@ -1755,6 +1773,24 @@ export default function DiscoverPage() {
                           >
                             {item.content.text}
                           </span>
+                          {/* You badge for identity entities */}
+                          {item.isIdentity && (
+                            <span
+                              style={{
+                                fontSize: '0.625rem',
+                                padding: '0.125rem 0.375rem',
+                                borderRadius: '4px',
+                                backgroundColor: '#ede9fe',
+                                color: '#7c3aed',
+                                fontWeight: '600',
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.025em',
+                              }}
+                              title="This is you"
+                            >
+                              You
+                            </span>
+                          )}
                           {/* Occurrence count badge */}
                           {item.occurrenceCount && item.occurrenceCount > 1 && (
                             <span

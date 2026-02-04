@@ -94,6 +94,7 @@ export async function GET(request: NextRequest) {
         feedbackCorrectedLabel: trainingSamples.feedbackCorrectedLabel,
         feedbackNotes: trainingSamples.feedbackNotes,
         createdAt: trainingSamples.createdAt,
+        isIdentity: trainingSamples.isIdentity,
       })
       .from(trainingSamples)
       .where(and(...conditions))
@@ -148,6 +149,7 @@ export async function GET(request: NextRequest) {
         : undefined,
       createdAt: item.createdAt,
       occurrenceCount: count,
+      isIdentity: item.isIdentity ?? false,
     }));
 
     return NextResponse.json({

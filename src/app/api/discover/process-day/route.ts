@@ -349,7 +349,7 @@ async function createSamplesFromExtraction(
   db: ReturnType<typeof dbClient.getDb>,
   sessionId: string,
   result: {
-    entities: Array<{ value: string; type: string; confidence: number; context?: string }>;
+    entities: Array<{ value: string; type: string; confidence: number; context?: string; isIdentity?: boolean }>;
     relationships: Array<{
       fromValue: string;
       fromType: string;
@@ -381,6 +381,7 @@ async function createSamplesFromExtraction(
       predictionConfidence: Math.round(entity.confidence * 100),
       predictionReasoning: `Extracted as ${entity.type} from ${sourceType}`,
       status: 'pending',
+      isIdentity: entity.isIdentity ?? false,
     });
   }
 
