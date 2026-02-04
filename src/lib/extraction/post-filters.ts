@@ -296,6 +296,7 @@ export function filterNewsletterTopics(entity: Entity): FilterResult {
 export function filterSelfEntities(entity: Entity, userIdentity?: UserIdentity): FilterResult {
   // Skip if no user identity provided
   if (!userIdentity) {
+    console.log(`${LOG_PREFIX} filterSelfEntities: No userIdentity provided, skipping filter`);
     return { keep: true };
   }
 
@@ -304,14 +305,24 @@ export function filterSelfEntities(entity: Entity, userIdentity?: UserIdentity):
     return { keep: true };
   }
 
+  // Log debug info for person entities
+  console.log(`${LOG_PREFIX} filterSelfEntities: Checking person entity "${entity.value}" against identity:`, {
+    primaryName: userIdentity.primaryName,
+    aliasCount: userIdentity.aliases.length,
+    aliases: userIdentity.aliases.slice(0, 10), // First 10 aliases for debugging
+    emailAliases: userIdentity.emailAliases,
+  });
+
   // Check if this entity matches the current user
   if (isCurrentUser(entity, userIdentity)) {
+    console.log(`${LOG_PREFIX} filterSelfEntities: MATCH FOUND - filtering out "${entity.value}"`);
     return {
       keep: false,
       reason: `Self-entity detected (matches user identity): ${entity.value}`,
     };
   }
 
+  console.log(`${LOG_PREFIX} filterSelfEntities: No match for "${entity.value}", keeping entity`);
   return { keep: true };
 }
 
@@ -370,8 +381,74 @@ export function filterGenericEntities(entity: Entity): FilterResult {
     'reply',
   ];
 
+  // Generic technology/tool terms that aren't specific enough to be useful
+  // These are common words that appear in conversations but don't represent
+  // specific people, companies, or projects
+  const genericTechTerms = [
+    // Common tech infrastructure terms
+    'api', 'apis',
+    'database', 'databases', 'db',
+    'server', 'servers',
+    'cloud',
+    'terraform',
+    'generator', 'generators',
+    'drone', 'drones',
+    'script', 'scripts',
+    'code',
+    'app', 'apps', 'application', 'applications',
+    'website', 'websites', 'site', 'sites',
+    'platform', 'platforms',
+    'tool', 'tools',
+    'service', 'services',
+    'system', 'systems',
+    'software',
+    'hardware',
+    'network', 'networks',
+    'browser', 'browsers',
+    'mobile',
+    'desktop',
+    'frontend', 'front-end', 'front end',
+    'backend', 'back-end', 'back end',
+    'framework', 'frameworks',
+    'library', 'libraries',
+    'module', 'modules',
+    'component', 'components',
+    'plugin', 'plugins',
+    'extension', 'extensions',
+    'integration', 'integrations',
+    'deployment', 'deployments',
+    'pipeline', 'pipelines',
+    'container', 'containers',
+    'instance', 'instances',
+    'environment', 'environments',
+    'production', 'prod',
+    'staging',
+    'development', 'dev',
+    'testing', 'test', 'tests',
+    'debug', 'debugging',
+    'build', 'builds',
+    'release', 'releases',
+    'version', 'versions',
+    'update', 'updates',
+    'upgrade', 'upgrades',
+    'migration', 'migrations',
+    'backup', 'backups',
+    'restore',
+    'config', 'configuration', 'configurations',
+    'settings',
+    'feature', 'features',
+    'bug', 'bugs',
+    'issue', 'issues',
+    'ticket', 'tickets',
+    'pr', 'pull request', 'pull requests',
+    'commit', 'commits',
+    'branch', 'branches',
+    'merge', 'merges',
+    'repo', 'repository', 'repositories',
+  ];
+
   // Combine all generic terms
-  const allGenericTerms = [...genericTopics, ...genericLocations, ...genericActions];
+  const allGenericTerms = [...genericTopics, ...genericLocations, ...genericActions, ...genericTechTerms];
 
   // Check if entity value matches any generic term exactly (case-insensitive)
   if (allGenericTerms.includes(value)) {

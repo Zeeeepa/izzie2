@@ -5,6 +5,7 @@
 
 import { inngest } from '../index';
 import { getEntityExtractor } from '@/lib/extraction/entity-extractor';
+import { getUserIdentity } from '@/lib/extraction/user-identity';
 import type { Email, CalendarEvent } from '@/lib/google/types';
 import type { EntitiesExtractedPayload } from '../types';
 
@@ -28,7 +29,11 @@ export const extractEntitiesFromEmail = inngest.createFunction(
     // Step 1: Extract entities using AI
     const extractionResult = await step.run('extract-entities', async () => {
       try {
-        const extractor = getEntityExtractor();
+        // Load user identity for filtering self-entities
+        const userIdentity = await getUserIdentity(userId);
+        console.log(`${LOG_PREFIX} Loaded user identity for ${userId}: ${userIdentity.aliases.length} aliases`);
+
+        const extractor = getEntityExtractor(undefined, userIdentity);
 
         // Convert event data to Email format
         const email: Email = {
@@ -231,7 +236,11 @@ export const extractEntitiesFromCalendar = inngest.createFunction(
     // Step 1: Extract entities using AI
     const extractionResult = await step.run('extract-entities', async () => {
       try {
-        const extractor = getEntityExtractor();
+        // Load user identity for filtering self-entities
+        const userIdentity = await getUserIdentity(userId);
+        console.log(`${LOG_PREFIX} Loaded user identity for ${userId}: ${userIdentity.aliases.length} aliases`);
+
+        const extractor = getEntityExtractor(undefined, userIdentity);
 
         // Convert event data to CalendarEvent format
         const calendarEvent: CalendarEvent = {

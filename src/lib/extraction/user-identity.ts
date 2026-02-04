@@ -234,22 +234,35 @@ export function isCurrentUser(entity: Entity, identity: UserIdentity): boolean {
   }
 
   const normalized = normalizeEntityName(entity.value);
+  const normalizedPrimaryName = normalizeEntityName(identity.primaryName);
+
+  console.log(`${LOG_PREFIX} isCurrentUser: Checking "${entity.value}" (normalized: "${normalized}") against:`, {
+    primaryName: identity.primaryName,
+    normalizedPrimaryName,
+    aliasCount: identity.aliases.length,
+  });
 
   // Check against primary name
-  if (normalized === normalizeEntityName(identity.primaryName)) {
+  if (normalized === normalizedPrimaryName) {
+    console.log(`${LOG_PREFIX} isCurrentUser: MATCH on primary name "${identity.primaryName}"`);
     return true;
   }
 
   // Check against aliases
-  if (identity.aliases.some((alias) => normalized === alias)) {
+  const matchedAlias = identity.aliases.find((alias) => normalized === alias);
+  if (matchedAlias) {
+    console.log(`${LOG_PREFIX} isCurrentUser: MATCH on alias "${matchedAlias}"`);
     return true;
   }
 
   // Check against email aliases (if entity value is an email)
-  if (identity.emailAliases.some((email) => entity.value.toLowerCase().includes(email))) {
+  const matchedEmail = identity.emailAliases.find((email) => entity.value.toLowerCase().includes(email));
+  if (matchedEmail) {
+    console.log(`${LOG_PREFIX} isCurrentUser: MATCH on email alias "${matchedEmail}"`);
     return true;
   }
 
+  console.log(`${LOG_PREFIX} isCurrentUser: No match found for "${entity.value}"`);
   return false;
 }
 
