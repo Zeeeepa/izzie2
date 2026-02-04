@@ -76,6 +76,9 @@ export interface Entity {
   assignee?: string; // Who should do it (for action_item type)
   deadline?: string; // When it's due (for action_item type)
   priority?: 'low' | 'medium' | 'high'; // Priority level (for action_item type)
+  // Entity resolution properties (Phase 1)
+  isIdentity?: boolean; // True if this entity is the user's own identity
+  matchConfidence?: number; // Confidence score from entity matching (0.0 to 1.0)
 }
 
 /**

@@ -55,7 +55,8 @@ export interface FilterOptions {
   knownSingleNames?: string[]; // Exception list for single-name contacts (e.g., ["Madonna", "Cher"])
   logFiltered?: boolean; // Log filtered entities (default: true)
   userIdentity?: UserIdentity; // User identity for filtering self-entities
-  filterSelf?: boolean; // Whether to filter out user's own identity (default: true)
+  filterSelf?: boolean; // Whether to filter out user's own identity (default: false - tag instead)
+  tagSelfAsIdentity?: boolean; // Whether to tag self-entities with isIdentity=true (default: true)
 }
 
 /**
@@ -327,6 +328,39 @@ export function filterSelfEntities(entity: Entity, userIdentity?: UserIdentity):
 }
 
 /**
+ * Tag self-entities with isIdentity=true instead of filtering them out
+ *
+ * Phase 1 Entity Resolution: Instead of filtering identity entities,
+ * we now tag them so they can be displayed with a "You" badge in the UI.
+ *
+ * @param entity - Entity to check
+ * @param userIdentity - User identity with aliases (optional)
+ * @returns Entity with isIdentity property set if it matches the user
+ */
+export function tagSelfEntity(entity: Entity, userIdentity?: UserIdentity): Entity {
+  // Skip if no user identity provided
+  if (!userIdentity) {
+    return entity;
+  }
+
+  // Only check person entities
+  if (entity.type !== 'person') {
+    return entity;
+  }
+
+  // Check if this entity matches the current user
+  if (isCurrentUser(entity, userIdentity)) {
+    console.log(`${LOG_PREFIX} tagSelfEntity: Tagging "${entity.value}" as identity entity`);
+    return {
+      ...entity,
+      isIdentity: true,
+    };
+  }
+
+  return entity;
+}
+
+/**
  * Filter 8: Filter generic/common entities that aren't useful
  *
  * Problem: Generic terms like "Meeting", "Call", "Office" are extracted as entities
@@ -475,7 +509,14 @@ export function applyPostFilters(
   reclassified: Entity[];
   stats: FilterStats;
 } {
-  const { strictNameFormat = false, knownSingleNames = [], logFiltered = true, userIdentity, filterSelf = true } = options || {};
+  const {
+    strictNameFormat = false,
+    knownSingleNames = [],
+    logFiltered = true,
+    userIdentity,
+    filterSelf = false, // Changed default to false - tag instead of filter
+    tagSelfAsIdentity = true, // New option: tag self-entities with isIdentity=true
+  } = options || {};
 
   const filtered: Entity[] = [];
   const removed: Entity[] = [];
@@ -572,12 +613,22 @@ export function applyPostFilters(
     // }
 
     // Filter 7: Self entities (user's own identity)
-    if (shouldKeep && filterSelf && userIdentity) {
-      const selfResult = filterSelfEntities(currentEntity, userIdentity);
-      if (!selfResult.keep) {
-        shouldKeep = false;
-        filterReason = selfResult.reason;
-        stats.filterBreakdown.selfEntities++;
+    // Phase 1 Entity Resolution: Tag instead of filter by default
+    if (shouldKeep && userIdentity) {
+      if (tagSelfAsIdentity && !filterSelf) {
+        // New behavior: Tag self-entities with isIdentity=true instead of filtering
+        currentEntity = tagSelfEntity(currentEntity, userIdentity);
+        if (currentEntity.isIdentity) {
+          stats.filterBreakdown.selfEntities++; // Track how many were tagged
+        }
+      } else if (filterSelf) {
+        // Legacy behavior: Filter out self-entities
+        const selfResult = filterSelfEntities(currentEntity, userIdentity);
+        if (!selfResult.keep) {
+          shouldKeep = false;
+          filterReason = selfResult.reason;
+          stats.filterBreakdown.selfEntities++;
+        }
       }
     }
 

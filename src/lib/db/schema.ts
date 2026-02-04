@@ -1909,3 +1909,49 @@ export const ENTITY_ALIAS_TYPE = {
 } as const;
 
 export type EntityAliasType = (typeof ENTITY_ALIAS_TYPE)[keyof typeof ENTITY_ALIAS_TYPE];
+
+/**
+ * Merge Suggestions table - human-in-the-loop entity resolution
+ * Stores potential entity merges for user review before creating SAME_AS relationships
+ */
+export const mergeSuggestions = pgTable(
+  'merge_suggestions',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    userId: text('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull(),
+    entity1Type: text('entity1_type').notNull(),
+    entity1Value: text('entity1_value').notNull(),
+    entity2Type: text('entity2_type').notNull(),
+    entity2Value: text('entity2_value').notNull(),
+    confidence: real('confidence').notNull(),
+    matchReason: text('match_reason').notNull(),
+    status: text('status').notNull().default('pending'), // 'pending' | 'accepted' | 'rejected'
+    reviewedAt: timestamp('reviewed_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    userIdIdx: index('merge_suggestions_user_id_idx').on(table.userId),
+    statusIdx: index('merge_suggestions_status_idx').on(table.status),
+    confidenceIdx: index('merge_suggestions_confidence_idx').on(table.confidence),
+    createdAtIdx: index('merge_suggestions_created_at_idx').on(table.createdAt),
+  })
+);
+
+/**
+ * Type exports for merge suggestions
+ */
+export type MergeSuggestion = typeof mergeSuggestions.$inferSelect;
+export type NewMergeSuggestion = typeof mergeSuggestions.$inferInsert;
+
+/**
+ * Merge suggestion status constants
+ */
+export const MERGE_SUGGESTION_STATUS = {
+  PENDING: 'pending',
+  ACCEPTED: 'accepted',
+  REJECTED: 'rejected',
+} as const;
+
+export type MergeSuggestionStatus = (typeof MERGE_SUGGESTION_STATUS)[keyof typeof MERGE_SUGGESTION_STATUS];
