@@ -8,8 +8,8 @@
  */
 
 import { dbClient } from '@/lib/db';
-import { users, accounts } from '@/lib/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { users, accounts, userIdentity, identityEntities } from '@/lib/db/schema';
+import { eq } from 'drizzle-orm';
 import type { Entity } from './types';
 
 const LOG_PREFIX = '[UserIdentity]';
@@ -49,34 +49,75 @@ export async function getUserIdentity(userId: string): Promise<UserIdentity> {
     throw new Error(`User not found: ${userId}`);
   }
 
-  // Get all linked accounts to extract email aliases
-  const linkedAccounts = await db
+  // Get user identity record (for display name)
+  const [identity] = await db
     .select({
-      accountId: accounts.accountId,
-      providerId: accounts.providerId,
+      id: userIdentity.id,
+      displayName: userIdentity.displayName,
     })
-    .from(accounts)
-    .where(eq(accounts.userId, userId));
+    .from(userIdentity)
+    .where(eq(userIdentity.userId, userId))
+    .limit(1);
 
-  // Extract email aliases from account IDs (often email addresses)
-  const emailAliases: string[] = [user.email];
+  // Get all identity entities (emails, names, etc.)
+  const identityEntityRecords = await db
+    .select({
+      entityType: identityEntities.entityType,
+      entityValue: identityEntities.entityValue,
+      isPrimary: identityEntities.isPrimary,
+    })
+    .from(identityEntities)
+    .where(eq(identityEntities.userId, userId));
 
-  // Build name aliases based on primary name
-  const aliases: string[] = [];
-  if (user.name) {
-    aliases.push(...generateNameAliases(user.name));
+  // Build email aliases - start with primary email from users table
+  const emailAliasSet = new Set<string>([user.email]);
+
+  // Add email entities from identity_entities
+  for (const entity of identityEntityRecords) {
+    if (entity.entityType === 'email' && entity.entityValue) {
+      emailAliasSet.add(entity.entityValue.toLowerCase());
+    }
   }
 
+  // Build name aliases - start with primary name
+  const aliasSet = new Set<string>();
+
+  // Add generated aliases from primary name
+  if (user.name) {
+    generateNameAliases(user.name).forEach((alias) => aliasSet.add(alias));
+  }
+
+  // Add display name aliases if set
+  if (identity?.displayName) {
+    generateNameAliases(identity.displayName).forEach((alias) => aliasSet.add(alias));
+  }
+
+  // Add name entities from identity_entities and generate variants for each
+  for (const entity of identityEntityRecords) {
+    if (entity.entityType === 'name' && entity.entityValue) {
+      // Add the name itself and all its variants
+      generateNameAliases(entity.entityValue).forEach((alias) => aliasSet.add(alias));
+    }
+  }
+
+  // Determine the primary name to use
+  // Priority: display name > user.name > user.email
+  const primaryName = identity?.displayName || user.name || user.email;
+
+  const aliases = Array.from(aliasSet);
+  const emailAliases = Array.from(emailAliasSet);
+
   console.log(`${LOG_PREFIX} User identity for ${userId}:`, {
-    primaryName: user.name,
+    primaryName,
     primaryEmail: user.email,
     aliasCount: aliases.length,
     emailAliasCount: emailAliases.length,
+    identityEntitiesCount: identityEntityRecords.length,
   });
 
   return {
     userId: user.id,
-    primaryName: user.name || user.email,
+    primaryName,
     primaryEmail: user.email,
     aliases,
     emailAliases,
