@@ -23,6 +23,7 @@ import type {
 import { DEFAULT_EXTRACTION_CONFIG } from './types';
 import { buildExtractionPrompt, buildCalendarExtractionPrompt } from './prompts';
 import type { UserIdentity } from './user-identity';
+import { applyPostFilters } from './post-filters';
 
 const LOG_PREFIX = '[Extraction]';
 
@@ -422,7 +423,14 @@ export class EntityExtractor {
       });
 
       // Apply post-extraction filters (invoice numbers, generic locations, confidence adjustments)
-      const validEntities = this.filterAndAdjustEntities(structurallyValidEntities);
+      const adjustedEntities = this.filterAndAdjustEntities(structurallyValidEntities);
+
+      // Apply post-filters (email addresses, company indicators, self-entities)
+      const { filtered: validEntities } = applyPostFilters(adjustedEntities, {
+        userIdentity: this.userIdentity,
+        filterSelf: true,
+        logFiltered: true,
+      });
 
       // Parse spam classification with fallback
       const spam = {

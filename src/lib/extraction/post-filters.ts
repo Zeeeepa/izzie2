@@ -7,11 +7,14 @@
  * - Filter 3: Require full names for persons (~30% of errors)
  * - Filter 4: Filter famous people/companies from newsletters (~25% of errors)
  * - Filter 5: Filter known newsletter sources (~10% of errors)
+ * - Filter 6: Filter/tag user's own identity ("me" entities)
  *
  * Target: 90% accuracy for person entity extraction
  */
 
 import type { Entity, EntityType } from './types';
+import type { UserIdentity } from './user-identity';
+import { isCurrentUser } from './user-identity';
 
 const LOG_PREFIX = '[PostFilter]';
 
@@ -39,6 +42,7 @@ export interface FilterStats {
     famousPeople: number;
     newsletterCompanies: number;
     newsletterTopics: number;
+    selfEntities: number;
   };
 }
 
@@ -49,6 +53,8 @@ export interface FilterOptions {
   strictNameFormat?: boolean; // Require exactly 2 name parts (default: false - lenient mode)
   knownSingleNames?: string[]; // Exception list for single-name contacts (e.g., ["Madonna", "Cher"])
   logFiltered?: boolean; // Log filtered entities (default: true)
+  userIdentity?: UserIdentity; // User identity for filtering self-entities
+  filterSelf?: boolean; // Whether to filter out user's own identity (default: true)
 }
 
 /**
@@ -277,6 +283,38 @@ export function filterNewsletterTopics(entity: Entity): FilterResult {
 }
 
 /**
+ * Filter 7: Filter user's own identity ("me" entities)
+ *
+ * Problem: User's own name/email is being extracted as a separate person entity
+ * Solution: Filter out entities that match the user's identity (by name or email aliases)
+ *
+ * @param entity - Entity to check
+ * @param userIdentity - User identity with aliases (optional)
+ * @returns FilterResult indicating whether to keep the entity
+ */
+export function filterSelfEntities(entity: Entity, userIdentity?: UserIdentity): FilterResult {
+  // Skip if no user identity provided
+  if (!userIdentity) {
+    return { keep: true };
+  }
+
+  // Only check person entities (isCurrentUser already handles this check)
+  if (entity.type !== 'person') {
+    return { keep: true };
+  }
+
+  // Check if this entity matches the current user
+  if (isCurrentUser(entity, userIdentity)) {
+    return {
+      keep: false,
+      reason: `Self-entity detected (matches user identity): ${entity.value}`,
+    };
+  }
+
+  return { keep: true };
+}
+
+/**
  * Apply all post-processing filters to a list of entities
  *
  * Returns filtered entities and statistics
@@ -290,7 +328,7 @@ export function applyPostFilters(
   reclassified: Entity[];
   stats: FilterStats;
 } {
-  const { strictNameFormat = false, knownSingleNames = [], logFiltered = true } = options || {};
+  const { strictNameFormat = false, knownSingleNames = [], logFiltered = true, userIdentity, filterSelf = true } = options || {};
 
   const filtered: Entity[] = [];
   const removed: Entity[] = [];
@@ -308,6 +346,7 @@ export function applyPostFilters(
       famousPeople: 0,
       newsletterCompanies: 0,
       newsletterTopics: 0,
+      selfEntities: 0,
     },
   };
 
@@ -384,6 +423,16 @@ export function applyPostFilters(
     //   }
     // }
 
+    // Filter 7: Self entities (user's own identity)
+    if (shouldKeep && filterSelf && userIdentity) {
+      const selfResult = filterSelfEntities(currentEntity, userIdentity);
+      if (!selfResult.keep) {
+        shouldKeep = false;
+        filterReason = selfResult.reason;
+        stats.filterBreakdown.selfEntities++;
+      }
+    }
+
     // Add to appropriate list
     if (shouldKeep) {
       filtered.push(currentEntity);
@@ -417,6 +466,7 @@ export function logFilterStats(stats: FilterStats): void {
   console.log(`  Famous people (newsletter): ${stats.filterBreakdown.famousPeople}`);
   console.log(`  Newsletter companies: ${stats.filterBreakdown.newsletterCompanies}`);
   console.log(`  Newsletter topics: ${stats.filterBreakdown.newsletterTopics}`);
+  console.log(`  Self entities (user identity): ${stats.filterBreakdown.selfEntities}`);
 
   if (stats.totalEntities > 0) {
     const successRate = ((stats.kept + stats.reclassified) / stats.totalEntities) * 100;
