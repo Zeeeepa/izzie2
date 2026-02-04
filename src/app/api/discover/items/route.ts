@@ -68,8 +68,12 @@ export async function GET(request: NextRequest) {
     if (type) {
       conditions.push(eq(trainingSamples.type, type));
     }
+    // If status filter is provided, use it; otherwise default to 'pending' only
+    // This ensures reviewed/skipped items don't appear in the discovery list by default
     if (status) {
       conditions.push(eq(trainingSamples.status, status));
+    } else {
+      conditions.push(eq(trainingSamples.status, 'pending'));
     }
 
     // First, get all items matching the conditions (we'll deduplicate in memory)
