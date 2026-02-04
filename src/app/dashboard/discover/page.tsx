@@ -1266,7 +1266,7 @@ export default function DiscoverPage() {
                 </div>
               )}
 
-              {/* Real-time discovered items list */}
+              {/* Real-time discovered items list - compact table view */}
               {items.length > 0 && (
                 <div
                   style={{
@@ -1296,329 +1296,88 @@ export default function DiscoverPage() {
                         </span>
                       )}
                     </h3>
-                    <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>
-                      {items.length} items - Provide feedback below
-                    </span>
+                    <button
+                      onClick={() => setActiveTab('review')}
+                      style={{
+                        fontSize: '0.875rem',
+                        color: '#3b82f6',
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontWeight: '500',
+                      }}
+                    >
+                      Review {feedbackStats?.pending || 0} pending
+                    </button>
                   </div>
 
-                  <div style={{ maxHeight: '400px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                    {items.slice(0, 20).map((item) => {
-                      // Get local pending feedback for this item
-                      const localFeedback = pendingFeedback.get(item.id);
-                      const localIsCorrect = localFeedback?.isCorrect;
-                      // isSubmitting is true when batch submission is in progress and this item has pending feedback
-                      const isSubmitting = isSubmittingBatch && localFeedback !== undefined;
-
-                      // Determine border color based on feedback status
-                      let borderColor = '#e5e7eb';
-                      let bgColor = '#fff';
-
-                      if (item.feedback?.isCorrect === true) {
-                        borderColor = '#22c55e';
-                        bgColor = '#f0fdf4';
-                      } else if (item.feedback?.isCorrect === false) {
-                        borderColor = '#ef4444';
-                        bgColor = '#fef2f2';
-                      } else if (localIsCorrect === true) {
-                        borderColor = '#86efac';
-                        bgColor = '#f0fdf4';
-                      } else if (localIsCorrect === false) {
-                        borderColor = '#fca5a5';
-                        bgColor = '#fef2f2';
-                      }
-
-                      // Source type icon
-                      const SourceIcon = item.source?.type === 'email' ? Mail : item.source?.type === 'calendar' ? Calendar : null;
-
-                      return (
-                        <div
-                          key={item.id}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'flex-start',
-                            justifyContent: 'space-between',
-                            padding: '0.75rem',
-                            backgroundColor: bgColor,
-                            borderRadius: '8px',
-                            border: `2px solid ${borderColor}`,
-                            transition: 'all 0.2s',
-                            opacity: isSubmitting ? 0.7 : 1,
-                          }}
-                        >
-                          {/* Left: Content */}
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem', flexWrap: 'wrap' }}>
-                              {/* Source type icon */}
-                              {SourceIcon && (
-                                <span title={item.source?.type === 'email' ? 'From email' : 'From calendar'}>
-                                  <SourceIcon
-                                    style={{ width: '14px', height: '14px', color: '#6b7280', flexShrink: 0 }}
-                                  />
-                                </span>
-                              )}
-                              <span
-                                style={{
-                                  fontSize: '0.75rem',
-                                  padding: '0.125rem 0.5rem',
-                                  borderRadius: '4px',
-                                  backgroundColor: item.type === 'entity' ? '#dbeafe' : '#fce7f3',
-                                  color: item.type === 'entity' ? '#1e40af' : '#9d174d',
-                                  fontWeight: '500',
-                                  textTransform: 'capitalize',
-                                }}
-                              >
-                                {item.type}
-                              </span>
-                              <span
-                                style={{
-                                  fontWeight: '500',
-                                  fontSize: '0.875rem',
-                                  color: '#111',
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                  whiteSpace: 'nowrap',
-                                }}
-                              >
-                                {item.content.text}
-                              </span>
-                              {/* Occurrence count badge */}
-                              {item.occurrenceCount && item.occurrenceCount > 1 && (
+                  {/* Compact table-style list */}
+                  <div style={{ maxHeight: '320px', overflowY: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
+                          <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', fontWeight: '600', color: '#6b7280' }}>Name</th>
+                          <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', fontWeight: '600', color: '#6b7280' }}>Type</th>
+                          <th style={{ textAlign: 'center', padding: '0.5rem 0.75rem', fontWeight: '600', color: '#6b7280' }}>Count</th>
+                          <th style={{ textAlign: 'right', padding: '0.5rem 0.75rem', fontWeight: '600', color: '#6b7280' }}>Confidence</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {items.slice(0, 20).map((item, index) => (
+                          <tr
+                            key={item.id}
+                            style={{
+                              borderBottom: index < Math.min(items.length, 20) - 1 ? '1px solid #f3f4f6' : 'none',
+                            }}
+                          >
+                            <td style={{ padding: '0.5rem 0.75rem' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <span style={{ fontWeight: '500', color: '#111' }}>{item.content.text}</span>
+                                {item.prediction.reasoning && (
+                                  <span
+                                    style={{ color: '#9ca3af', cursor: 'help', fontSize: '0.75rem' }}
+                                    title={item.prediction.reasoning}
+                                  >
+                                    (?)
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td style={{ padding: '0.5rem 0.75rem', color: '#6b7280' }}>
+                              {item.prediction.label}
+                            </td>
+                            <td style={{ padding: '0.5rem 0.75rem', textAlign: 'center' }}>
+                              {item.occurrenceCount && item.occurrenceCount > 1 ? (
                                 <span
                                   style={{
-                                    fontSize: '0.625rem',
-                                    padding: '0.125rem 0.375rem',
+                                    fontSize: '0.75rem',
+                                    padding: '0.125rem 0.5rem',
                                     borderRadius: '9999px',
                                     backgroundColor: '#e0e7ff',
                                     color: '#4338ca',
                                     fontWeight: '600',
                                   }}
-                                  title={`Found ${item.occurrenceCount} times`}
                                 >
                                   x{item.occurrenceCount}
                                 </span>
-                              )}
-                            </div>
-                            {/* Context preview */}
-                            {item.content.context && (
-                              <p
-                                style={{
-                                  fontSize: '0.75rem',
-                                  color: '#6b7280',
-                                  margin: '0.25rem 0 0 0',
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                  whiteSpace: 'nowrap',
-                                  maxWidth: '100%',
-                                }}
-                                title={item.content.context}
-                              >
-                                {item.content.context.length > 100
-                                  ? `${item.content.context.substring(0, 100)}...`
-                                  : item.content.context}
-                              </p>
-                            )}
-                            <div
-                              style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '0.25rem' }}
-                              title={item.prediction.reasoning || undefined}
-                            >
-                              {item.prediction.label} &bull; {item.prediction.confidence}% confidence
-                              {item.prediction.reasoning && (
-                                <span style={{ marginLeft: '0.25rem', cursor: 'help' }} title={item.prediction.reasoning}>
-                                  (?)
-                                </span>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Right: Actions - always enabled even during processing */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', marginLeft: '1rem', flexShrink: 0 }}>
-                            {item.status === 'pending' ? (
-                              trainingBudgetExhausted ? (
-                                <span
-                                  style={{
-                                    fontSize: '0.75rem',
-                                    fontWeight: '500',
-                                    color: '#9ca3af',
-                                    fontStyle: 'italic',
-                                  }}
-                                >
-                                  Add budget
-                                </span>
-                              ) : localFeedback ? (
-                                // Show pending feedback badge
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                  <span
-                                    style={{
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: '0.25rem',
-                                      fontSize: '0.75rem',
-                                      fontWeight: '600',
-                                      padding: '0.25rem 0.5rem',
-                                      borderRadius: '4px',
-                                      backgroundColor: localFeedback.isCorrect ? '#dcfce7' : '#fee2e2',
-                                      color: localFeedback.isCorrect ? '#166534' : '#991b1b',
-                                    }}
-                                  >
-                                    <CheckCircle2 style={{ width: '12px', height: '12px' }} />
-                                    {localFeedback.isCorrect ? 'Correct' : 'Incorrect'}
-                                    {localFeedback.note && ' + Note'}
-                                  </span>
-                                  <button
-                                    onClick={() => openFeedbackDialog(item)}
-                                    style={{
-                                      padding: '0.25rem',
-                                      borderRadius: '4px',
-                                      border: 'none',
-                                      backgroundColor: 'transparent',
-                                      cursor: 'pointer',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'center',
-                                    }}
-                                    title="Edit feedback"
-                                  >
-                                    <MessageSquare style={{ width: '14px', height: '14px', color: '#6b7280' }} />
-                                  </button>
-                                </div>
                               ) : (
-                                <>
-                                  <button
-                                    onClick={() => markFeedback(item.id, true)}
-                                    style={{
-                                      padding: '0.5rem',
-                                      borderRadius: '6px',
-                                      border: 'none',
-                                      backgroundColor: 'transparent',
-                                      cursor: 'pointer',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'center',
-                                      transition: 'background-color 0.2s',
-                                    }}
-                                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#dcfce7'; }}
-                                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-                                    title="Mark as correct"
-                                  >
-                                    <ThumbsUp style={{ width: '16px', height: '16px', color: '#22c55e' }} />
-                                  </button>
-                                  <button
-                                    onClick={() => markFeedback(item.id, false)}
-                                    style={{
-                                      padding: '0.5rem',
-                                      borderRadius: '6px',
-                                      border: 'none',
-                                      backgroundColor: 'transparent',
-                                      cursor: 'pointer',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'center',
-                                      transition: 'background-color 0.2s',
-                                    }}
-                                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#fee2e2'; }}
-                                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-                                    title="Mark as incorrect"
-                                  >
-                                    <ThumbsDown style={{ width: '16px', height: '16px', color: '#ef4444' }} />
-                                  </button>
-                                  <button
-                                    onClick={() => openFeedbackDialog(item)}
-                                    style={{
-                                      padding: '0.5rem',
-                                      borderRadius: '6px',
-                                      border: 'none',
-                                      backgroundColor: 'transparent',
-                                      cursor: 'pointer',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'center',
-                                      transition: 'background-color 0.2s',
-                                    }}
-                                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#dbeafe'; }}
-                                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-                                    title="Add note with context"
-                                  >
-                                    <MessageSquare style={{ width: '16px', height: '16px', color: '#3b82f6' }} />
-                                  </button>
-                                </>
-                              )
-                            ) : (
-                              <span
-                                style={{
-                                  fontSize: '0.75rem',
-                                  fontWeight: '500',
-                                  color: item.feedback?.isCorrect ? '#22c55e' : '#ef4444',
-                                }}
-                              >
-                                {item.feedback?.isCorrect ? 'Correct' : 'Incorrect'}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
+                                <span style={{ color: '#9ca3af' }}>x1</span>
+                              )}
+                            </td>
+                            <td style={{ padding: '0.5rem 0.75rem', textAlign: 'right', color: '#6b7280' }}>
+                              {item.prediction.confidence}%
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
 
-                  {/* Submit All Feedback Button */}
-                  {pendingFeedback.size > 0 && (
-                    <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: '#f0fdf4', borderRadius: '8px', border: '1px solid #86efac' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
-                        <div>
-                          <span style={{ fontSize: '0.875rem', fontWeight: '600', color: '#166534' }}>
-                            {pendingFeedback.size} item{pendingFeedback.size !== 1 ? 's' : ''} ready to submit
-                          </span>
-                          <p style={{ fontSize: '0.75rem', color: '#15803d', margin: '0.25rem 0 0 0' }}>
-                            Click &quot;Submit All Feedback&quot; to save to database
-                          </p>
-                        </div>
-                        <button
-                          onClick={submitAllFeedback}
-                          disabled={isSubmittingBatch}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '0.5rem',
-                            padding: '0.625rem 1.25rem',
-                            borderRadius: '8px',
-                            border: 'none',
-                            backgroundColor: isSubmittingBatch ? '#86efac' : '#22c55e',
-                            color: '#fff',
-                            fontSize: '0.875rem',
-                            fontWeight: '600',
-                            cursor: isSubmittingBatch ? 'not-allowed' : 'pointer',
-                          }}
-                        >
-                          {isSubmittingBatch ? (
-                            <>
-                              <Loader2 style={{ width: '16px', height: '16px', animation: 'spin 1s linear infinite' }} />
-                              Submitting...
-                            </>
-                          ) : (
-                            <>
-                              <Send style={{ width: '16px', height: '16px' }} />
-                              Submit All Feedback
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
                   {items.length > 20 && (
-                    <div style={{ textAlign: 'center', marginTop: '1rem' }}>
-                      <button
-                        onClick={() => setActiveTab('review')}
-                        style={{
-                          fontSize: '0.875rem',
-                          color: '#3b82f6',
-                          background: 'none',
-                          border: 'none',
-                          cursor: 'pointer',
-                          textDecoration: 'underline',
-                        }}
-                      >
-                        View all {items.length} items in Review tab
-                      </button>
+                    <div style={{ textAlign: 'center', marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid #f3f4f6' }}>
+                      <span style={{ fontSize: '0.8125rem', color: '#6b7280' }}>
+                        +{items.length - 20} more items
+                      </span>
                     </div>
                   )}
                 </div>
