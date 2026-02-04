@@ -43,6 +43,7 @@ export interface FilterStats {
     newsletterCompanies: number;
     newsletterTopics: number;
     selfEntities: number;
+    genericEntities: number;
   };
 }
 
@@ -315,6 +316,75 @@ export function filterSelfEntities(entity: Entity, userIdentity?: UserIdentity):
 }
 
 /**
+ * Filter 8: Filter generic/common entities that aren't useful
+ *
+ * Problem: Generic terms like "Meeting", "Call", "Office" are extracted as entities
+ *          but provide no meaningful information about contacts or relationships
+ * Solution: Filter out entities that match common generic terms exactly (case-insensitive)
+ *
+ * @param entity - Entity to check
+ * @returns FilterResult indicating whether to keep the entity
+ */
+export function filterGenericEntities(entity: Entity): FilterResult {
+  const value = entity.value.trim().toLowerCase();
+
+  // Generic topics that aren't useful as entities
+  const genericTopics = [
+    'meeting', 'meetings',
+    'call', 'calls',
+    'email', 'emails',
+    'message', 'messages',
+    'update', 'updates',
+    'discussion', 'discussions',
+    'chat', 'chats',
+    'conversation', 'conversations',
+    'event', 'events',
+    'appointment', 'appointments',
+    'sync', 'syncs',
+    'check-in', 'check-ins', 'checkin', 'checkins',
+    'follow-up', 'follow-ups', 'follow up', 'follow ups', 'followup', 'followups',
+    'reminder', 'reminders',
+    'note', 'notes',
+    'task', 'tasks',
+    'work',
+    'project', // standalone "project" without a proper name
+  ];
+
+  // Generic locations that aren't useful as entities
+  const genericLocations = [
+    'office',
+    'home',
+    'online',
+    'virtual',
+    'remote',
+  ];
+
+  // Generic action items that aren't useful as entities
+  const genericActions = [
+    'follow up',
+    'follow-up',
+    'followup',
+    'check',
+    'review',
+    'send',
+    'reply',
+  ];
+
+  // Combine all generic terms
+  const allGenericTerms = [...genericTopics, ...genericLocations, ...genericActions];
+
+  // Check if entity value matches any generic term exactly (case-insensitive)
+  if (allGenericTerms.includes(value)) {
+    return {
+      keep: false,
+      reason: `Generic entity filtered: ${entity.value}`,
+    };
+  }
+
+  return { keep: true };
+}
+
+/**
  * Apply all post-processing filters to a list of entities
  *
  * Returns filtered entities and statistics
@@ -347,6 +417,7 @@ export function applyPostFilters(
       newsletterCompanies: 0,
       newsletterTopics: 0,
       selfEntities: 0,
+      genericEntities: 0,
     },
   };
 
@@ -433,6 +504,16 @@ export function applyPostFilters(
       }
     }
 
+    // Filter 8: Generic entities (common terms that aren't useful)
+    if (shouldKeep) {
+      const genericResult = filterGenericEntities(currentEntity);
+      if (!genericResult.keep) {
+        shouldKeep = false;
+        filterReason = genericResult.reason;
+        stats.filterBreakdown.genericEntities++;
+      }
+    }
+
     // Add to appropriate list
     if (shouldKeep) {
       filtered.push(currentEntity);
@@ -467,6 +548,7 @@ export function logFilterStats(stats: FilterStats): void {
   console.log(`  Newsletter companies: ${stats.filterBreakdown.newsletterCompanies}`);
   console.log(`  Newsletter topics: ${stats.filterBreakdown.newsletterTopics}`);
   console.log(`  Self entities (user identity): ${stats.filterBreakdown.selfEntities}`);
+  console.log(`  Generic entities: ${stats.filterBreakdown.genericEntities}`);
 
   if (stats.totalEntities > 0) {
     const successRate = ((stats.kept + stats.reclassified) / stats.totalEntities) * 100;
