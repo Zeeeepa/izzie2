@@ -393,6 +393,29 @@ export function filterGenericEntities(entity: Entity): FilterResult {
     'task', 'tasks',
     'work',
     'project', // standalone "project" without a proper name
+    // Role/descriptor terms - generic roles, not specific named entities
+    'attendee', 'attendees',
+    'organizer', 'organizers',
+    'participant', 'participants',
+    'host', 'hosts',
+    'guest', 'guests',
+    'speaker', 'speakers',
+    'presenter', 'presenters',
+    'moderator', 'moderators',
+    'facilitator',
+    'invitee', 'invitees',
+    'recipient', 'recipients',
+    'sender',
+    'author',
+    'owner',
+    'admin', 'administrator',
+    'member', 'members',
+    'user', 'users',
+    'lead', 'leader',
+    'manager',
+    'coordinator',
+    'contact',
+    'colleague', 'colleagues',
   ];
 
   // Generic locations that aren't useful as entities
