@@ -117,7 +117,7 @@ const RELATIONSHIP_TYPES = [
   'WORKS_WITH', 'REPORTS_TO', 'WORKS_FOR', 'LEADS', 'WORKS_ON', 'EXPERT_IN',
   'LOCATED_IN', 'PARTNERS_WITH', 'COMPETES_WITH', 'OWNS', 'RELATED_TO',
   'DEPENDS_ON', 'PART_OF', 'SUBTOPIC_OF', 'ASSOCIATED_WITH',
-  'FAMILY_OF', 'MARRIED_TO', 'SIBLING_OF'
+  'FAMILY_OF', 'MARRIED_TO', 'SIBLING_OF', 'SAME_AS'
 ];
 
 // Relationship category colors for link visualization
@@ -149,6 +149,12 @@ const RELATIONSHIP_CATEGORIES: Record<string, { types: string[]; color: string; 
     color: '#ec4899', // pink
     label: 'Personal',
   },
+  identity: {
+    types: ['SAME_AS'],
+    color: '#f59e0b', // amber/orange for identity relationships
+    dashArray: '3,6', // distinct dashed pattern
+    label: 'Identity (Same As)',
+  },
 };
 
 // Helper to get category info for a relationship type
@@ -171,6 +177,9 @@ const ENTITY_TYPES = [
   { value: 'location', label: 'Locations' },
 ];
 
+// All entity types that can be toggled
+const ALL_ENTITY_TYPES = ['person', 'company', 'project', 'action_item', 'topic', 'location'];
+
 export default function RelationshipsPage() {
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [stats, setStats] = useState<StatsData | null>(null);
@@ -190,6 +199,10 @@ export default function RelationshipsPage() {
   } | null>(null);
   const graphRef = useRef<any>(null);
   const [zoomLevel, setZoomLevel] = useState(1);
+  // Entity type visibility toggles - all visible by default
+  const [visibleEntityTypes, setVisibleEntityTypes] = useState<Set<string>>(new Set(ALL_ENTITY_TYPES));
+  // Highlight SAME_AS relationships toggle
+  const [highlightSameAs, setHighlightSameAs] = useState(true);
 
   // Custom node rendering with type letter inside and label below (always visible)
   const paintNode = useCallback((node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
@@ -343,6 +356,14 @@ export default function RelationshipsPage() {
     if (!graphData) return null;
     let nodes = graphData.nodes;
     let edges = graphData.edges;
+
+    // Filter by visible entity types
+    if (visibleEntityTypes.size < ALL_ENTITY_TYPES.length) {
+      nodes = nodes.filter(n => visibleEntityTypes.has(n.type));
+      const ids = new Set(nodes.map(n => n.id));
+      edges = edges.filter(e => ids.has(e.source as string) && ids.has(e.target as string));
+    }
+
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       nodes = nodes.filter(n => n.value.toLowerCase().includes(q) || n.normalized.toLowerCase().includes(q));
@@ -356,12 +377,63 @@ export default function RelationshipsPage() {
       nodes = nodes.filter(n => ids.has(n.id));
     }
     return { nodes, links: edges.map(e => ({ ...e, source: e.source, target: e.target })) };
-  }, [graphData, searchQuery, selectedRelType]);
+  }, [graphData, searchQuery, selectedRelType, visibleEntityTypes]);
 
   const getNodeColor = (node: GraphNode) => TYPE_COLORS[node.type]?.border || '#9ca3af';
   const handleNodeClick = useCallback((node: any) => { setSelectedNode(node); setSelectedEdge(null); }, []);
   const handleLinkClick = useCallback((link: any) => { setSelectedEdge(link); setSelectedNode(null); }, []);
   const getNodeEdges = useCallback((nodeId: string) => graphData?.edges.filter(e => e.source === nodeId || e.target === nodeId) || [], [graphData]);
+
+  // Toggle entity type visibility
+  const toggleEntityType = useCallback((entityType: string) => {
+    setVisibleEntityTypes(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(entityType)) {
+        newSet.delete(entityType);
+      } else {
+        newSet.add(entityType);
+      }
+      return newSet;
+    });
+  }, []);
+
+  // Show all entity types
+  const showAllEntityTypes = useCallback(() => {
+    setVisibleEntityTypes(new Set(ALL_ENTITY_TYPES));
+  }, []);
+
+  // Hide all entity types (clear view)
+  const hideAllEntityTypes = useCallback(() => {
+    setVisibleEntityTypes(new Set());
+  }, []);
+
+  // Zoom controls
+  const handleZoomIn = useCallback(() => {
+    if (graphRef.current) {
+      const currentZoom = graphRef.current.zoom();
+      graphRef.current.zoom(currentZoom * 1.3, 400);
+    }
+  }, []);
+
+  const handleZoomOut = useCallback(() => {
+    if (graphRef.current) {
+      const currentZoom = graphRef.current.zoom();
+      graphRef.current.zoom(currentZoom / 1.3, 400);
+    }
+  }, []);
+
+  const handleZoomReset = useCallback(() => {
+    if (graphRef.current) {
+      graphRef.current.zoomToFit(400, 50);
+    }
+  }, []);
+
+  const handleCenterGraph = useCallback(() => {
+    if (graphRef.current) {
+      graphRef.current.centerAt(0, 0, 400);
+      graphRef.current.zoom(1, 400);
+    }
+  }, []);
 
   // Get unique relationship types for a node (for enhanced tooltip)
   const getNodeRelationshipTypes = useCallback((nodeId: string) => {
@@ -383,6 +455,7 @@ export default function RelationshipsPage() {
   const paintLink = useCallback((link: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
     const graphEdge = link as GraphEdge;
     const { color, dashArray } = getRelationshipCategory(graphEdge.type);
+    const isSameAs = graphEdge.type === 'SAME_AS';
 
     // Get source and target coordinates
     const source = link.source;
@@ -393,7 +466,24 @@ export default function RelationshipsPage() {
     const ty = target.y || 0;
 
     // Calculate link width based on confidence
-    const lineWidth = Math.max(1, graphEdge.confidence * 3);
+    // SAME_AS relationships get thicker lines to stand out
+    let lineWidth = Math.max(1, graphEdge.confidence * 3);
+    if (isSameAs && highlightSameAs) {
+      lineWidth = Math.max(2.5, graphEdge.confidence * 4);
+    }
+
+    // For SAME_AS relationships, draw a glow effect first
+    if (isSameAs && highlightSameAs) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.strokeStyle = 'rgba(245, 158, 11, 0.3)'; // amber glow
+      ctx.lineWidth = lineWidth + 4;
+      ctx.setLineDash([]);
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(tx, ty);
+      ctx.stroke();
+      ctx.restore();
+    }
 
     ctx.beginPath();
     ctx.strokeStyle = color;
@@ -414,8 +504,8 @@ export default function RelationshipsPage() {
     // Reset dash pattern
     ctx.setLineDash([]);
 
-    // Draw arrowhead
-    const arrowLength = 6;
+    // Draw arrowhead (bidirectional for SAME_AS relationships)
+    const arrowLength = isSameAs ? 8 : 6;
     const angle = Math.atan2(ty - sy, tx - sx);
 
     // Calculate position for arrowhead (at the end of the link)
@@ -436,7 +526,29 @@ export default function RelationshipsPage() {
     );
     ctx.closePath();
     ctx.fill();
-  }, []);
+
+    // Draw second arrowhead for SAME_AS (bidirectional)
+    if (isSameAs && highlightSameAs) {
+      const sourceRadius = Math.sqrt(Math.max(4, (source.connectionCount || 1) * 2)) * 4;
+      const arrow2X = sx + Math.cos(angle) * (sourceRadius + 2);
+      const arrow2Y = sy + Math.sin(angle) * (sourceRadius + 2);
+      const reverseAngle = angle + Math.PI;
+
+      ctx.beginPath();
+      ctx.fillStyle = color;
+      ctx.moveTo(arrow2X, arrow2Y);
+      ctx.lineTo(
+        arrow2X - arrowLength * Math.cos(reverseAngle - Math.PI / 6),
+        arrow2Y - arrowLength * Math.sin(reverseAngle - Math.PI / 6)
+      );
+      ctx.lineTo(
+        arrow2X - arrowLength * Math.cos(reverseAngle + Math.PI / 6),
+        arrow2Y - arrowLength * Math.sin(reverseAngle + Math.PI / 6)
+      );
+      ctx.closePath();
+      ctx.fill();
+    }
+  }, [highlightSameAs]);
 
   // Helper to get ID from source/target (handles both string IDs and mutated node objects)
   const getEdgeNodeId = (sourceOrTarget: any): string => {
@@ -667,10 +779,127 @@ export default function RelationshipsPage() {
           </div>
         )}
 
+        {/* Entity Type Toggle Filters */}
+        <div style={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '1rem', marginBottom: '1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+            <h4 style={{ fontSize: '0.875rem', fontWeight: '600', color: '#374151', margin: 0 }}>Show Entity Types</h4>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button
+                onClick={showAllEntityTypes}
+                style={{
+                  padding: '0.25rem 0.5rem',
+                  fontSize: '0.75rem',
+                  backgroundColor: '#f3f4f6',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                }}
+              >
+                Show All
+              </button>
+              <button
+                onClick={hideAllEntityTypes}
+                style={{
+                  padding: '0.25rem 0.5rem',
+                  fontSize: '0.75rem',
+                  backgroundColor: '#f3f4f6',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                }}
+              >
+                Hide All
+              </button>
+            </div>
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+            {ALL_ENTITY_TYPES.map((entityType) => {
+              const colors = TYPE_COLORS[entityType] || { bg: '#f3f4f6', text: '#374151', border: '#9ca3af' };
+              const isVisible = visibleEntityTypes.has(entityType);
+              return (
+                <button
+                  key={entityType}
+                  onClick={() => toggleEntityType(entityType)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.375rem',
+                    padding: '0.375rem 0.75rem',
+                    backgroundColor: isVisible ? colors.bg : '#f9fafb',
+                    border: `2px solid ${isVisible ? colors.border : '#e5e7eb'}`,
+                    borderRadius: '999px',
+                    fontSize: '0.75rem',
+                    fontWeight: '500',
+                    color: isVisible ? colors.text : '#9ca3af',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                    opacity: isVisible ? 1 : 0.6,
+                  }}
+                >
+                  <div style={{
+                    width: '12px',
+                    height: '12px',
+                    borderRadius: '50%',
+                    backgroundColor: isVisible ? colors.border : '#d1d5db',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '8px',
+                    fontWeight: '700',
+                    color: '#fff',
+                  }}>
+                    {TYPE_ICONS[entityType] || '?'}
+                  </div>
+                  {entityType.replace('_', ' ')}
+                  {isVisible && (
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* SAME_AS Highlight Toggle */}
+          <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid #e5e7eb' }}>
+            <button
+              onClick={() => setHighlightSameAs(!highlightSameAs)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                padding: '0.375rem 0.75rem',
+                backgroundColor: highlightSameAs ? '#fffbeb' : '#f9fafb',
+                border: `2px solid ${highlightSameAs ? '#f59e0b' : '#e5e7eb'}`,
+                borderRadius: '999px',
+                fontSize: '0.75rem',
+                fontWeight: '500',
+                color: highlightSameAs ? '#92400e' : '#6b7280',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                <circle cx="9" cy="7" r="4" />
+                <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+                <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+              </svg>
+              Highlight Identity (SAME_AS) Relationships
+              {highlightSameAs && (
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              )}
+            </button>
+          </div>
+        </div>
+
         <div style={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '1.5rem', marginBottom: '2rem' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 2fr', gap: '1rem' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', color: '#374151', marginBottom: '0.5rem' }}>Entity Type</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', color: '#374151', marginBottom: '0.5rem' }}>Filter by Entity Type</label>
               <select value={selectedEntityType} onChange={(e) => setSelectedEntityType(e.target.value)}
                 style={{ width: '100%', padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '0.875rem' }}>
                 {ENTITY_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
@@ -747,7 +976,123 @@ export default function RelationshipsPage() {
 
         {!isLoading && !error && filteredData && filteredData.nodes.length > 0 && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: '1.5rem' }}>
-            <div style={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px', overflow: 'hidden', height: '600px' }}>
+            <div style={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px', overflow: 'hidden', height: '600px', position: 'relative' }}>
+              {/* Zoom Controls */}
+              <div style={{
+                position: 'absolute',
+                top: '12px',
+                left: '12px',
+                zIndex: 10,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px',
+                backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                borderRadius: '8px',
+                padding: '4px',
+                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+              }}>
+                <button
+                  onClick={handleZoomIn}
+                  title="Zoom In"
+                  style={{
+                    width: '32px',
+                    height: '32px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: '#fff',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '18px',
+                    fontWeight: '600',
+                    color: '#374151',
+                  }}
+                >
+                  +
+                </button>
+                <button
+                  onClick={handleZoomOut}
+                  title="Zoom Out"
+                  style={{
+                    width: '32px',
+                    height: '32px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: '#fff',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '18px',
+                    fontWeight: '600',
+                    color: '#374151',
+                  }}
+                >
+                  -
+                </button>
+                <div style={{ height: '1px', backgroundColor: '#e5e7eb', margin: '2px 0' }} />
+                <button
+                  onClick={handleZoomReset}
+                  title="Fit to View"
+                  style={{
+                    width: '32px',
+                    height: '32px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: '#fff',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    color: '#374151',
+                  }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+                  </svg>
+                </button>
+                <button
+                  onClick={handleCenterGraph}
+                  title="Center Graph"
+                  style={{
+                    width: '32px',
+                    height: '32px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: '#fff',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    color: '#374151',
+                  }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="3" />
+                    <path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Graph Stats Overlay */}
+              <div style={{
+                position: 'absolute',
+                top: '12px',
+                right: '12px',
+                zIndex: 10,
+                backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                borderRadius: '6px',
+                padding: '8px 12px',
+                fontSize: '0.75rem',
+                color: '#6b7280',
+                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+              }}>
+                <span style={{ fontWeight: '600', color: '#374151' }}>{filteredData.nodes.length}</span> nodes |{' '}
+                <span style={{ fontWeight: '600', color: '#374151' }}>{filteredData.links.length}</span> edges |{' '}
+                Zoom: <span style={{ fontWeight: '600', color: '#374151' }}>{Math.round(zoomLevel * 100)}%</span>
+              </div>
+
               <ForceGraph2D
                 ref={graphRef}
                 graphData={filteredData}

@@ -10,6 +10,23 @@ import { BottomNav } from '@/components/layout/BottomNav';
 import { Suspense } from 'react';
 import { MobileUserInfo } from './MobileUserInfo';
 
+// Fallback for BottomNav during static generation
+function BottomNavFallback() {
+  return (
+    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t bg-background h-16">
+      <div className="flex h-16 items-center justify-around">
+        {/* Placeholder skeleton for nav items */}
+        {[1, 2, 3, 4, 5].map((i) => (
+          <div key={i} className="flex flex-col items-center justify-center gap-1 px-3 py-2">
+            <div className="h-5 w-5 rounded bg-muted animate-pulse" />
+            <div className="h-3 w-8 rounded bg-muted animate-pulse" />
+          </div>
+        ))}
+      </div>
+    </nav>
+  );
+}
+
 export default function DashboardLayout({
   children,
 }: {
@@ -25,7 +42,9 @@ export default function DashboardLayout({
           {children}
         </div>
       </main>
-      <BottomNav />
+      <Suspense fallback={<BottomNavFallback />}>
+        <BottomNav />
+      </Suspense>
     </div>
   );
 }

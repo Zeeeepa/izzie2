@@ -6,7 +6,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { EntityCard } from '@/components/dashboard/EntityCard';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 
 interface Entity {
   id: string;
@@ -36,6 +39,12 @@ interface StatsResponse {
   stats: Record<string, number>;
   total: number;
   cached?: boolean;
+}
+
+interface MergeSuggestionsStats {
+  pending: number;
+  accepted: number;
+  rejected: number;
 }
 
 const ENTITY_TYPES = [
@@ -72,6 +81,7 @@ export default function EntitiesPage() {
   const [selectedType, setSelectedType] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [mergeStats, setMergeStats] = useState<MergeSuggestionsStats | null>(null);
 
   // Read URL parameters on mount
   useEffect(() => {
@@ -99,6 +109,21 @@ export default function EntitiesPage() {
       console.error('Failed to fetch entity stats:', error);
     } finally {
       setIsLoadingStats(false);
+    }
+  };
+
+  // Fetch merge suggestions stats
+  const fetchMergeStats = async () => {
+    try {
+      const response = await fetch('/api/entities/merge-suggestions?status=all&limit=1', {
+        credentials: 'include'
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setMergeStats(data.stats);
+      }
+    } catch (error) {
+      console.error('Failed to fetch merge stats:', error);
     }
   };
 
@@ -133,6 +158,7 @@ export default function EntitiesPage() {
   // Fetch stats on mount (once)
   useEffect(() => {
     fetchStats();
+    fetchMergeStats();
   }, []);
 
   // Fetch entities when type filter changes
@@ -167,6 +193,11 @@ export default function EntitiesPage() {
     );
   });
 
+  // Generate entity profile link ID
+  const getEntityProfileId = (entity: Entity): string => {
+    return `${entity.type}:${entity.normalized || entity.value}`;
+  };
+
   return (
     <div>
       {/* Header */}
@@ -174,25 +205,63 @@ export default function EntitiesPage() {
         <div
           style={{ maxWidth: '1280px', margin: '0 auto', padding: '1.5rem 2rem' }}
         >
-          <div>
-            <h1
-              style={{
-                fontSize: '1.875rem',
-                fontWeight: '700',
-                color: '#111',
-              }}
-            >
-              Extracted Entities
-            </h1>
-            <p
-              style={{
-                fontSize: '0.875rem',
-                color: '#6b7280',
-                marginTop: '0.25rem',
-              }}
-            >
-              Browse and filter entities extracted from your emails
-            </p>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+              <h1
+                style={{
+                  fontSize: '1.875rem',
+                  fontWeight: '700',
+                  color: '#111',
+                }}
+              >
+                Extracted Entities
+              </h1>
+              <p
+                style={{
+                  fontSize: '0.875rem',
+                  color: '#6b7280',
+                  marginTop: '0.25rem',
+                }}
+              >
+                Browse and filter entities extracted from your emails
+              </p>
+            </div>
+
+            {/* Merge Suggestions Link */}
+            {mergeStats && mergeStats.pending > 0 && (
+              <Link
+                href="/dashboard/entities/merge"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  padding: '0.5rem 1rem',
+                  backgroundColor: '#fef3c7',
+                  color: '#92400e',
+                  border: '1px solid #fbbf24',
+                  borderRadius: '8px',
+                  fontSize: '0.875rem',
+                  fontWeight: '500',
+                  textDecoration: 'none',
+                  transition: 'all 0.2s',
+                }}
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path d="M8 6l4-4 4 4M8 18l4 4 4-4M12 2v20" />
+                </svg>
+                Review Merge Suggestions
+                <Badge className="bg-amber-600 text-white hover:bg-amber-600">
+                  {mergeStats.pending}
+                </Badge>
+              </Link>
+            )}
           </div>
         </div>
       </div>
@@ -277,7 +346,7 @@ export default function EntitiesPage() {
                         fontWeight: '500',
                       }}
                     >
-                      ✓ Active
+                      Active
                     </div>
                   )}
                 </button>
@@ -477,7 +546,52 @@ export default function EntitiesPage() {
             }}
           >
             {filteredEntities.map((entity, index) => (
-              <EntityCard key={`${entity.id}-${entity.type}-${index}`} entity={entity} />
+              <div key={`${entity.id}-${entity.type}-${index}`} style={{ position: 'relative' }}>
+                <EntityCard entity={entity} />
+                {/* View Profile Link */}
+                <Link
+                  href={`/dashboard/entities/${encodeURIComponent(getEntityProfileId(entity))}`}
+                  style={{
+                    position: 'absolute',
+                    bottom: '1rem',
+                    right: '1rem',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.25rem',
+                    padding: '0.375rem 0.75rem',
+                    backgroundColor: '#f3f4f6',
+                    color: '#374151',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '6px',
+                    fontSize: '0.75rem',
+                    fontWeight: '500',
+                    textDecoration: 'none',
+                    transition: 'all 0.2s',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = '#3b82f6';
+                    e.currentTarget.style.color = '#fff';
+                    e.currentTarget.style.borderColor = '#3b82f6';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = '#f3f4f6';
+                    e.currentTarget.style.color = '#374151';
+                    e.currentTarget.style.borderColor = '#e5e7eb';
+                  }}
+                >
+                  View Profile
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <path d="M5 12h14M12 5l7 7-7 7" />
+                  </svg>
+                </Link>
+              </div>
             ))}
           </div>
         )}
