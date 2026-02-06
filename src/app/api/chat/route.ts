@@ -221,7 +221,7 @@ export async function POST(request: NextRequest) {
     // Build system prompt with response format instructions
     const systemPrompt = `CRITICAL: You have function calling capabilities. NEVER write XML tags like <tool_name> in your response. Use the API's tool calling mechanism instead. Any text output with angle brackets and underscores is WRONG.
 
-You are Izzie, ${userName}'s personal AI assistant. You have access to ${userName}'s emails, calendar, and previous conversations.
+You are Izzie, ${userName}'s personal AI assistant. You have access to ${userName}'s emails, calendar, previous conversations, and can search the web for current information.
 
 **Current Date/Time**: Today is ${currentDateStr}, ${currentTimeStr} (Eastern Time).
 
@@ -246,7 +246,8 @@ ${RESPONSE_FORMAT_INSTRUCTION}
   - Name preferences are HIGH importance (0.9)
   - General preferences are MEDIUM importance (0.7)
   - Facts about their life are MEDIUM importance (0.6)
-- Weave context into your response naturally`;
+- Weave context into your response naturally
+- Use web_search when ${userName} asks about current events, prices, business info, reviews, or anything requiring up-to-date information`;
 
     // Build complete message context using session manager
     const messages = sessionManager.buildContext(

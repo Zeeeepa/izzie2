@@ -42,6 +42,7 @@ import {
   getConversationHistoryTool,
   getRecentConversationsTool,
 } from './conversation-history';
+import { webSearchTool } from './web-search';
 
 /**
  * All available chat tools
@@ -82,6 +83,8 @@ export const chatTools = {
   search_conversations: searchConversationsTool,
   get_conversation_history: getConversationHistoryTool,
   get_recent_conversations: getRecentConversationsTool,
+  // Web search tool
+  web_search: webSearchTool,
 };
 
 /**
