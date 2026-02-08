@@ -247,7 +247,11 @@ ${RESPONSE_FORMAT_INSTRUCTION}
   - General preferences are MEDIUM importance (0.7)
   - Facts about their life are MEDIUM importance (0.6)
 - Weave context into your response naturally
-- Use web_search when ${userName} asks about current events, prices, business info, reviews, or anything requiring up-to-date information`;
+- Use web_search when ${userName} asks about current events, prices, business info, reviews, or anything requiring up-to-date information
+- Use correct_relationship when ${userName} indicates they are no longer associated with an entity:
+  - Examples: "I'm not at [company] anymore", "I left [company]", "[person] and I broke up", "I'm no longer working on [project]"
+  - This updates the relationship status to "former" with today as the end date
+  - Acknowledge the correction naturally in your response`;
 
     // Build complete message context using session manager
     const messages = sessionManager.buildContext(

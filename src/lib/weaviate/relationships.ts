@@ -555,6 +555,122 @@ export async function deleteAllRelationships(userId: string): Promise<number> {
 }
 
 /**
+ * Update a relationship's temporal fields
+ * Used for status transitions (e.g., active -> former) and metadata updates
+ */
+export async function updateRelationship(
+  id: string,
+  userId: string,
+  updates: {
+    status?: RelationshipStatus;
+    endDate?: string;
+    startDate?: string;
+    roleTitle?: string;
+    lastVerified?: string;
+  }
+): Promise<InferredRelationship | null> {
+  const client = await getWeaviateClient();
+
+  // Ensure tenant exists for this user
+  await ensureTenant(RELATIONSHIP_COLLECTION, userId);
+
+  const collection = client.collections.get(RELATIONSHIP_COLLECTION);
+  // Get tenant-specific collection handle
+  const tenantCollection = collection.withTenant(userId);
+
+  try {
+    // First fetch the existing relationship to verify it exists
+    const existing = await tenantCollection.query.fetchObjectById(id, {
+      returnProperties: [
+        'fromEntityType',
+        'fromEntityValue',
+        'toEntityType',
+        'toEntityValue',
+        'relationshipType',
+        'confidence',
+        'evidence',
+        'sourceId',
+        'userId',
+        'inferredAt',
+        'startDate',
+        'endDate',
+        'status',
+        'roleTitle',
+        'lastVerified',
+      ],
+    });
+
+    if (!existing) {
+      console.log(`${LOG_PREFIX} Relationship ${id} not found in tenant ${userId}`);
+      return null;
+    }
+
+    // Build update object with only provided fields
+    const updateData: Record<string, any> = {};
+    if (updates.status !== undefined) updateData.status = updates.status;
+    if (updates.endDate !== undefined) updateData.endDate = updates.endDate;
+    if (updates.startDate !== undefined) updateData.startDate = updates.startDate;
+    if (updates.roleTitle !== undefined) updateData.roleTitle = updates.roleTitle;
+    if (updates.lastVerified !== undefined) updateData.lastVerified = updates.lastVerified;
+
+    // Update the relationship
+    await tenantCollection.data.update({
+      id,
+      properties: updateData,
+    });
+
+    console.log(`${LOG_PREFIX} Updated relationship ${id} (tenant: ${userId}):`, Object.keys(updateData));
+
+    // Return the updated relationship
+    const updated = await tenantCollection.query.fetchObjectById(id, {
+      returnProperties: [
+        'fromEntityType',
+        'fromEntityValue',
+        'toEntityType',
+        'toEntityValue',
+        'relationshipType',
+        'confidence',
+        'evidence',
+        'sourceId',
+        'userId',
+        'inferredAt',
+        'startDate',
+        'endDate',
+        'status',
+        'roleTitle',
+        'lastVerified',
+      ],
+    });
+
+    if (!updated) return null;
+
+    // Cast to any to avoid Weaviate type inference issues
+    const obj: any = updated;
+    return {
+      id: obj.uuid,
+      fromEntityType: obj.properties.fromEntityType as EntityType,
+      fromEntityValue: obj.properties.fromEntityValue,
+      toEntityType: obj.properties.toEntityType as EntityType,
+      toEntityValue: obj.properties.toEntityValue,
+      relationshipType: obj.properties.relationshipType as RelationshipType,
+      confidence: obj.properties.confidence,
+      evidence: obj.properties.evidence,
+      sourceId: obj.properties.sourceId,
+      userId: obj.properties.userId,
+      inferredAt: obj.properties.inferredAt,
+      startDate: obj.properties.startDate || undefined,
+      endDate: obj.properties.endDate || undefined,
+      status: obj.properties.status || 'unknown',
+      roleTitle: obj.properties.roleTitle || undefined,
+      lastVerified: obj.properties.lastVerified || undefined,
+    };
+  } catch (error) {
+    console.error(`${LOG_PREFIX} Failed to update relationship ${id}:`, error);
+    return null;
+  }
+}
+
+/**
  * Delete relationships for a source
  */
 export async function deleteRelationshipsBySource(

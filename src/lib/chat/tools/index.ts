@@ -43,6 +43,7 @@ import {
   getRecentConversationsTool,
 } from './conversation-history';
 import { webSearchTool } from './web-search';
+import { correctRelationshipTool } from './relationship-correction';
 
 /**
  * All available chat tools
@@ -85,6 +86,8 @@ export const chatTools = {
   get_recent_conversations: getRecentConversationsTool,
   // Web search tool
   web_search: webSearchTool,
+  // Relationship correction tool
+  correct_relationship: correctRelationshipTool,
 };
 
 /**
