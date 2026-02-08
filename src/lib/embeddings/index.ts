@@ -54,10 +54,18 @@ export class EmbeddingService {
   }
 
   /**
-   * Check if OpenAI is configured
+   * Check if OpenAI is configured (private)
    */
   private isConfigured(): boolean {
     return !!process.env.OPENROUTER_API_KEY;
+  }
+
+  /**
+   * Check if the embedding service is initialized and ready to use
+   * @returns true if the service is configured and the OpenAI client is available
+   */
+  public isInitialized(): boolean {
+    return this.isConfigured() && this.openai !== null;
   }
 
   /**

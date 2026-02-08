@@ -43,6 +43,14 @@ import { trackUsage } from '@/lib/usage';
 
 const LOG_PREFIX = '[Chat API]';
 
+// Vercel serverless function configuration
+// Chat API requires longer timeout due to:
+// - Weaviate connection and queries (cold start)
+// - Embedding generation (OpenRouter API)
+// - LLM inference with tool calls
+// - Calendar/Email fetching (Google APIs)
+export const maxDuration = 60; // 60 seconds max (Pro plan allows up to 300s)
+
 interface ChatRequest {
   message: string;
   sessionId?: string; // Optional: create new if not provided
@@ -191,6 +199,11 @@ export async function POST(request: NextRequest) {
       `${LOG_PREFIX} Retrieved context: ${context.entities.length} entities, ${context.memories.length} memories`
     );
 
+    // Log context retrieval error if present (for LLM to report to user)
+    if (context.error) {
+      console.warn(`${LOG_PREFIX} Context retrieval error: ${context.error}`);
+    }
+
     // Format entity context for prompt
     const entityContext = formatContextForPrompt(context);
 
@@ -218,10 +231,16 @@ export async function POST(request: NextRequest) {
       timeZone: 'America/New_York',
     });
 
+    // Build context error notice for LLM (if context retrieval failed)
+    const contextErrorNotice = context.error
+      ? `\n**IMPORTANT - Context Retrieval Error**: ${context.error}. If the user asks about information that would require this context (memories, entities, calendar, etc.), please let them know that there was an issue retrieving this information and suggest they try again.\n`
+      : '';
+
     // Build system prompt with response format instructions
     const systemPrompt = `CRITICAL: You have function calling capabilities. NEVER write XML tags like <tool_name> in your response. Use the API's tool calling mechanism instead. Any text output with angle brackets and underscores is WRONG.
 
 You are Izzie, ${userName}'s personal AI assistant. You have access to ${userName}'s emails, calendar, previous conversations, and can search the web for current information.
+${contextErrorNotice}
 
 **Current Date/Time**: Today is ${currentDateStr}, ${currentTimeStr} (Eastern Time).
 

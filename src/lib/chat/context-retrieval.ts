@@ -64,6 +64,8 @@ export interface ChatContext {
   pendingTasks: PendingTask[];
   recentEmails: RecentEmailSummary[];
   recentConversation?: ChatMessage[];
+  /** Error message if context retrieval failed */
+  error?: string;
 }
 
 /**
@@ -389,7 +391,7 @@ export async function retrieveContext(
   } catch (error) {
     console.error(`${LOG_PREFIX} Error retrieving context:`, error);
 
-    // Return empty context on error
+    // Return empty context with error message for LLM to report to user
     return {
       entities: [],
       memories: [],
@@ -397,6 +399,7 @@ export async function retrieveContext(
       pendingTasks: [],
       recentEmails: [],
       recentConversation: opts.includeRecentMessages ? recentMessages : undefined,
+      error: error instanceof Error ? error.message : 'Unknown error retrieving context',
     };
   }
 }
