@@ -136,17 +136,16 @@ export default function ChatPage() {
             }
 
             // Handle tool execution events - update progress indicator
-            if (data.tool_execution) {
-              const toolName = data.tool_execution.tool;
+            if (data.type === 'tool_execution') {
+              const toolName = data.tool;
               // Map tool names to user-friendly progress messages
               const toolProgressMessages: Record<string, string> = {
                 research: '...researching your emails and data',
                 search_entities: '...searching your contacts and companies',
                 query_graph: '...analyzing relationships',
                 get_calendar: '...checking your calendar',
-                default: `...running ${toolName}`,
               };
-              const progressMsg = toolProgressMessages[toolName] || toolProgressMessages.default;
+              const progressMsg = toolProgressMessages[toolName] || `...running ${toolName}`;
 
               setMessages((prev) => {
                 const updated = [...prev];
@@ -156,6 +155,11 @@ export default function ChatPage() {
                 }
                 return updated;
               });
+              continue;
+            }
+
+            // Skip tool result events
+            if (data.type === 'tool_result') {
               continue;
             }
 
