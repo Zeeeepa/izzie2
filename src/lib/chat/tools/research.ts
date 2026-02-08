@@ -122,7 +122,7 @@ export const researchTool = {
           taskId: task.id,
         };
       } else {
-        // Still running - provide status
+        // Still running - provide status with progress indicator
         const statusMsg = formatResearchStatus(
           updatedTask || {
             id: task.id,
@@ -132,8 +132,12 @@ export const researchTool = {
           }
         );
 
+        // Format sources for display
+        const sourcesStr = validated.sources?.join(', ') || 'web, email, drive';
+        const progressLine = `...researching ${sourcesStr}`;
+
         return {
-          message: `${statusMsg}\n\nI'm conducting research on "${validated.query}". This may take 30-60 seconds. I'll update you when it's complete.\n\n*Task ID: ${task.id}*`,
+          message: `${progressLine}\n\n${statusMsg}\n\nI'm conducting research on "${validated.query}". This may take 30-60 seconds. I'll update you when it's complete.\n\n*Task ID: ${task.id}*`,
           taskId: task.id,
         };
       }
