@@ -25,6 +25,7 @@ export interface ResearchTaskPayload {
   maxDepth?: number;
   focusAreas?: string[];
   excludeDomains?: string[];
+  sources?: string[];
 }
 
 /**
@@ -47,6 +48,7 @@ export const researchTask = inngest.createFunction(
       maxDepth = 1,
       focusAreas,
       excludeDomains,
+      sources,
     } = event.data as ResearchTaskPayload;
 
     logger.info('Starting research task', {
@@ -136,6 +138,7 @@ export const researchTask = inngest.createFunction(
           maxDepth,
           focusAreas,
           excludeDomains,
+          sources: sources as any,
         };
 
         logger.info('Executing research agent', { query, maxSources });
