@@ -14,6 +14,7 @@ interface Message {
   content: string;
   timestamp: Date;
   entities?: EntityReference[];
+  toolProgress?: string;
 }
 
 interface EntityReference {
@@ -132,6 +133,30 @@ export default function ChatPage() {
             if (data.error) {
               setError(data.error);
               break;
+            }
+
+            // Handle tool execution events - update progress indicator
+            if (data.tool_execution) {
+              const toolName = data.tool_execution.tool;
+              // Map tool names to user-friendly progress messages
+              const toolProgressMessages: Record<string, string> = {
+                research: '...researching your emails and data',
+                search_entities: '...searching your contacts and companies',
+                query_graph: '...analyzing relationships',
+                get_calendar: '...checking your calendar',
+                default: `...running ${toolName}`,
+              };
+              const progressMsg = toolProgressMessages[toolName] || toolProgressMessages.default;
+
+              setMessages((prev) => {
+                const updated = [...prev];
+                const lastMessage = updated[updated.length - 1];
+                if (lastMessage?.role === 'assistant' && !lastMessage.content) {
+                  lastMessage.toolProgress = progressMsg;
+                }
+                return updated;
+              });
+              continue;
             }
 
             // Accumulate content but don't display it yet (prevents showing partial JSON)
@@ -347,7 +372,9 @@ export default function ChatPage() {
                   >
                     <div style={{ whiteSpace: 'pre-wrap', wordWrap: 'break-word' }}>
                       {message.content || (message.role === 'assistant' && isLoading ? (
-                        <span style={{ color: '#6b7280' }}>Thinking...</span>
+                        <span style={{ color: '#6b7280' }}>
+                          {message.toolProgress || 'Thinking...'}
+                        </span>
                       ) : null)}
                     </div>
 

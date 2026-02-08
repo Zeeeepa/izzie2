@@ -96,9 +96,9 @@ export const researchTool = {
 
       console.log(`[Research Tool] Started research task ${task.id}`);
 
-      // Wait a moment to see if research completes quickly (< 5 seconds)
+      // Wait a moment to see if research completes quickly
       // This provides better UX for simple queries
-      await new Promise((resolve) => setTimeout(resolve, 5000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
 
       // Check if task completed in that time
       const updatedTask = await getTask(task.id);
