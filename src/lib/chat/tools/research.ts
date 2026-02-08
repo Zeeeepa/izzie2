@@ -96,51 +96,80 @@ export const researchTool = {
 
       console.log(`[Research Tool] Started research task ${task.id}`);
 
-      // Wait a moment to see if research completes quickly
-      // This provides better UX for simple queries
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      // Poll for task completion
+      // Vercel has a 60s timeout, so we'll poll for up to 55 seconds
+      const MAX_WAIT_MS = 55000; // 55 seconds max wait
+      const POLL_INTERVAL_MS = 2000; // Check every 2 seconds
+      const startTime = Date.now();
 
-      // Check if task completed in that time
-      const updatedTask = await getTask(task.id);
+      console.log(`[Research Tool] Polling for task ${task.id} completion (max ${MAX_WAIT_MS / 1000}s)`);
 
-      if (updatedTask?.status === 'completed' && updatedTask.output) {
-        // Quick completion - return results immediately
-        const output = updatedTask.output as unknown as ResearchOutput;
-        const formattedResults = formatResearchResults(output);
+      while (Date.now() - startTime < MAX_WAIT_MS) {
+        // Wait before checking (start with a short delay to let task initialize)
+        const waitTime = Date.now() - startTime < 2000 ? 1000 : POLL_INTERVAL_MS;
+        await new Promise((resolve) => setTimeout(resolve, waitTime));
 
-        return {
-          message: `${formatResearchStatus(updatedTask)}\n\n${formattedResults}`,
-          taskId: task.id,
-        };
-      } else if (updatedTask?.status === 'failed') {
-        // Quick failure
-        const errorMsg = formatResearchError(
-          updatedTask.error || 'Research failed unexpectedly'
+        // Check task status
+        const updatedTask = await getTask(task.id);
+
+        if (!updatedTask) {
+          console.error(`[Research Tool] Task ${task.id} not found during polling`);
+          break;
+        }
+
+        const elapsedSec = ((Date.now() - startTime) / 1000).toFixed(1);
+        console.log(
+          `[Research Tool] Task ${task.id} status: ${updatedTask.status}, progress: ${updatedTask.progress}% (${elapsedSec}s elapsed)`
         );
-        return {
-          message: errorMsg,
-          taskId: task.id,
-        };
-      } else {
-        // Still running - provide status with progress indicator
-        const statusMsg = formatResearchStatus(
-          updatedTask || {
+
+        if (updatedTask.status === 'completed' && updatedTask.output) {
+          // Research completed - return results
+          const output = updatedTask.output as unknown as ResearchOutput;
+          const formattedResults = formatResearchResults(output);
+
+          console.log(`[Research Tool] Task ${task.id} completed after ${elapsedSec}s`);
+
+          return {
+            message: `${formatResearchStatus(updatedTask)}\n\n${formattedResults}`,
+            taskId: task.id,
+          };
+        } else if (updatedTask.status === 'failed') {
+          // Research failed - return error
+          const errorMsg = formatResearchError(
+            updatedTask.error || 'Research failed unexpectedly'
+          );
+
+          console.log(`[Research Tool] Task ${task.id} failed after ${elapsedSec}s: ${updatedTask.error}`);
+
+          return {
+            message: errorMsg,
+            taskId: task.id,
+          };
+        }
+
+        // Task still running - continue polling
+      }
+
+      // Timeout - task is still running after MAX_WAIT_MS
+      // Return a message indicating the research is still in progress
+      const finalTask = await getTask(task.id);
+      const statusMsg = finalTask
+        ? formatResearchStatus(finalTask)
+        : formatResearchStatus({
             id: task.id,
             status: 'running',
             progress: 0,
-            currentStep: 'Initializing',
-          }
-        );
+            currentStep: 'Processing',
+          });
 
-        // Format sources for display
-        const sourcesStr = validated.sources?.join(', ') || 'web, email, drive';
-        const progressLine = `...researching ${sourcesStr}`;
+      const sourcesStr = validated.sources?.join(', ') || 'web, email, drive';
 
-        return {
-          message: `${progressLine}\n\n${statusMsg}\n\nI'm conducting research on "${validated.query}". This may take 30-60 seconds. I'll update you when it's complete.\n\n*Task ID: ${task.id}*`,
-          taskId: task.id,
-        };
-      }
+      console.log(`[Research Tool] Task ${task.id} timed out after ${MAX_WAIT_MS / 1000}s, still running`);
+
+      return {
+        message: `${statusMsg}\n\n**Research is taking longer than expected.**\n\nI'm still researching "${validated.query}" across ${sourcesStr}. This complex query requires additional processing time.\n\nYou can check the results later by asking: "What's the status of my research?"\n\n*Task ID: ${task.id}*`,
+        taskId: task.id,
+      };
     } catch (error) {
       console.error('[Research Tool] Failed to execute:', error);
 
