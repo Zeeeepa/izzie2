@@ -6,7 +6,8 @@
 import { BaseAgent } from '@/agents/base/agent';
 import type { AgentContext, AgentResult } from '@/agents/base/types';
 import { webSearch, batchFetchAndCache } from '@/lib/search';
-import { getServiceAccountAuth } from '@/lib/google/auth';
+import { google } from 'googleapis';
+import { getGoogleTokens, updateGoogleTokens } from '@/lib/auth';
 import { planResearch, getPlanProgress } from './planner';
 import { analyzeSources, rankSources } from './analyzer';
 import { synthesize, generateCitations, calculateQualityScore } from './synthesizer';
@@ -319,11 +320,39 @@ export class ResearchAgent extends BaseAgent<ResearchInput, ResearchOutput> {
   ): Promise<ResearchSourceResult[]> {
     const results: ResearchSourceResult[] = [];
 
-    // Get auth for Google services if needed
-    let auth: Awaited<ReturnType<typeof getServiceAccountAuth>> | null = null;
+    // Get OAuth2 auth for Google services if needed
+    let auth: InstanceType<typeof google.auth.OAuth2> | null = null;
     if (sources.includes('email') || sources.includes('drive')) {
       try {
-        auth = await getServiceAccountAuth(userId);
+        const tokens = await getGoogleTokens(userId);
+        if (tokens) {
+          const oauth2Client = new google.auth.OAuth2(
+            process.env.GOOGLE_CLIENT_ID,
+            process.env.GOOGLE_CLIENT_SECRET,
+            process.env.NEXT_PUBLIC_APP_URL
+              ? `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/callback/google`
+              : 'http://localhost:3300/api/auth/callback/google'
+          );
+
+          oauth2Client.setCredentials({
+            access_token: tokens.accessToken || undefined,
+            refresh_token: tokens.refreshToken || undefined,
+            expiry_date: tokens.accessTokenExpiresAt
+              ? new Date(tokens.accessTokenExpiresAt).getTime()
+              : undefined,
+          });
+
+          // Auto-refresh tokens if needed
+          oauth2Client.on('tokens', async (newTokens) => {
+            console.log('[ResearchAgent] Tokens refreshed for user:', userId);
+            await updateGoogleTokens(userId, newTokens);
+          });
+
+          auth = oauth2Client;
+          console.log('[ResearchAgent] OAuth2 auth configured for user:', userId);
+        } else {
+          console.log('[ResearchAgent] No Google tokens found for user:', userId);
+        }
       } catch (error) {
         console.error('[ResearchAgent] Failed to get Google auth:', error);
         // Continue without email/drive sources
