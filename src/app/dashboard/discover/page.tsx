@@ -185,6 +185,9 @@ export default function DiscoverPage() {
   // Track which items are currently being submitted (for batch submission)
   const [isSubmittingBatch, setIsSubmittingBatch] = useState(false);
 
+  // Auto-train loading state
+  const [isAutoTraining, setIsAutoTraining] = useState(false);
+
   // ============================================================
   // Discovery API Handlers
   // ============================================================
@@ -315,6 +318,32 @@ export default function DiscoverPage() {
     } catch (err) {
       console.error('Failed to cancel:', err);
       toast.error('Failed to cancel discovery');
+    }
+  };
+
+  const startAutoTrain = async () => {
+    setIsAutoTraining(true);
+    try {
+      const res = await fetch('/api/train/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'auto_train' }),
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        toast.success('Auto-training started! This may take a few moments.');
+        // Refresh status to get updated training state
+        await fetchStatus();
+      } else {
+        toast.error(data.error || 'Failed to start auto-training');
+      }
+    } catch (err) {
+      console.error('Failed to start auto-training:', err);
+      toast.error('Failed to start auto-training');
+    } finally {
+      setIsAutoTraining(false);
     }
   };
 
@@ -1534,19 +1563,24 @@ export default function DiscoverPage() {
               </p>
             </div>
             <button
-              disabled={!canAutoTrain}
+              onClick={startAutoTrain}
+              disabled={!canAutoTrain || isAutoTraining}
               style={{
                 padding: '0.625rem 1rem',
                 borderRadius: '8px',
                 border: 'none',
-                backgroundColor: canAutoTrain ? '#10b981' : '#e5e7eb',
-                color: canAutoTrain ? '#fff' : '#9ca3af',
+                backgroundColor: canAutoTrain && !isAutoTraining ? '#10b981' : '#e5e7eb',
+                color: canAutoTrain && !isAutoTraining ? '#fff' : '#9ca3af',
                 fontSize: '0.875rem',
                 fontWeight: '600',
-                cursor: canAutoTrain ? 'pointer' : 'not-allowed',
+                cursor: canAutoTrain && !isAutoTraining ? 'pointer' : 'not-allowed',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
               }}
             >
-              {canAutoTrain ? 'Start Auto-Train' : `Auto-Train (need ${feedbackNeeded} more)`}
+              {isAutoTraining && <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />}
+              {isAutoTraining ? 'Training...' : canAutoTrain ? 'Start Auto-Train' : `Auto-Train (need ${feedbackNeeded} more)`}
             </button>
           </div>
 
