@@ -6,6 +6,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { Copy, Check } from 'lucide-react';
 
 interface Message {
   id: string;
@@ -34,6 +35,7 @@ export default function ChatPage() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -209,6 +211,18 @@ export default function ChatPage() {
     setError(null);
   };
 
+  /**
+   * Copy transcript to clipboard
+   */
+  const copyTranscript = () => {
+    const transcript = messages
+      .map((m) => `${m.role === 'user' ? 'You' : 'Izzie'}: ${m.content}`)
+      .join('\n\n');
+    navigator.clipboard.writeText(transcript);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 64px)' }}>
       {/* Header */}
@@ -224,20 +238,42 @@ export default function ChatPage() {
               </p>
             </div>
             {messages.length > 0 && (
-              <button
-                onClick={clearChat}
-                style={{
-                  padding: '0.5rem 1rem',
-                  backgroundColor: '#fff',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '6px',
-                  fontSize: '0.875rem',
-                  color: '#374151',
-                  cursor: 'pointer',
-                }}
-              >
-                Clear Chat
-              </button>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button
+                  onClick={copyTranscript}
+                  title={copied ? 'Copied!' : 'Copy transcript'}
+                  style={{
+                    padding: '0.5rem 0.75rem',
+                    backgroundColor: copied ? '#dcfce7' : '#fff',
+                    border: `1px solid ${copied ? '#22c55e' : '#d1d5db'}`,
+                    borderRadius: '6px',
+                    fontSize: '0.875rem',
+                    color: copied ? '#15803d' : '#374151',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.375rem',
+                    transition: 'all 0.2s',
+                  }}
+                >
+                  {copied ? <Check size={16} /> : <Copy size={16} />}
+                  {copied ? 'Copied!' : 'Copy'}
+                </button>
+                <button
+                  onClick={clearChat}
+                  style={{
+                    padding: '0.5rem 1rem',
+                    backgroundColor: '#fff',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '6px',
+                    fontSize: '0.875rem',
+                    color: '#374151',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Clear Chat
+                </button>
+              </div>
             )}
           </div>
         </div>

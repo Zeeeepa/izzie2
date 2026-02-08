@@ -13,7 +13,7 @@ import { MobileUserInfo } from './MobileUserInfo';
 // Fallback for BottomNav during static generation
 function BottomNavFallback() {
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t bg-background/50 backdrop-blur-md h-16">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t bg-blue-50/70 dark:bg-blue-950/50 backdrop-blur-md h-16">
       <div className="flex h-16 items-center justify-around">
         {/* Placeholder skeleton for nav items */}
         {[1, 2, 3, 4, 5].map((i) => (
