@@ -121,7 +121,33 @@ async function syncTables() {
     await pool.query('CREATE INDEX IF NOT EXISTS chat_sessions_created_at_idx ON chat_sessions(created_at)');
     await pool.query('CREATE INDEX IF NOT EXISTS chat_sessions_updated_at_idx ON chat_sessions(updated_at)');
 
-    // Step 6: Create telegram tables
+    // Step 6: Create chat_messages table
+    console.log('📝 Creating chat_messages table...');
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS chat_messages (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+        session_id uuid NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+        user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        role text NOT NULL,
+        content text NOT NULL,
+        embedding vector(1536),
+        created_at timestamp DEFAULT now() NOT NULL,
+        metadata jsonb
+      )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS chat_messages_session_id_idx ON chat_messages(session_id)');
+    await pool.query('CREATE INDEX IF NOT EXISTS chat_messages_user_id_idx ON chat_messages(user_id)');
+    await pool.query('CREATE INDEX IF NOT EXISTS chat_messages_role_idx ON chat_messages(role)');
+    await pool.query('CREATE INDEX IF NOT EXISTS chat_messages_created_at_idx ON chat_messages(created_at)');
+    // IVFFlat vector index for similarity search - requires pgvector extension
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS chat_messages_embedding_idx
+      ON chat_messages
+      USING ivfflat (embedding vector_cosine_ops)
+      WITH (lists = 100)
+    `);
+
+    // Step 7: Create telegram tables
     console.log('📝 Creating telegram tables...');
     await pool.query(`
       CREATE TABLE IF NOT EXISTS telegram_links (
@@ -607,6 +633,7 @@ async function syncTables() {
     const expectedTables = [
       'extraction_progress',
       'chat_sessions',
+      'chat_messages',
       'conversations',
       'memory_entries',
       'telegram_links',
