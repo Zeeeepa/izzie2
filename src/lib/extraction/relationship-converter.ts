@@ -32,6 +32,8 @@ export function convertToInferredRelationship(
     sourceId,
     inferredAt: new Date().toISOString(),
     userId,
+    // Default to 'active' for newly extracted relationships
+    status: 'active',
   };
 }
 

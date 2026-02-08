@@ -213,6 +213,8 @@ export async function POST(request: NextRequest) {
               sourceId: email.id,
               inferredAt: new Date().toISOString(),
               userId,
+              // Default to 'active' for newly extracted relationships
+              status: 'active' as const,
             }));
             const savedCount = await saveRelationships(inferredRelationships, userId);
             itemsFound += savedCount;
@@ -277,6 +279,8 @@ export async function POST(request: NextRequest) {
               sourceId: event.id,
               inferredAt: new Date().toISOString(),
               userId,
+              // Default to 'active' for newly extracted relationships
+              status: 'active' as const,
             }));
             const savedCount = await saveRelationships(inferredRelationships, userId);
             calendarItemsFound += savedCount;

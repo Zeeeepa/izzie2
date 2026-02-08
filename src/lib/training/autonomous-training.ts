@@ -377,6 +377,8 @@ async function processEmailsForDay(
           sourceId: email.id,
           inferredAt: new Date().toISOString(),
           userId,
+          // Default to 'active' for newly extracted relationships
+          status: 'active' as const,
         }));
         const savedCount = await saveRelationships(inferredRelationships, userId);
         itemsFound += savedCount;
@@ -454,6 +456,8 @@ async function processCalendarForDay(
           sourceId: event.id,
           inferredAt: new Date().toISOString(),
           userId,
+          // Default to 'active' for newly extracted relationships
+          status: 'active' as const,
         }));
         const savedCount = await saveRelationships(inferredRelationships, userId);
         itemsFound += savedCount;

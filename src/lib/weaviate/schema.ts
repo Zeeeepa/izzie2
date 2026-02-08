@@ -259,6 +259,12 @@ export async function initializeSchema(): Promise<void> {
           { name: 'sourceId', dataType: 'text', description: 'Source email/event ID' },
           { name: 'userId', dataType: 'text', description: 'User ID who owns this relationship' },
           { name: 'inferredAt', dataType: 'text', description: 'ISO timestamp of inference' },
+          // Temporal qualifier fields (Phase: Temporal Relationships)
+          { name: 'startDate', dataType: 'text', description: 'ISO date when relationship began' },
+          { name: 'endDate', dataType: 'text', description: 'ISO date when relationship ended (null = ongoing)' },
+          { name: 'status', dataType: 'text', description: 'Relationship status: active | former | future | unknown' },
+          { name: 'roleTitle', dataType: 'text', description: 'Position/role name if applicable' },
+          { name: 'lastVerified', dataType: 'text', description: 'ISO timestamp of last confirmation' },
         ] as any,
         multiTenancy: weaviate.configure.multiTenancy({ enabled: true }),
       });

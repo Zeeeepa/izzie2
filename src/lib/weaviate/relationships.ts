@@ -13,6 +13,7 @@ import type {
   GraphNode,
   GraphEdge,
   RelationshipType,
+  RelationshipStatus,
 } from '../relationships/types';
 import type { EntityType } from '../extraction/types';
 
@@ -152,6 +153,12 @@ export async function saveRelationships(
     sourceId: rel.sourceId,
     userId,
     inferredAt: rel.inferredAt || new Date().toISOString(),
+    // Temporal qualifier fields - default to 'active' for new relationships
+    startDate: rel.startDate || null,
+    endDate: rel.endDate || null,
+    status: rel.status || 'active',
+    roleTitle: rel.roleTitle || null,
+    lastVerified: rel.lastVerified || null,
   }));
 
   try {
@@ -213,6 +220,12 @@ export async function getEntityRelationships(
         'sourceId',
         'userId',
         'inferredAt',
+        // Temporal qualifier fields
+        'startDate',
+        'endDate',
+        'status',
+        'roleTitle',
+        'lastVerified',
       ],
     });
 
@@ -228,6 +241,12 @@ export async function getEntityRelationships(
       sourceId: obj.properties.sourceId,
       userId: obj.properties.userId,
       inferredAt: obj.properties.inferredAt,
+      // Temporal qualifier fields
+      startDate: obj.properties.startDate || undefined,
+      endDate: obj.properties.endDate || undefined,
+      status: obj.properties.status || 'unknown',
+      roleTitle: obj.properties.roleTitle || undefined,
+      lastVerified: obj.properties.lastVerified || undefined,
     }));
 
     console.log(`${LOG_PREFIX} Found ${relationships.length} relationships`);
@@ -271,6 +290,12 @@ export async function getAllRelationships(
         'sourceId',
         'userId',
         'inferredAt',
+        // Temporal qualifier fields
+        'startDate',
+        'endDate',
+        'status',
+        'roleTitle',
+        'lastVerified',
       ],
     });
 
@@ -286,6 +311,12 @@ export async function getAllRelationships(
       sourceId: obj.properties.sourceId,
       userId: obj.properties.userId,
       inferredAt: obj.properties.inferredAt,
+      // Temporal qualifier fields
+      startDate: obj.properties.startDate || undefined,
+      endDate: obj.properties.endDate || undefined,
+      status: obj.properties.status || 'unknown',
+      roleTitle: obj.properties.roleTitle || undefined,
+      lastVerified: obj.properties.lastVerified || undefined,
     }));
 
     console.log(`${LOG_PREFIX} Found ${relationships.length} total relationships`);

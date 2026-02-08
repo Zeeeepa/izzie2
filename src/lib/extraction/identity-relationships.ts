@@ -72,6 +72,8 @@ export async function createIdentityRelationships(
           sourceId: 'identity-resolution',
           inferredAt: new Date().toISOString(),
           userId,
+          // SAME_AS relationships are always active (identity doesn't change)
+          status: 'active',
         });
 
         console.log(

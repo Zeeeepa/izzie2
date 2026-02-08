@@ -1,0 +1,48 @@
+-- Migration: 0032_add_temporal_relationships.sql
+-- Phase: Temporal Relationships - Adds temporal qualifier fields to relationships
+--
+-- NOTE: Relationships are stored in Weaviate, not PostgreSQL.
+-- This migration documents the schema changes for completeness.
+--
+-- Weaviate Relationship Collection Schema Changes:
+-- ================================================
+-- The following fields have been added to the Relationship collection in Weaviate:
+--
+-- 1. startDate (text)     - ISO date when relationship began
+-- 2. endDate (text)       - ISO date when relationship ended (null = ongoing)
+-- 3. status (text)        - Relationship status: 'active' | 'former' | 'future' | 'unknown'
+-- 4. roleTitle (text)     - Position/role name if applicable (e.g., "CTO", "Senior Engineer")
+-- 5. lastVerified (text)  - ISO timestamp of last confirmation
+--
+-- Default Behavior:
+-- =================
+-- - New relationships default to status: 'active'
+-- - Existing relationships (without status) are treated as status: 'unknown'
+-- - endDate = null with status = 'active' means the relationship is ongoing
+--
+-- Usage Example:
+-- ==============
+-- To transition "I'm not at Duetto anymore":
+--   UPDATE relationship SET endDate = '2026-02-07', status = 'former'
+--   WHERE toEntityValue = 'duetto' AND relationshipType = 'WORKS_FOR' AND status = 'active'
+--
+-- Weaviate Schema Update:
+-- =======================
+-- If the Weaviate Relationship collection already exists, you may need to:
+-- 1. Delete and recreate the collection (losing existing data), OR
+-- 2. Run a schema update script to add the new properties
+--
+-- For existing deployments, run:
+--   npm run weaviate:schema-update (if available)
+-- OR manually add properties via Weaviate API/Console
+--
+-- TypeScript Types Updated:
+-- =========================
+-- - src/lib/relationships/types.ts: Added RelationshipStatus type and temporal fields to InferredRelationship
+-- - src/lib/weaviate/relationships.ts: Updated save/query functions to handle temporal fields
+-- - src/lib/weaviate/schema.ts: Added temporal properties to Relationship collection definition
+
+-- No PostgreSQL changes required for this migration.
+-- This file serves as documentation of the Weaviate schema evolution.
+
+SELECT 'Migration 0032: Temporal relationships schema documented (Weaviate-only change)' AS status;

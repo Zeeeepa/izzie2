@@ -1,5 +1,8 @@
 import type { EntityType } from '../extraction/types';
 
+// Relationship status for temporal tracking
+export type RelationshipStatus = 'active' | 'former' | 'future' | 'unknown';
+
 // Relationship types between entities
 export type RelationshipType =
   // Person relationships (professional)
@@ -40,6 +43,13 @@ export interface InferredRelationship {
   sourceId: string;             // Email/doc this came from
   inferredAt: string;           // ISO timestamp
   userId: string;
+
+  // Temporal qualifiers (Phase: Temporal Relationships)
+  startDate?: string;           // ISO date when relationship began
+  endDate?: string;             // ISO date when relationship ended (null = ongoing if active)
+  status: RelationshipStatus;   // Current temporal state of relationship
+  roleTitle?: string;           // Position/role name (e.g., "CTO", "Senior Engineer")
+  lastVerified?: string;        // ISO timestamp when last confirmed
 }
 
 export interface RelationshipInferenceResult {
