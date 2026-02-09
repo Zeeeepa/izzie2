@@ -51,6 +51,9 @@
     "env:validate": "tsx scripts/env-validate.ts",
     "check:relationships": "tsx scripts/check-relationships.ts",
     "check:user-graph": "tsx scripts/check-user-graph.ts",
+    "check:research": "tsx scripts/check-research-status.ts",
+    "clear:research": "tsx scripts/clear-stuck-research-tasks.ts",
+    "clear:research:dry": "tsx scripts/clear-stuck-research-tasks.ts --dry-run",
     "mcp-server": "tsx src/mcp-server/index.ts",
     "onboarding": "tsx src/onboarding/server.ts",
     "onboarding:train": "tsx src/onboarding/scripts/train.ts"
