@@ -4,7 +4,6 @@
  */
 
 import { z } from 'zod';
-import { zodToJsonSchema } from 'zod-to-json-schema';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { McpAuthContext } from './auth.js';
 
@@ -154,17 +153,16 @@ const mcpTools: McpToolDefinition[] = [
 
 /**
  * Convert Zod schema to JSON Schema format for MCP
- * Uses zod-to-json-schema for conversion
+ * Uses Zod 4's built-in toJSONSchema() method
  */
 function zodToJsonSchemaShape(schema: z.ZodType<unknown>): Record<string, unknown> {
+  // Zod 4 has built-in JSON Schema conversion
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const jsonSchema = zodToJsonSchema(schema as any, { target: 'openAi' });
+  const jsonSchema = (schema as any).toJSONSchema();
 
-  // Extract properties from the JSON schema
+  // Return the schema object for MCP to use
   if (typeof jsonSchema === 'object' && jsonSchema !== null) {
-    const schemaObj = jsonSchema as Record<string, unknown>;
-    // Return the schema object for MCP to use
-    return schemaObj;
+    return jsonSchema as Record<string, unknown>;
   }
 
   return {};

@@ -138,13 +138,14 @@ export async function executeChatTool(
  * @returns Array of tool definitions
  */
 export function getChatToolDefinitions() {
-  const { zodToJsonSchema } = require('zod-to-json-schema');
+  // Zod 4 has built-in toJSONSchema() method - no external library needed
+  // Note: zod-to-json-schema v3.x doesn't support Zod 4
   return Object.entries(chatTools).map(([name, tool]) => ({
     type: 'function' as const,
     function: {
       name,
       description: tool.description,
-      parameters: zodToJsonSchema(tool.parameters, { target: 'openAi' }) as Record<string, unknown>,
+      parameters: tool.parameters.toJSONSchema() as Record<string, unknown>,
     },
   }));
 }
