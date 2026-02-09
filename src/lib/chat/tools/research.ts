@@ -93,7 +93,7 @@ export const researchTool = {
 
       // Send initial progress if callback provided
       onProgress?.({
-        step: 'Initializing research',
+        step: 'Initializing research agent...',
         progress: 0,
         status: 'starting',
       });

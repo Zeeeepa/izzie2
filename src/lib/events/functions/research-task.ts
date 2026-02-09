@@ -36,6 +36,10 @@ export const researchTask = inngest.createFunction(
     id: 'research-task',
     name: 'Research Task Execution',
     retries: 2,
+    concurrency: {
+      limit: 1, // Only one research task at a time
+      key: 'event.data.userId', // Per-user serialization
+    },
   },
   { event: 'izzie/research.request' },
   async ({ event, step, logger }) => {

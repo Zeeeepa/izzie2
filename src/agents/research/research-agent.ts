@@ -56,6 +56,12 @@ export class ResearchAgent extends BaseAgent<ResearchInput, ResearchOutput> {
     } = input;
 
     try {
+      // Step 0: Initialize research (0% progress)
+      await context.updateProgress({
+        progress: 0,
+        currentStep: 'Initializing research agent',
+      });
+
       // Step 1: Plan research (10% progress)
       await context.updateProgress({
         progress: 10,
