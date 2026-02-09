@@ -140,6 +140,20 @@ export interface SendMessageParams {
 }
 
 /**
+ * Edit message text request parameters
+ */
+export interface EditMessageTextParams {
+  chat_id?: number | string;
+  message_id?: number | bigint;
+  inline_message_id?: string;
+  text: string;
+  parse_mode?: 'HTML' | 'Markdown' | 'MarkdownV2';
+  entities?: TelegramMessageEntity[];
+  disable_web_page_preview?: boolean;
+  reply_markup?: InlineKeyboardMarkup;
+}
+
+/**
  * Inline keyboard button
  */
 export interface InlineKeyboardButton {

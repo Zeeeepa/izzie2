@@ -9,6 +9,7 @@ import type {
   TelegramApiResponse,
   TelegramMessage,
   SendMessageParams,
+  EditMessageTextParams,
   SetWebhookParams,
   WebhookInfo,
 } from './types';
@@ -78,6 +79,37 @@ export class TelegramBot {
       text,
       parse_mode: parseMode,
       message_thread_id: messageThreadId,
+    });
+  }
+
+  /**
+   * Edit the text of an existing message
+   */
+  async editMessageText(params: EditMessageTextParams): Promise<TelegramMessage | boolean> {
+    return this.request<TelegramMessage | boolean>(
+      'editMessageText',
+      params as unknown as Record<string, unknown>
+    );
+  }
+
+  /**
+   * Edit an existing message text (convenience method)
+   * @param chatId - Chat ID
+   * @param messageId - Message ID to edit
+   * @param text - New text content
+   * @param parseMode - Optional parse mode
+   */
+  async edit(
+    chatId: number | string,
+    messageId: number | bigint,
+    text: string,
+    parseMode?: 'HTML' | 'Markdown' | 'MarkdownV2'
+  ): Promise<TelegramMessage | boolean> {
+    return this.editMessageText({
+      chat_id: chatId,
+      message_id: messageId,
+      text,
+      parse_mode: parseMode,
     });
   }
 
