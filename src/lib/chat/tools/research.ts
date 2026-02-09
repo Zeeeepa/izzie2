@@ -25,6 +25,15 @@ export const ResearchSource = {
 export type ResearchSourceType = (typeof ResearchSource)[keyof typeof ResearchSource];
 
 /**
+ * Progress update callback type for streaming progress to client
+ */
+export type ProgressCallback = (progress: {
+  step: string;
+  progress: number;
+  status: string;
+}) => void;
+
+/**
  * Research tool parameter schema
  */
 export const researchToolSchema = z.object({
@@ -60,14 +69,16 @@ export const researchTool = {
   parameters: researchToolSchema,
 
   /**
-   * Execute research task
+   * Execute research task with optional progress callback for SSE streaming
    * @param params - Tool parameters
    * @param userId - User ID who initiated the research
+   * @param onProgress - Optional callback for streaming progress updates
    * @returns Status message with task ID for tracking
    */
   async execute(
     params: ResearchToolParams,
-    userId: string
+    userId: string,
+    onProgress?: ProgressCallback
   ): Promise<{ message: string; taskId: string }> {
     try {
       // Validate parameters
@@ -79,6 +90,13 @@ export const researchTool = {
       });
 
       console.log(`[Research Tool] Created task ${task.id} for user ${userId}`);
+
+      // Send initial progress if callback provided
+      onProgress?.({
+        step: 'Initializing research',
+        progress: 0,
+        status: 'starting',
+      });
 
       // Send Inngest event to start research in background
       await inngest.send({
@@ -96,17 +114,25 @@ export const researchTool = {
 
       console.log(`[Research Tool] Started research task ${task.id}`);
 
+      onProgress?.({
+        step: 'Research task queued',
+        progress: 5,
+        status: 'queued',
+      });
+
       // Poll for task completion
       // Vercel has a 60s timeout, so we'll poll for up to 55 seconds
       const MAX_WAIT_MS = 55000; // 55 seconds max wait
-      const POLL_INTERVAL_MS = 2000; // Check every 2 seconds
+      const POLL_INTERVAL_MS = 1500; // Check every 1.5 seconds (faster feedback)
       const startTime = Date.now();
+      let lastProgress = 5;
+      let lastStep = 'Waiting for task to start';
 
       console.log(`[Research Tool] Polling for task ${task.id} completion (max ${MAX_WAIT_MS / 1000}s)`);
 
       while (Date.now() - startTime < MAX_WAIT_MS) {
-        // Wait before checking (start with a short delay to let task initialize)
-        const waitTime = Date.now() - startTime < 2000 ? 1000 : POLL_INTERVAL_MS;
+        // Wait before checking (shorter initial delay)
+        const waitTime = Date.now() - startTime < 1500 ? 500 : POLL_INTERVAL_MS;
         await new Promise((resolve) => setTimeout(resolve, waitTime));
 
         // Check task status
@@ -119,20 +145,73 @@ export const researchTool = {
 
         const elapsedSec = ((Date.now() - startTime) / 1000).toFixed(1);
         console.log(
-          `[Research Tool] Task ${task.id} status: ${updatedTask.status}, progress: ${updatedTask.progress}% (${elapsedSec}s elapsed)`
+          `[Research Tool] Task ${task.id} status: ${updatedTask.status}, progress: ${updatedTask.progress}%, step: ${updatedTask.currentStep} (${elapsedSec}s elapsed)`
         );
 
-        if (updatedTask.status === 'completed' && updatedTask.output) {
-          // Research completed - return results
+        // Send progress update if changed
+        const currentStep = updatedTask.currentStep || 'Processing';
+        const currentProgress = updatedTask.progress || 0;
+
+        if (currentProgress !== lastProgress || currentStep !== lastStep) {
+          lastProgress = currentProgress;
+          lastStep = currentStep;
+
+          onProgress?.({
+            step: currentStep,
+            progress: currentProgress,
+            status: updatedTask.status,
+          });
+        }
+
+        if (updatedTask.status === 'completed') {
+          // Research completed - check for output
           const output = updatedTask.output as unknown as ResearchOutput;
-          const formattedResults = formatResearchResults(output);
 
-          console.log(`[Research Tool] Task ${task.id} completed after ${elapsedSec}s`);
+          console.log(`[Research Tool] Task ${task.id} completed after ${elapsedSec}s, output present: ${!!output}`);
 
-          return {
-            message: `${formatResearchStatus(updatedTask)}\n\n${formattedResults}`,
-            taskId: task.id,
-          };
+          if (output) {
+            const formattedResults = formatResearchResults(output);
+
+            onProgress?.({
+              step: 'Research complete',
+              progress: 100,
+              status: 'completed',
+            });
+
+            return {
+              message: `${formatResearchStatus(updatedTask)}\n\n${formattedResults}`,
+              taskId: task.id,
+            };
+          } else {
+            // Completed but no output - this is the bug case
+            console.warn(`[Research Tool] Task ${task.id} completed but output is null/undefined`);
+
+            // Wait a moment and try one more fetch in case of race condition
+            await new Promise((resolve) => setTimeout(resolve, 500));
+            const retryTask = await getTask(task.id);
+
+            if (retryTask?.output) {
+              const retryOutput = retryTask.output as unknown as ResearchOutput;
+              const formattedResults = formatResearchResults(retryOutput);
+
+              onProgress?.({
+                step: 'Research complete',
+                progress: 100,
+                status: 'completed',
+              });
+
+              return {
+                message: `${formatResearchStatus(retryTask)}\n\n${formattedResults}`,
+                taskId: task.id,
+              };
+            }
+
+            // Still no output - return error
+            return {
+              message: formatResearchError('Research completed but no results were returned. This may be a temporary issue - please try again.'),
+              taskId: task.id,
+            };
+          }
         } else if (updatedTask.status === 'failed') {
           // Research failed - return error
           const errorMsg = formatResearchError(
@@ -140,6 +219,12 @@ export const researchTool = {
           );
 
           console.log(`[Research Tool] Task ${task.id} failed after ${elapsedSec}s: ${updatedTask.error}`);
+
+          onProgress?.({
+            step: 'Research failed',
+            progress: currentProgress,
+            status: 'failed',
+          });
 
           return {
             message: errorMsg,
@@ -158,13 +243,19 @@ export const researchTool = {
         : formatResearchStatus({
             id: task.id,
             status: 'running',
-            progress: 0,
-            currentStep: 'Processing',
+            progress: lastProgress,
+            currentStep: lastStep,
           });
 
       const sourcesStr = validated.sources?.join(', ') || 'web, email, drive';
 
-      console.log(`[Research Tool] Task ${task.id} timed out after ${MAX_WAIT_MS / 1000}s, still running`);
+      console.log(`[Research Tool] Task ${task.id} timed out after ${MAX_WAIT_MS / 1000}s, still running at ${lastProgress}%`);
+
+      onProgress?.({
+        step: 'Research still in progress (timeout)',
+        progress: lastProgress,
+        status: 'timeout',
+      });
 
       return {
         message: `${statusMsg}\n\n**Research is taking longer than expected.**\n\nI'm still researching "${validated.query}" across ${sourcesStr}. This complex query requires additional processing time.\n\nYou can check the results later by asking: "What's the status of my research?"\n\n*Task ID: ${task.id}*`,

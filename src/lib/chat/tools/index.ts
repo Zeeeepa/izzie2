@@ -3,7 +3,7 @@
  * Centralized registry of all available chat tools
  */
 
-import { researchTool, checkResearchStatusTool } from './research';
+import { researchTool, checkResearchStatusTool, type ProgressCallback } from './research';
 import {
   createTaskTool,
   completeTaskTool,
@@ -96,21 +96,38 @@ export const chatTools = {
 export type ChatToolName = keyof typeof chatTools;
 
 /**
+ * Options for chat tool execution
+ */
+export interface ExecuteChatToolOptions {
+  /** Progress callback for tools that support streaming progress (like research) */
+  onProgress?: ProgressCallback;
+}
+
+export { type ProgressCallback } from './research';
+
+/**
  * Execute a chat tool by name
  * @param toolName - Name of the tool to execute
  * @param params - Tool parameters
  * @param userId - User ID who is executing the tool
+ * @param options - Optional execution options (e.g., progress callback)
  * @returns Tool execution result
  */
 export async function executeChatTool(
   toolName: ChatToolName,
   params: Record<string, unknown>,
-  userId: string
+  userId: string,
+  options?: ExecuteChatToolOptions
 ): Promise<unknown> {
   const tool = chatTools[toolName];
 
   if (!tool) {
     throw new Error(`Unknown tool: ${toolName}`);
+  }
+
+  // Research tool supports progress callback
+  if (toolName === 'research' && options?.onProgress) {
+    return await tool.execute(params as any, userId, options.onProgress);
   }
 
   return await tool.execute(params as any, userId);

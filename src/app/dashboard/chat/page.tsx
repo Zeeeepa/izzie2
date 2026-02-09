@@ -158,6 +158,26 @@ export default function ChatPage() {
               continue;
             }
 
+            // Handle tool progress events - update progress indicator with step details
+            if (data.type === 'tool_progress') {
+              const { tool, step, progress, status } = data;
+              // Format progress message with step and percentage
+              let progressMsg = step;
+              if (progress > 0) {
+                progressMsg = `${step} (${progress}%)`;
+              }
+
+              setMessages((prev) => {
+                const updated = [...prev];
+                const lastMessage = updated[updated.length - 1];
+                if (lastMessage?.role === 'assistant' && !lastMessage.content) {
+                  lastMessage.toolProgress = progressMsg;
+                }
+                return updated;
+              });
+              continue;
+            }
+
             // Skip tool result events
             if (data.type === 'tool_result') {
               continue;

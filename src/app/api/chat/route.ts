@@ -38,7 +38,7 @@ import { getMCPClientManager } from '@/lib/mcp';
 import { getToolsForContext } from '@/lib/mcp/tool-discovery';
 import type { MCPTool } from '@/lib/mcp/types';
 import type { Tool, ToolCall } from '@/types';
-import { getChatToolDefinitions, executeChatTool } from '@/lib/chat/tools';
+import { getChatToolDefinitions, executeChatTool, type ProgressCallback } from '@/lib/chat/tools';
 import { trackUsage } from '@/lib/usage';
 
 const LOG_PREFIX = '[Chat API]';
@@ -107,11 +107,16 @@ async function executeMCPTool(
 
 /**
  * Execute a tool (either MCP or native chat tool)
+ * @param toolName - Tool name to execute
+ * @param args - Tool arguments
+ * @param userId - User ID
+ * @param onProgress - Optional progress callback for streaming updates
  */
 async function executeTool(
   toolName: string,
   args: Record<string, unknown>,
-  userId: string
+  userId: string,
+  onProgress?: ProgressCallback
 ): Promise<{ success: boolean; result?: unknown; error?: string }> {
   try {
     // Check if it's an MCP tool (has __ separator)
@@ -121,7 +126,7 @@ async function executeTool(
 
     // Otherwise, it's a native chat tool
     console.log(`${LOG_PREFIX} Executing native chat tool: ${toolName}`);
-    const result = await executeChatTool(toolName as any, args, userId);
+    const result = await executeChatTool(toolName as any, args, userId, { onProgress });
 
     return {
       success: true,
@@ -413,7 +418,19 @@ ${RESPONSE_FORMAT_INSTRUCTION}
                   });
                   controller.enqueue(encoder.encode(`data: ${toolNotification}\n\n`));
 
-                  const result = await executeTool(toolName, toolArgs, userId);
+                  // Create progress callback for tools that support it (like research)
+                  const onProgress: ProgressCallback = (progress) => {
+                    const progressUpdate = JSON.stringify({
+                      type: 'tool_progress',
+                      tool: toolName,
+                      step: progress.step,
+                      progress: progress.progress,
+                      status: progress.status,
+                    });
+                    controller.enqueue(encoder.encode(`data: ${progressUpdate}\n\n`));
+                  };
+
+                  const result = await executeTool(toolName, toolArgs, userId, onProgress);
 
                   // Add tool result to conversation
                   conversationMessages.push({
