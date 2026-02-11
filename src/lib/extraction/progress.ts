@@ -288,6 +288,15 @@ export function getEffectiveStatus(progress: ExtractionProgress): ExtractionStat
 export async function resetStaleExtractions(): Promise<number> {
   const db = getDb();
 
+  // Check if extraction_progress table exists
+  try {
+    // Test query to verify table availability
+    await db.select().from(extractionProgress).limit(0);
+  } catch (error) {
+    console.warn('[Extraction Progress] Table not available, skipping stale check:', error);
+    return 0;
+  }
+
   // Find all running extractions
   const allRunning = await db
     .select()
