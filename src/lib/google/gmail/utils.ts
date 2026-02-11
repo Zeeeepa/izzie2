@@ -196,9 +196,18 @@ export function buildQuery(
   folder: string,
   since?: Date,
   excludePromotions?: boolean,
-  excludeSocial?: boolean
+  excludeSocial?: boolean,
+  keywords?: string[]
 ): string {
   const parts: string[] = [];
+
+  // Add keyword search if provided (searches subject, body, etc.)
+  if (keywords && keywords.length > 0) {
+    const keywordQuery = keywords
+      .map((k) => k.replace(/['"]/g, '')) // Remove quotes to prevent query injection
+      .join(' OR ');
+    parts.push(`(${keywordQuery})`);
+  }
 
   // Add date filter if provided
   if (since) {

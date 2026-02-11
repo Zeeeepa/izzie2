@@ -30,24 +30,25 @@ export async function searchEmails(
   const gmailService = new GmailService(auth);
 
   try {
-    // Gmail uses its own query syntax - pass query directly
+    // Extract keywords from query for Gmail API server-side search
+    const keywords = extractKeywords(query);
+
+    // Use Gmail API query syntax for server-side filtering
     // This searches subject, body, sender, etc.
     const batch = await gmailService.fetchEmails({
       folder,
       maxResults,
       since,
+      keywords, // Pass keywords to Gmail API for server-side search
     });
 
-    // Filter emails by query keywords (Gmail API doesn't support full-text search in list)
-    const filteredEmails = filterEmailsByQuery(batch.emails, query);
-
     // Convert to unified format
-    const results: ResearchSourceResult[] = filteredEmails
+    const results: ResearchSourceResult[] = batch.emails
       .slice(0, maxResults)
       .map((email) => emailToResearchResult(email));
 
     console.log(
-      `[EmailSource] Found ${results.length} emails matching "${query}"`
+      `[EmailSource] Found ${results.length} emails matching "${query}" (keywords: ${keywords.join(', ')})`
     );
 
     return results;
@@ -58,26 +59,22 @@ export async function searchEmails(
 }
 
 /**
- * Filter emails by query keywords
- * Checks subject, body, and sender
+ * Extract meaningful keywords from search query
+ * Filters out stop words and short words to improve Gmail API search
  */
-function filterEmailsByQuery(emails: Email[], query: string): Email[] {
-  const keywords = query.toLowerCase().split(/\s+/);
+function extractKeywords(query: string): string[] {
+  const stopWords = new Set([
+    'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
+    'from', 'by', 'with', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+    'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'should',
+    'can', 'could', 'may', 'might', 'must', 'this', 'that', 'these', 'those',
+  ]);
 
-  return emails.filter((email) => {
-    const searchText = [
-      email.subject,
-      email.body,
-      email.from.email,
-      email.from.name || '',
-      email.snippet || '',
-    ]
-      .join(' ')
-      .toLowerCase();
-
-    // Match if any keyword is found
-    return keywords.some((keyword) => searchText.includes(keyword));
-  });
+  return query
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(word => word.length > 2 && !stopWords.has(word))
+    .filter(Boolean);
 }
 
 /**

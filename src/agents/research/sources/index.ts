@@ -5,3 +5,4 @@
 
 export { searchEmails, type EmailSearchOptions } from './email-source';
 export { searchDriveFiles, getDriveFileContent, type DriveSearchOptions } from './drive-source';
+export { searchCalendarEvents, type CalendarSearchOptions } from './calendar-source';

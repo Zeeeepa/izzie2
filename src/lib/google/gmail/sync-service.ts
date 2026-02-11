@@ -34,10 +34,11 @@ export class GmailSyncService implements IGmailSyncService {
       labelIds,
       excludePromotions = false,
       excludeSocial = false,
+      keywords,
     } = options;
 
-    // Build query string
-    const query = buildQuery(folder, since, excludePromotions, excludeSocial);
+    // Build query string with optional keywords for server-side filtering
+    const query = buildQuery(folder, since, excludePromotions, excludeSocial, keywords);
 
     // Determine label IDs based on folder
     const labels = labelIds || getFolderLabels(folder);

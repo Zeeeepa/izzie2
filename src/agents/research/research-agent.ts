@@ -15,6 +15,7 @@ import { saveResearchSources, saveResearchFindings } from '@/lib/db/research';
 import { saveFindings } from '@/lib/weaviate/research-findings';
 import { searchEmails } from './sources/email-source';
 import { searchDriveFiles } from './sources/drive-source';
+import { searchCalendarEvents } from './sources/calendar-source';
 import type {
   ResearchInput,
   ResearchOutput,
@@ -328,7 +329,7 @@ export class ResearchAgent extends BaseAgent<ResearchInput, ResearchOutput> {
 
     // Get OAuth2 auth for Google services if needed
     let auth: InstanceType<typeof google.auth.OAuth2> | null = null;
-    if (sources.includes('email') || sources.includes('drive')) {
+    if (sources.includes('email') || sources.includes('drive') || sources.includes('calendar')) {
       try {
         const tokens = await getGoogleTokens(userId);
         if (tokens) {
@@ -384,6 +385,17 @@ export class ResearchAgent extends BaseAgent<ResearchInput, ResearchOutput> {
         searchDriveFiles(auth, query, { maxResults: maxResultsPerSource })
           .catch((error) => {
             console.error('[ResearchAgent] Drive search failed:', error);
+            return [];
+          })
+      );
+    }
+
+    // Search Calendar
+    if (sources.includes('calendar') && auth) {
+      searchPromises.push(
+        searchCalendarEvents(auth, query, { maxResults: maxResultsPerSource })
+          .catch((error) => {
+            console.error('[ResearchAgent] Calendar search failed:', error);
             return [];
           })
       );

@@ -8,7 +8,7 @@ import type { SearchResult } from '@/lib/search';
 /**
  * Research source types for multi-source search
  */
-export type ResearchSource = 'email' | 'drive' | 'web';
+export type ResearchSource = 'email' | 'drive' | 'web' | 'calendar';
 
 /**
  * Result from any research source (unified format)

@@ -20,6 +20,7 @@ export const ResearchSource = {
   WEB: 'web',
   EMAIL: 'email',
   DRIVE: 'drive',
+  CALENDAR: 'calendar',
 } as const;
 
 export type ResearchSourceType = (typeof ResearchSource)[keyof typeof ResearchSource];
@@ -51,10 +52,10 @@ export const researchToolSchema = z.object({
     .default(5)
     .describe('Maximum number of sources to analyze (1-10)'),
   sources: z
-    .array(z.enum(['web', 'email', 'drive']))
+    .array(z.enum(['web', 'email', 'drive', 'calendar']))
     .optional()
-    .default(['web', 'email', 'drive'])
-    .describe('Sources to search: web (internet), email (Gmail), drive (Google Drive). Defaults to all sources.'),
+    .default(['web', 'email', 'drive', 'calendar'])
+    .describe('Sources to search: web (internet), email (Gmail), drive (Google Drive), calendar (Google Calendar). Defaults to all sources.'),
 });
 
 export type ResearchToolParams = z.infer<typeof researchToolSchema>;
@@ -65,7 +66,7 @@ export type ResearchToolParams = z.infer<typeof researchToolSchema>;
 export const researchTool = {
   name: 'research',
   description:
-    'Conduct comprehensive research across web, email, and Google Drive sources. Use this when the user asks for in-depth research, analysis of multiple sources, or needs information on a complex topic. By default searches all sources (web, email, drive), but can be limited to specific sources (e.g., "research my emails about project X" would use sources: ["email"]). Analyzes multiple sources, extracts key findings, and provides a well-structured summary with citations.',
+    'Conduct comprehensive research across web, email, Google Drive, and Google Calendar sources. Use this when the user asks for in-depth research, analysis of multiple sources, or needs information on a complex topic. By default searches all sources (web, email, drive, calendar), but can be limited to specific sources (e.g., "research my emails about project X" would use sources: ["email"], or "when is band practice" would use sources: ["calendar"]). Analyzes multiple sources, extracts key findings, and provides a well-structured summary with citations.',
   parameters: researchToolSchema,
 
   /**
@@ -247,7 +248,7 @@ export const researchTool = {
             currentStep: lastStep,
           });
 
-      const sourcesStr = validated.sources?.join(', ') || 'web, email, drive';
+      const sourcesStr = validated.sources?.join(', ') || 'web, email, drive, calendar';
 
       console.log(`[Research Tool] Task ${task.id} timed out after ${MAX_WAIT_MS / 1000}s, still running at ${lastProgress}%`);
 
