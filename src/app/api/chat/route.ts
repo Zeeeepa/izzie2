@@ -40,6 +40,7 @@ import type { MCPTool } from '@/lib/mcp/types';
 import type { Tool, ToolCall } from '@/types';
 import { getChatToolDefinitions, executeChatTool, type ProgressCallback } from '@/lib/chat/tools';
 import { trackUsage } from '@/lib/usage';
+import { BUILD_INFO } from '@/lib/build-info';
 
 const LOG_PREFIX = '[Chat API]';
 
@@ -248,6 +249,15 @@ You are Izzie, ${userName}'s personal AI assistant. You have access to ${userNam
 ${contextErrorNotice}
 
 **Current Date/Time**: Today is ${currentDateStr}, ${currentTimeStr} (Eastern Time).
+
+**Build Information**:
+- Version: ${BUILD_INFO.version}
+- Git Hash: ${BUILD_INFO.gitHash}
+- Build Time: ${BUILD_INFO.buildTime}
+- Current Server Time: ${now.toISOString()}
+- Build Status: ${BUILD_INFO.isDirty ? 'Development (uncommitted changes)' : 'Production (clean)'}
+
+You are running version ${BUILD_INFO.version} (built at ${BUILD_INFO.buildTime}). When users report issues or mention that something "doesn't work", be aware of what version you are running and when it was deployed. If a fix was recently deployed, you can inform users that the issue may have been resolved in the current version.
 
 ${selfAwarenessPrompt}
 
