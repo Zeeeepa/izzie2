@@ -47,6 +47,10 @@ import { correctRelationshipTool } from './relationship-correction';
 import { queryEntityTool } from './entity-query';
 import { getEntityRelationshipsTool } from './entity-relationships';
 import { findRelatedEntitiesTool } from './find-related';
+import { createEntityTool } from './create-entity';
+import { updateEntityTool } from './update-entity';
+import { deleteEntityTool } from './delete-entity';
+import { createRelationshipTool } from './create-relationship';
 
 /**
  * All available chat tools
@@ -95,6 +99,11 @@ export const chatTools = {
   query_entity: queryEntityTool,
   get_entity_relationships: getEntityRelationshipsTool,
   find_related_entities: findRelatedEntitiesTool,
+  // Entity CRUD tools
+  create_entity: createEntityTool,
+  update_entity: updateEntityTool,
+  delete_entity: deleteEntityTool,
+  create_relationship: createRelationshipTool,
 };
 
 /**
