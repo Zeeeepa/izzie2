@@ -449,6 +449,9 @@ export async function findPotentialDuplicates(
 
 /**
  * Get AI-suggested merges above a confidence threshold
+ *
+ * Note: High-confidence merges (>= 0.95) are automatically applied.
+ * Use this to get pending suggestions that require manual review.
  */
 export async function getSuggestedMerges(
   userId: string,
@@ -456,6 +459,72 @@ export async function getSuggestedMerges(
 ): Promise<EntityMatch[]> {
   const allMatches = await findPotentialDuplicates(userId);
   return allMatches.filter((m) => m.confidence >= minConfidence);
+}
+
+/**
+ * Find and apply high-confidence merges automatically
+ *
+ * This function identifies entity duplicates and:
+ * - Auto-applies merges with confidence >= 0.95
+ * - Creates manual review suggestions for merges with 0.7 <= confidence < 0.95
+ *
+ * @param userId - User ID
+ * @param minConfidence - Minimum confidence threshold (default: 0.7)
+ * @returns Summary of merges created/applied
+ */
+export async function findAndProcessDuplicates(
+  userId: string,
+  minConfidence: number = 0.7
+): Promise<{
+  totalFound: number;
+  autoApplied: number;
+  pendingReview: number;
+}> {
+  const { createMergeSuggestion } = await import('./merge-service');
+
+  console.log(`${LOG_PREFIX} Finding duplicates for user ${userId}...`);
+
+  const matches = await findPotentialDuplicates(userId);
+  const relevantMatches = matches.filter((m) => m.confidence >= minConfidence);
+
+  console.log(
+    `${LOG_PREFIX} Found ${relevantMatches.length} potential duplicates (min confidence: ${minConfidence})`
+  );
+
+  let autoApplied = 0;
+  let pendingReview = 0;
+
+  for (const match of relevantMatches) {
+    try {
+      const result = await createMergeSuggestion({
+        userId,
+        entity1Type: match.entityType,
+        entity1Value: match.entity1Value,
+        entity2Type: match.entityType,
+        entity2Value: match.entity2Value,
+        confidence: match.confidence,
+        matchReason: match.matchFactors.join(', '),
+      });
+
+      if (result.autoApplied) {
+        autoApplied++;
+      } else {
+        pendingReview++;
+      }
+    } catch (error) {
+      console.error(`${LOG_PREFIX} Error processing duplicate:`, error);
+    }
+  }
+
+  console.log(
+    `${LOG_PREFIX} Processed ${relevantMatches.length} duplicates: ${autoApplied} auto-applied, ${pendingReview} pending review`
+  );
+
+  return {
+    totalFound: relevantMatches.length,
+    autoApplied,
+    pendingReview,
+  };
 }
 
 /**

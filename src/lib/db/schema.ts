@@ -1930,8 +1930,10 @@ export const mergeSuggestions = pgTable(
     entity2Value: text('entity2_value').notNull(),
     confidence: real('confidence').notNull(),
     matchReason: text('match_reason').notNull(),
-    status: text('status').notNull().default('pending'), // 'pending' | 'accepted' | 'rejected'
+    status: text('status').notNull().default('pending'), // 'pending' | 'accepted' | 'rejected' | 'auto_applied'
     reviewedAt: timestamp('reviewed_at'),
+    appliedAt: timestamp('applied_at'), // When merge was actually applied
+    appliedBy: text('applied_by'), // 'system_auto' | userId
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => ({
@@ -1955,6 +1957,7 @@ export const MERGE_SUGGESTION_STATUS = {
   PENDING: 'pending',
   ACCEPTED: 'accepted',
   REJECTED: 'rejected',
+  AUTO_APPLIED: 'auto_applied',
 } as const;
 
 export type MergeSuggestionStatus = (typeof MERGE_SUGGESTION_STATUS)[keyof typeof MERGE_SUGGESTION_STATUS];

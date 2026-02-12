@@ -44,6 +44,9 @@ import {
 } from './conversation-history';
 import { webSearchTool } from './web-search';
 import { correctRelationshipTool } from './relationship-correction';
+import { queryEntityTool } from './entity-query';
+import { getEntityRelationshipsTool } from './entity-relationships';
+import { findRelatedEntitiesTool } from './find-related';
 
 /**
  * All available chat tools
@@ -88,6 +91,10 @@ export const chatTools = {
   web_search: webSearchTool,
   // Relationship correction tool
   correct_relationship: correctRelationshipTool,
+  // Entity query tools
+  query_entity: queryEntityTool,
+  get_entity_relationships: getEntityRelationshipsTool,
+  find_related_entities: findRelatedEntitiesTool,
 };
 
 /**
