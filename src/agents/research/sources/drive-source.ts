@@ -10,6 +10,69 @@ import type { DriveFile, DriveFileContent } from '@/lib/google/types';
 
 const MAX_RESULTS_DEFAULT = 5;
 
+/**
+ * Common stop words to filter out from search queries
+ */
+const STOP_WORDS = new Set([
+  'a',
+  'an',
+  'and',
+  'are',
+  'as',
+  'at',
+  'be',
+  'by',
+  'for',
+  'from',
+  'has',
+  'he',
+  'in',
+  'is',
+  'it',
+  'its',
+  'of',
+  'on',
+  'that',
+  'the',
+  'to',
+  'was',
+  'will',
+  'with',
+]);
+
+/**
+ * Extract meaningful keywords from a query string
+ * Filters out stop words and short words
+ */
+function extractKeywords(query: string): string[] {
+  return query
+    .toLowerCase()
+    .split(/\s+/)
+    .map((word) => word.replace(/[^\w]/g, '')) // Remove punctuation
+    .filter((word) => word.length > 2) // Keep words longer than 2 chars
+    .filter((word) => !STOP_WORDS.has(word)); // Remove stop words
+}
+
+/**
+ * Build Drive API query from keywords
+ * Searches in both fullText and name fields with OR operator
+ */
+function buildDriveQuery(keywords: string[]): string {
+  if (keywords.length === 0) {
+    return ''; // Empty query will be handled by caller
+  }
+
+  // Escape single quotes for Drive API
+  const escapedKeywords = keywords.map((kw) => kw.replace(/'/g, "\\'"));
+
+  // Build query: (fullText contains 'keyword' or name contains 'keyword') for each keyword
+  const keywordClauses = escapedKeywords.map(
+    (kw) => `(fullText contains '${kw}' or name contains '${kw}')`
+  );
+
+  return keywordClauses.join(' or ');
+}
+
 export interface DriveSearchOptions {
   maxResults?: number;
   includeSharedDrives?: boolean;
@@ -33,9 +96,23 @@ export async function searchDriveFiles(
   const driveService = new DriveService(auth);
 
   try {
+    // Extract keywords and build Drive API query
+    const keywords = extractKeywords(query);
+    const driveQuery = buildDriveQuery(keywords);
+
+    // Fallback to exact match if no keywords extracted
+    const finalQuery =
+      driveQuery.length > 0
+        ? driveQuery
+        : `(fullText contains '${query.replace(/'/g, "\\'")}' or name contains '${query.replace(/'/g, "\\'")}')`;
+
+    console.log(
+      `[DriveSource] Query: "${query}" -> Keywords: [${keywords.join(', ')}]`
+    );
+
     // Use Drive's built-in search which searches name and content
     const batch = await driveService.searchFiles({
-      query,
+      query: finalQuery,
       maxResults,
       includeSharedDrives,
       orderBy: 'relevance',
