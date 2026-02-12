@@ -5,13 +5,16 @@
  * Automatically applies merges when confidence >= 0.95 to reduce manual work.
  */
 
-import { dbClient as db } from '@/lib/db';
+import { dbClient } from '@/lib/db';
 import { mergeSuggestions, MERGE_SUGGESTION_STATUS } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { mergeEntities } from './deduplication';
 import type { EntityType } from '../extraction/types';
 
 const LOG_PREFIX = '[Merge Service]';
+
+// Get Drizzle instance from NeonClient
+const db = dbClient.getDb();
 
 /**
  * Auto-apply threshold - merges with confidence >= 0.95 are automatically applied
