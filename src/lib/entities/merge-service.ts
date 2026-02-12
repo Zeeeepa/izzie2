@@ -5,7 +5,7 @@
  * Automatically applies merges when confidence >= 0.95 to reduce manual work.
  */
 
-import { db } from '@/lib/db';
+import { dbClient as db } from '@/lib/db';
 import { mergeSuggestions, MERGE_SUGGESTION_STATUS } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { mergeEntities } from './deduplication';

@@ -8,7 +8,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth/auth-server';
+import { auth } from '@/lib/auth';
 import { findAndProcessDuplicates } from '@/lib/entities/deduplication';
 import { getMergeStats } from '@/lib/entities/merge-service';
 
