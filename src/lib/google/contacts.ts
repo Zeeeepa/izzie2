@@ -455,6 +455,22 @@ export class ContactsService {
       throw error;
     }
   }
+
+  /**
+   * Delete a contact from Google Contacts
+   */
+  async deleteContact(resourceName: string): Promise<void> {
+    try {
+      await this.people.people.deleteContact({
+        resourceName,
+      });
+
+      console.log(`[Contacts] Deleted contact: ${resourceName}`);
+    } catch (error) {
+      console.error('[Contacts] Failed to delete contact:', error);
+      throw error;
+    }
+  }
 }
 
 /**

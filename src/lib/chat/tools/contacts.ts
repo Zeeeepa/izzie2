@@ -330,3 +330,238 @@ export const syncContactsTool = {
     }
   },
 };
+
+/**
+ * Create Contact Tool
+ * Create a new contact in Google Contacts
+ */
+export const createContactToolSchema = z.object({
+  givenName: z.string().min(1).describe('First name (required)'),
+  familyName: z.string().optional().describe('Last name'),
+  email: z.string().email().optional().describe('Email address'),
+  phone: z.string().optional().describe('Phone number'),
+  company: z.string().optional().describe('Company/organization name'),
+  jobTitle: z.string().optional().describe('Job title'),
+  notes: z.string().optional().describe('Notes/biography'),
+});
+
+export type CreateContactParams = z.infer<typeof createContactToolSchema>;
+
+export const createContactTool = {
+  name: 'create_contact',
+  description:
+    'Create a new contact in Google Contacts with name, email, phone, and organization details.',
+  parameters: createContactToolSchema,
+
+  async execute(
+    params: CreateContactParams,
+    userId: string
+  ): Promise<{ message: string }> {
+    try {
+      // Check for Contacts access before any contacts operation
+      await requireContactsAccess(userId);
+
+      const validated = createContactToolSchema.parse(params);
+      const contactsService = await getContactsClient(userId);
+
+      console.log(`${LOG_PREFIX} Creating contact: ${validated.givenName} ${validated.familyName || ''} for user:`, userId);
+
+      const result = await contactsService.createContact({
+        givenName: validated.givenName,
+        familyName: validated.familyName,
+        email: validated.email,
+        phone: validated.phone,
+        organization: validated.company,
+        title: validated.jobTitle,
+        notes: validated.notes,
+      });
+
+      const displayName = `${validated.givenName}${validated.familyName ? ' ' + validated.familyName : ''}`;
+      let message = `✓ Created contact: **${displayName}**`;
+
+      if (validated.email) {
+        message += `\n  Email: ${validated.email}`;
+      }
+      if (validated.phone) {
+        message += `\n  Phone: ${validated.phone}`;
+      }
+      if (validated.company) {
+        message += `\n  Company: ${validated.company}`;
+      }
+      if (validated.jobTitle) {
+        message += `\n  Title: ${validated.jobTitle}`;
+      }
+      if (result.resourceName) {
+        message += `\n  ID: ${result.resourceName}`;
+      }
+
+      return { message };
+    } catch (error) {
+      console.error(`${LOG_PREFIX} Create contact failed:`, error);
+      throw new Error(
+        `Failed to create contact: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  },
+};
+
+/**
+ * Update Contact Tool
+ * Update an existing contact in Google Contacts
+ */
+export const updateContactToolSchema = z.object({
+  resourceName: z.string().min(1).describe('Contact resource name (e.g., "people/c1234567890")'),
+  givenName: z.string().optional().describe('First name'),
+  familyName: z.string().optional().describe('Last name'),
+  email: z.string().email().optional().describe('Email address'),
+  phone: z.string().optional().describe('Phone number'),
+  company: z.string().optional().describe('Company/organization name'),
+  jobTitle: z.string().optional().describe('Job title'),
+  notes: z.string().optional().describe('Notes/biography'),
+});
+
+export type UpdateContactParams = z.infer<typeof updateContactToolSchema>;
+
+export const updateContactTool = {
+  name: 'update_contact',
+  description:
+    'Update an existing contact in Google Contacts. Only provided fields will be updated (partial update).',
+  parameters: updateContactToolSchema,
+
+  async execute(
+    params: UpdateContactParams,
+    userId: string
+  ): Promise<{ message: string }> {
+    try {
+      // Check for Contacts access before any contacts operation
+      await requireContactsAccess(userId);
+
+      const validated = updateContactToolSchema.parse(params);
+      const contactsService = await getContactsClient(userId);
+
+      console.log(`${LOG_PREFIX} Updating contact: ${validated.resourceName} for user:`, userId);
+
+      // Build update data with only provided fields
+      const updateData: {
+        givenName?: string;
+        familyName?: string;
+        email?: string;
+        phone?: string;
+        organization?: string;
+        title?: string;
+        notes?: string;
+      } = {};
+
+      if (validated.givenName !== undefined) updateData.givenName = validated.givenName;
+      if (validated.familyName !== undefined) updateData.familyName = validated.familyName;
+      if (validated.email !== undefined) updateData.email = validated.email;
+      if (validated.phone !== undefined) updateData.phone = validated.phone;
+      if (validated.company !== undefined) updateData.organization = validated.company;
+      if (validated.jobTitle !== undefined) updateData.title = validated.jobTitle;
+      if (validated.notes !== undefined) updateData.notes = validated.notes;
+
+      if (Object.keys(updateData).length === 0) {
+        return {
+          message: `⚠️ No updates provided for contact "${validated.resourceName}".`,
+        };
+      }
+
+      await contactsService.updateContact(validated.resourceName, updateData);
+
+      let message = `✓ Updated contact: **${validated.resourceName}**\n\nChanges:`;
+
+      if (validated.givenName) message += `\n  • First Name: ${validated.givenName}`;
+      if (validated.familyName) message += `\n  • Last Name: ${validated.familyName}`;
+      if (validated.email) message += `\n  • Email: ${validated.email}`;
+      if (validated.phone) message += `\n  • Phone: ${validated.phone}`;
+      if (validated.company) message += `\n  • Company: ${validated.company}`;
+      if (validated.jobTitle) message += `\n  • Job Title: ${validated.jobTitle}`;
+      if (validated.notes) message += `\n  • Notes: ${validated.notes}`;
+
+      return { message };
+    } catch (error) {
+      console.error(`${LOG_PREFIX} Update contact failed:`, error);
+      throw new Error(
+        `Failed to update contact: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  },
+};
+
+/**
+ * Delete Contact Tool
+ * Delete a contact from Google Contacts with confirmation
+ */
+export const deleteContactToolSchema = z.object({
+  resourceName: z.string().min(1).describe('Contact resource name (e.g., "people/c1234567890")'),
+  confirm: z
+    .boolean()
+    .describe(
+      'REQUIRED: Must be true to confirm deletion. This is a safety check to prevent accidental deletions.'
+    ),
+});
+
+export type DeleteContactParams = z.infer<typeof deleteContactToolSchema>;
+
+export const deleteContactTool = {
+  name: 'delete_contact',
+  description:
+    'Delete a contact from Google Contacts. IMPORTANT: Requires explicit confirmation (confirm: true) to prevent accidental deletions.',
+  parameters: deleteContactToolSchema,
+
+  async execute(
+    params: DeleteContactParams,
+    userId: string
+  ): Promise<{ message: string }> {
+    try {
+      // Check for Contacts access before any contacts operation
+      await requireContactsAccess(userId);
+
+      const validated = deleteContactToolSchema.parse(params);
+
+      console.log(`${LOG_PREFIX} Delete request for contact: ${validated.resourceName} for user:`, userId);
+
+      // Safety check: require explicit confirmation
+      if (!validated.confirm) {
+        return {
+          message: `⚠️ **Deletion requires confirmation**\n\nTo delete contact "${validated.resourceName}", you must set confirm to true.\n\nExample: delete_contact({ resourceName: "${validated.resourceName}", confirm: true })`,
+        };
+      }
+
+      const contactsService = await getContactsClient(userId);
+
+      // First, get the contact to show what's being deleted
+      const contact = await contactsService.getContact(validated.resourceName);
+
+      if (!contact) {
+        return {
+          message: `❌ Contact not found: "${validated.resourceName}". Nothing to delete.`,
+        };
+      }
+
+      // Delete the contact
+      await contactsService.deleteContact(validated.resourceName);
+
+      console.log(`${LOG_PREFIX} Deleted contact ${validated.resourceName} (user: ${userId})`);
+
+      let message = `✓ Deleted contact: **${contact.displayName}**`;
+
+      const primaryEmail = contact.emails.find((e) => e.primary) || contact.emails[0];
+      if (primaryEmail) {
+        message += `\n  Email: ${primaryEmail.value}`;
+      }
+
+      const primaryPhone = contact.phoneNumbers.find((p) => p.primary) || contact.phoneNumbers[0];
+      if (primaryPhone) {
+        message += `\n  Phone: ${primaryPhone.value}`;
+      }
+
+      return { message };
+    } catch (error) {
+      console.error(`${LOG_PREFIX} Delete contact failed:`, error);
+      throw new Error(
+        `Failed to delete contact: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  },
+};

@@ -36,6 +36,9 @@ import {
   searchContactsTool,
   getContactDetailsTool,
   syncContactsTool,
+  createContactTool,
+  updateContactTool,
+  deleteContactTool,
 } from './contacts';
 import {
   searchConversationsTool,
@@ -87,6 +90,9 @@ export const chatTools = {
   search_contacts: searchContactsTool,
   get_contact_details: getContactDetailsTool,
   sync_contacts: syncContactsTool,
+  create_contact: createContactTool,
+  update_contact: updateContactTool,
+  delete_contact: deleteContactTool,
   // Conversation history tools
   search_conversations: searchConversationsTool,
   get_conversation_history: getConversationHistoryTool,
