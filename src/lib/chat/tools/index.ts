@@ -41,6 +41,11 @@ import {
   deleteContactTool,
 } from './contacts';
 import {
+  listCalendarEventsTool,
+  getCalendarEventTool,
+  searchCalendarEventsTool,
+} from './calendar';
+import {
   searchConversationsTool,
   getConversationHistoryTool,
   getRecentConversationsTool,
@@ -93,6 +98,10 @@ export const chatTools = {
   create_contact: createContactTool,
   update_contact: updateContactTool,
   delete_contact: deleteContactTool,
+  // Google Calendar tools
+  list_calendar_events: listCalendarEventsTool,
+  get_calendar_event: getCalendarEventTool,
+  search_calendar_events: searchCalendarEventsTool,
   // Conversation history tools
   search_conversations: searchConversationsTool,
   get_conversation_history: getConversationHistoryTool,
