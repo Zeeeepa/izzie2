@@ -46,6 +46,11 @@ import {
   searchCalendarEventsTool,
 } from './calendar';
 import {
+  searchDriveFilesTool,
+  getDriveFileContentTool,
+  listDriveFilesTool,
+} from './drive';
+import {
   searchConversationsTool,
   getConversationHistoryTool,
   getRecentConversationsTool,
@@ -102,6 +107,10 @@ export const chatTools = {
   list_calendar_events: listCalendarEventsTool,
   get_calendar_event: getCalendarEventTool,
   search_calendar_events: searchCalendarEventsTool,
+  // Google Drive tools
+  search_drive_files: searchDriveFilesTool,
+  get_drive_file_content: getDriveFileContentTool,
+  list_drive_files: listDriveFilesTool,
   // Conversation history tools
   search_conversations: searchConversationsTool,
   get_conversation_history: getConversationHistoryTool,
