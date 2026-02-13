@@ -346,3 +346,76 @@ export interface ContactsBatch {
   nextPageToken?: string;
   totalContacts: number;
 }
+
+/**
+ * Google Docs API Type Definitions (Structured Content)
+ */
+
+export interface DocParagraph {
+  text: string;
+  style: {
+    bold: boolean;
+    italic: boolean;
+    underline: boolean;
+  };
+}
+
+export interface DocListItem {
+  text: string;
+  nestingLevel: number;
+}
+
+export interface DocList {
+  listId: string;
+  type: 'bulleted' | 'numbered';
+  items: DocListItem[];
+}
+
+export interface DocSection {
+  heading: string;
+  headingLevel: number; // 1-6 for H1-H6, 0 for no heading
+  paragraphs: DocParagraph[];
+  lists: DocList[];
+}
+
+export interface GoogleDocStructured {
+  documentId: string;
+  title: string;
+  sections: DocSection[];
+}
+
+/**
+ * Google Sheets API Type Definitions (Structured Content)
+ */
+
+export interface SheetTab {
+  name: string;
+  headers: string[];
+  rows: string[][];
+  metadata: {
+    rowCount: number;
+    columnCount: number;
+  };
+}
+
+export interface GoogleSheetStructured {
+  spreadsheetId: string;
+  title: string;
+  sheets: SheetTab[];
+}
+
+export interface SheetMetadata {
+  spreadsheetId: string;
+  title: string;
+  locale: string;
+  timeZone: string;
+  sheets: Array<{
+    sheetId: number;
+    title: string;
+    index: number;
+    gridProperties: {
+      rowCount: number;
+      columnCount: number;
+    };
+  }>;
+}

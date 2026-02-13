@@ -7,14 +7,27 @@ import { z } from 'zod';
 import { google } from 'googleapis';
 import { getGoogleTokens, updateGoogleTokens } from '@/lib/auth';
 import { DriveService } from '@/lib/google/drive';
-import type { DriveFile, DriveFileContent } from '@/lib/google/types';
+import { DocsService } from '@/lib/google/docs';
+import { SheetsService } from '@/lib/google/sheets';
+import type {
+  DriveFile,
+  DriveFileContent,
+  GoogleDocStructured,
+  GoogleSheetStructured,
+} from '@/lib/google/types';
 
 const LOG_PREFIX = '[Drive Tools]';
 
+// MIME types for Google Workspace files
+const GOOGLE_MIME_TYPES = {
+  DOCUMENT: 'application/vnd.google-apps.document',
+  SPREADSHEET: 'application/vnd.google-apps.spreadsheet',
+} as const;
+
 /**
- * Initialize Drive client for user
+ * Get OAuth2 client for user
  */
-async function getDriveClient(userId: string): Promise<DriveService> {
+async function getOAuth2Client(userId: string) {
   const tokens = await getGoogleTokens(userId);
   if (!tokens) {
     throw new Error('No Google tokens found for user. Please connect your Google account.');
@@ -42,7 +55,31 @@ async function getDriveClient(userId: string): Promise<DriveService> {
     await updateGoogleTokens(userId, newTokens);
   });
 
+  return oauth2Client;
+}
+
+/**
+ * Initialize Drive client for user
+ */
+async function getDriveClient(userId: string): Promise<DriveService> {
+  const oauth2Client = await getOAuth2Client(userId);
   return new DriveService(oauth2Client);
+}
+
+/**
+ * Initialize Docs client for user
+ */
+async function getDocsClient(userId: string): Promise<DocsService> {
+  const oauth2Client = await getOAuth2Client(userId);
+  return new DocsService(oauth2Client);
+}
+
+/**
+ * Initialize Sheets client for user
+ */
+async function getSheetsClient(userId: string): Promise<SheetsService> {
+  const oauth2Client = await getOAuth2Client(userId);
+  return new SheetsService(oauth2Client);
 }
 
 /**
@@ -208,17 +245,27 @@ export const getDriveFileContentToolSchema = z.object({
     .string()
     .min(1)
     .describe('The unique ID of the Google Drive file to retrieve content from.'),
+  structured: z
+    .boolean()
+    .optional()
+    .default(true)
+    .describe(
+      'Optional: Return structured content for Google Docs/Sheets (preserves formatting, headings, tables). Default: true.'
+    ),
   exportFormat: z
     .enum(['text', 'markdown', 'html', 'pdf'])
     .optional()
-    .describe('Optional: Export format for Google Docs (text, markdown, html, pdf). Default: text for Docs, CSV for Sheets.'),
+    .describe(
+      'Optional: Export format for Google Docs (text, markdown, html, pdf). Only used when structured=false. Default: text for Docs, CSV for Sheets.'
+    ),
 });
 
 export type GetDriveFileContentParams = z.infer<typeof getDriveFileContentToolSchema>;
 
 export const getDriveFileContentTool = {
   name: 'get_drive_file_content',
-  description: 'Retrieve the content of a Google Drive file. Supports Google Docs, Sheets, Slides (exported as text), and binary files (returns download link).',
+  description:
+    'Retrieve the content of a Google Drive file. For Google Docs/Sheets, returns structured content by default (preserves formatting, headings, tables). For other files, returns plain text or download link.',
   parameters: getDriveFileContentToolSchema,
   async execute(params: GetDriveFileContentParams, userId: string): Promise<{ message: string }> {
     console.log(`${LOG_PREFIX} Getting drive file content for user ${userId}`, params);
@@ -227,40 +274,134 @@ export const getDriveFileContentTool = {
 
     const driveClient = await getDriveClient(userId);
 
-    const fileContent: DriveFileContent = await driveClient.getFileContent(validated.fileId);
-    const { file, content, mimeType } = fileContent;
+    // First, get file metadata to determine MIME type
+    const file = await driveClient.getFile(validated.fileId);
 
-    console.log(`${LOG_PREFIX} Retrieved file content: ${file.name} (${mimeType})`);
+    console.log(`${LOG_PREFIX} Retrieved file: ${file.name} (${file.mimeType})`);
 
     const lines: string[] = [];
     const emoji = getFileTypeEmoji(file.mimeType);
 
     lines.push(`${emoji} **${file.name}**`);
     lines.push(`   ID: ${file.id}`);
-    lines.push(`   Type: ${mimeType}`);
+    lines.push(`   Type: ${file.mimeType}`);
 
-    // If content is a Buffer (binary file), provide download link
-    if (Buffer.isBuffer(content)) {
-      lines.push(`   📏 Size: ${formatFileSize(file.size)}`);
-      if (file.webContentLink) {
-        lines.push(`\n📥 **Download Link:**\n${file.webContentLink}`);
-      } else if (file.webViewLink) {
-        lines.push(`\n🔗 **View Link:**\n${file.webViewLink}`);
-      } else {
-        lines.push(`\n⚠️ Binary file content cannot be displayed directly. Please use the Drive API to download.`);
+    // Handle Google Docs with structured content
+    if (file.mimeType === GOOGLE_MIME_TYPES.DOCUMENT && validated.structured) {
+      const docsClient = await getDocsClient(userId);
+      const doc: GoogleDocStructured = await docsClient.getDocument(validated.fileId);
+
+      lines.push(`   📄 Document Structure: ${doc.sections.length} sections`);
+      lines.push(`\n📄 **Structured Content:**\n`);
+
+      // Format structured document content
+      for (const section of doc.sections) {
+        if (section.heading) {
+          const headingPrefix = '#'.repeat(section.headingLevel);
+          lines.push(`${headingPrefix} ${section.heading}\n`);
+        }
+
+        // Add paragraphs
+        for (const paragraph of section.paragraphs) {
+          let text = paragraph.text;
+          if (paragraph.style.bold) text = `**${text}**`;
+          if (paragraph.style.italic) text = `*${text}*`;
+          if (paragraph.style.underline) text = `__${text}__`;
+          lines.push(text);
+          lines.push('');
+        }
+
+        // Add lists
+        for (const list of section.lists) {
+          for (const item of list.items) {
+            const indent = '  '.repeat(item.nestingLevel);
+            const bullet = list.type === 'numbered' ? '1.' : '-';
+            lines.push(`${indent}${bullet} ${item.text}`);
+          }
+          lines.push('');
+        }
       }
-    } else {
-      // Text content
-      const textContent = content as string;
-      const preview = textContent.length > 2000
-        ? textContent.substring(0, 1997) + '...'
-        : textContent;
 
-      lines.push(`   📏 Size: ${textContent.length} characters`);
-      lines.push(`\n📄 **Content:**\n\`\`\`\n${preview}\n\`\`\``);
+      if (file.webViewLink) {
+        lines.push(`\n🔗 **View in Google Docs:**\n${file.webViewLink}`);
+      }
+    }
+    // Handle Google Sheets with structured content
+    else if (file.mimeType === GOOGLE_MIME_TYPES.SPREADSHEET && validated.structured) {
+      const sheetsClient = await getSheetsClient(userId);
+      const spreadsheet: GoogleSheetStructured = await sheetsClient.getSpreadsheet(
+        validated.fileId
+      );
 
-      if (textContent.length > 2000) {
-        lines.push(`\n💡 Content truncated to 2000 characters. Full file has ${textContent.length} characters.`);
+      lines.push(`   📊 Sheets: ${spreadsheet.sheets.length} tabs`);
+      lines.push(`\n📊 **Structured Content:**\n`);
+
+      // Format structured spreadsheet content
+      for (const sheet of spreadsheet.sheets) {
+        lines.push(`## ${sheet.name}`);
+        lines.push(
+          `   Dimensions: ${sheet.metadata.rowCount} rows × ${sheet.metadata.columnCount} columns\n`
+        );
+
+        // Show headers
+        if (sheet.headers.length > 0) {
+          lines.push(`**Headers:** ${sheet.headers.join(' | ')}`);
+          lines.push('');
+        }
+
+        // Show first 10 rows of data
+        const rowsToShow = sheet.rows.slice(0, 10);
+        if (rowsToShow.length > 0) {
+          lines.push(`**Data (first ${rowsToShow.length} rows):**`);
+          for (const row of rowsToShow) {
+            lines.push(`- ${row.join(' | ')}`);
+          }
+
+          if (sheet.rows.length > 10) {
+            lines.push(`\n   ... and ${sheet.rows.length - 10} more rows`);
+          }
+        }
+
+        lines.push('');
+      }
+
+      if (file.webViewLink) {
+        lines.push(`\n🔗 **View in Google Sheets:**\n${file.webViewLink}`);
+      }
+    }
+    // Handle other files or non-structured export
+    else {
+      const fileContent: DriveFileContent = await driveClient.getFileContent(validated.fileId);
+      const { content, mimeType } = fileContent;
+
+      lines.push(`   Content Type: ${mimeType}`);
+
+      // If content is a Buffer (binary file), provide download link
+      if (Buffer.isBuffer(content)) {
+        lines.push(`   📏 Size: ${formatFileSize(file.size)}`);
+        if (file.webContentLink) {
+          lines.push(`\n📥 **Download Link:**\n${file.webContentLink}`);
+        } else if (file.webViewLink) {
+          lines.push(`\n🔗 **View Link:**\n${file.webViewLink}`);
+        } else {
+          lines.push(
+            `\n⚠️ Binary file content cannot be displayed directly. Please use the Drive API to download.`
+          );
+        }
+      } else {
+        // Text content
+        const textContent = content as string;
+        const preview =
+          textContent.length > 2000 ? textContent.substring(0, 1997) + '...' : textContent;
+
+        lines.push(`   📏 Size: ${textContent.length} characters`);
+        lines.push(`\n📄 **Content:**\n\`\`\`\n${preview}\n\`\`\``);
+
+        if (textContent.length > 2000) {
+          lines.push(
+            `\n💡 Content truncated to 2000 characters. Full file has ${textContent.length} characters.`
+          );
+        }
       }
     }
 

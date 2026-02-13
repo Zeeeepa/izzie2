@@ -72,6 +72,8 @@
   "homepage": "https://github.com/bobmatnyc/izzie2#readme",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",
+    "@googleapis/docs": "^9.2.1",
+    "@googleapis/sheets": "^13.0.1",
     "@modelcontextprotocol/sdk": "^1.25.2",
     "@neondatabase/serverless": "^1.0.2",
     "@octokit/rest": "^22.0.1",
